@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from data_pipeline.source.file_source.main import handle_file_source
-from data_pipeline.source.file_source.file_validator import FileValidator
+from data_pipeline.source.file.main import handle_file_source
+from data_pipeline.source.file.file_validator import FileValidator
 
 # Mock data configurations
 MOCK_DATA = {
@@ -21,7 +21,7 @@ MOCK_DATA = {
 
 @pytest.fixture(autouse=True)
 def patch_file_loader():
-    with patch('data_pipeline.source.file_source.main.FileLoader') as MockFileLoader:
+    with patch('data_pipeline.source.file.main.FileLoader') as MockFileLoader:
         mock_instance = MagicMock()
 
         # Mock __init__ method
@@ -115,7 +115,7 @@ def test_valid_data(caplog):
 
 
 # Test invalid format scenario
-@patch('data_pipeline.source.file_source.file_validator.FileValidator', return_value=mock_file_validator)
+@patch('data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator)
 def test_invalid_format(mock_file_validator, caplog):
     mock_file_validator.validate_file.return_value = {
         "validation_results": {"file_format": {"valid": False, "error": "Invalid format"}},
@@ -142,7 +142,7 @@ def test_empty_data(caplog):
 
 # Test missing required columns scenario
 def test_missing_required_columns(mock_file_validator, caplog):
-    with patch('data_pipeline.source.file_source.file_validator.FileValidator', return_value=mock_file_validator):
+    with patch('data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator):
         mock_file_validator.validate_file.return_value = {
             "validation_results": {
                 "file_format": {"valid": True, "error": None},
@@ -161,7 +161,7 @@ def test_missing_required_columns(mock_file_validator, caplog):
 
 # Test when the data doesn't meet the quality gauge
 def test_quality_below_threshold(mock_file_validator, caplog):
-    with patch('data_pipeline.source.file_source.file_validator.FileValidator', return_value=mock_file_validator):
+    with patch('data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator):
         mock_file_validator.validate_file.return_value = {
             "validation_results": {"file_format": {"valid": True, "error": None}},
             "quality_gauge": 85,  # Below threshold

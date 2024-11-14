@@ -2,8 +2,8 @@ import pytest
 import requests_mock
 from datetime import datetime
 from typing import Optional, Dict, Any
-from data_pipeline.source.api_source.models import APIResponse, APIConfig, DataFormat
-from data_pipeline.source.api_source.api_client import APIClient
+from data_pipeline.source.api.models import APIResponse, APIConfig, DataFormat
+from data_pipeline.source.api.api_client import APIClient
 
 
 def test_end_to_end():

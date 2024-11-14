@@ -2,8 +2,8 @@ import pytest
 import requests_mock
 from unittest.mock import Mock
 import requests
-from data_pipeline.source.api_source.models import APIConfig, DataFormat
-from data_pipeline.source.api_source.api_client import APIClient
+from data_pipeline.source.api.models import APIConfig, DataFormat
+from data_pipeline.source.api.api_client import APIClient
 
 
 @pytest.fixture

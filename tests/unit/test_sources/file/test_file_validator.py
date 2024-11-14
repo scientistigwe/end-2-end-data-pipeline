@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, mock_open, MagicMock
 import pandas as pd
 from pandas.errors import EmptyDataError
-from data_pipeline.source.file_source.file_validator import FileValidator
+from data_pipeline.source.file.file_validator import FileValidator
 
 # Test data
 MOCK_CSV_CONTENT = "column1,column2\nvalue1,value2"

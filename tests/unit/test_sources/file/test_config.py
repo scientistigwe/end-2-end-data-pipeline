@@ -1,5 +1,5 @@
 import pytest
-from data_pipeline.source.file_source.config import Config
+from data_pipeline.source.file.config import Config
 
 # Test default configuration
 def test_default_config():

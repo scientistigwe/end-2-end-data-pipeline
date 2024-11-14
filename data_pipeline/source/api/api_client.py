@@ -3,7 +3,7 @@ import requests
 from typing import Optional, Dict, Any
 import logging
 import time
-from .models import APIConfig, APIResponse, DataFormat
+from data_pipeline.source.api.models import APIConfig, APIResponse, DataFormat
 
 
 class APIClient:

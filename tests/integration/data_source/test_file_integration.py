@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, mock_open
-from data_pipeline.source.file_source.file_loader import FileLoader
-from data_pipeline.source.file_source.config import Config
+from data_pipeline.source.file.file_loader import FileLoader
+from data_pipeline.source.file.config import Config
 import pandas as pd
 
 # Mock data constants

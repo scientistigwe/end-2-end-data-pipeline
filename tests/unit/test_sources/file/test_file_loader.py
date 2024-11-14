@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import patch, mock_open, MagicMock
 import pandas as pd
 import os
-from data_pipeline.source.file_source.config import Config
-from data_pipeline.source.file_source.file_loader import FileLoader
+from data_pipeline.source.file.config import Config
+from data_pipeline.source.file.file_loader import FileLoader
 
 # Mock data and fixtures
 MOCK_DATA = {
@@ -40,7 +40,7 @@ def mock_file_system():
 @pytest.fixture
 def mock_validator():
     """Mock FileValidator class."""
-    with patch('data_pipeline.source.file_source.file_loader.FileValidator') as MockValidator:
+    with patch('data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
         instance = MockValidator.return_value
         instance.validate_file.return_value = MOCK_DATA['validation_report']
         instance.validate_completeness.return_value = (True, None)
@@ -63,7 +63,7 @@ class TestFileLoader:
 
     def test_initialization(self, mock_file_system):
         """Test FileLoader initialization."""
-        with patch('data_pipeline.source.file_source.file_loader.FileValidator') as MockValidator:
+        with patch('data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
             loader = FileLoader("test.csv", ["col1", "col2"])
             assert loader.file_path == "test.csv"
             assert loader.required_columns == ["col1", "col2"]
@@ -121,7 +121,7 @@ class TestFileLoader:
         # Set file size above threshold
         mock_file_system['size'].return_value = (Config.FILE_SIZE_THRESHOLD_MB + 1) * 1024 * 1024
 
-        with patch('data_pipeline.source.file_source.file_loader.FileValidator') as MockValidator:
+        with patch('data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
             mock_validator = MockValidator.return_value
             mock_validator.validate_file.return_value = MOCK_DATA['validation_report']
             mock_validator.validate_completeness.return_value = (True, None)

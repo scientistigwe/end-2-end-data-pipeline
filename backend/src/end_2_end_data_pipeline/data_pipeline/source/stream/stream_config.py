@@ -1,49 +1,28 @@
-# stream_config.py
-from dataclasses import dataclass
-from typing import Dict, Any, Optional
+"""
+stream_config.py
 
-@dataclass
-class ValidationConfig:
-    """Configuration for stream data validation"""
-    source_health_threshold: float = 0.9
-    schema_validation: bool = True
-    data_quality_checks: Dict[str, Any] = None
+Handles the configuration for stream sources, including user inputs from the UI.
+"""
 
-@dataclass
+
 class StreamConfig:
-    """Configuration class for stream processing"""
-    bootstrap_servers: str
-    group_id: str
-    topic: str
-    validation_config: Optional[Dict[str, Any]] = None
-    auth_config: Optional[Dict[str, str]] = None
-    consumer_config: Optional[Dict[str, Any]] = None
-    poll_timeout: float = 1.0
-    max_poll_records: int = 500
-
-    def get_consumer_config(self) -> Dict[str, Any]:
+    def __init__(self, source_type, endpoint, credentials):
         """
-        Get Kafka consumer configuration.
+        Initializes the configuration for a streaming source.
 
-        Returns:
-            Dict[str, Any]: Configuration dictionary for Kafka consumer
+        Args:
+            source_type (str): Type of the stream source (e.g., Kafka, Kinesis, HTTP).
+            endpoint (str): Endpoint URL or connection string for the stream.
+            credentials (dict): Credentials needed for secure access.
         """
-        config = {
-            'bootstrap.servers': self.bootstrap_servers,
-            'group.id': self.group_id,
-            'enable.auto.commit': False,
-            'max.poll.records': self.max_poll_records,
-            'auto.offset.reset': 'earliest'
+        self.source_type = source_type
+        self.endpoint = endpoint
+        self.credentials = credentials
+
+    def get_config(self):
+        """Returns the configuration details as a dictionary."""
+        return {
+            'source_type': self.source_type,
+            'endpoint': self.endpoint,
+            'credentials': self.credentials
         }
-
-        # Include authentication configuration if provided
-        if self.auth_config:
-            config.update(self.auth_config)
-
-        # Include additional consumer configuration if provided
-        if self.consumer_config:
-            config.update(self.consumer_config)
-
-        return config
-
-

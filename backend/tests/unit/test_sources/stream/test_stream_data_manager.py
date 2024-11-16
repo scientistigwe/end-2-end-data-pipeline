@@ -1,80 +1,33 @@
-"""Unit tests for stream data manager. tests/test_stream_data_manager.py"""
-
-# test_stream_data_manager.py
 import pytest
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_loader import DataLoader
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_manager import DataManager
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_connector import StreamConnector
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_config import StreamConfig
 import pandas as pd
-from unittest.mock import Mock, patch
-from datetime import datetime
-from backend.src.end_2_end_data_pipeline.data_pipeline.exceptions import StreamingDataValidationError
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_types import StreamConfig
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_manager import StreamDataManager
+import os
 
-class TestStreamDataManager:
-    @pytest.fixture
-    def config(self):
-        return StreamConfig(
-            bootstrap_servers='localhost:9092',
-            group_id='test-group',
-            topic='test-topic',
-            validation_config={'source_health_threshold': 0.9},
-            # poll_timeout=1.0,
-            # max_poll_records=500
-        )
+def test_manage_data_dataframe():
+    config = StreamConfig(source_type='Kafka', endpoint='localhost:9092', credentials={'username': 'user'})
+    connector = StreamConnector(config)
+    loader = DataLoader(connector)
+    manager = DataManager(loader)
+    
+    data = pd.DataFrame({'timestamp': ['2024-11-16T12:00:00Z'], 'value': [42]})
+    loader.fetch_data = lambda: data  # Override fetch to simulate small data
+    
+    result = manager.manage_data()
+    assert result == "DataFrame sent to orchestrator"
 
-    @pytest.fixture
-    def mock_loader(self):
-        loader = Mock()
-        loader.load_data.return_value = pd.DataFrame({
-            'id': [1, 2],
-            'value': ['test1', 'test2']
-        })
-        loader.get_metrics.return_value = {
-            'messages_per_second': 100,
-            'connection_drops': 0
-        }
-        return loader
-
-    @pytest.fixture
-    def mock_validator(self):
-        validator = Mock()
-        validator.validate_source.return_value = True
-        validator.source_health_metrics = {
-            'validation_checks_passed': 10,
-            'total_validation_checks': 10
-        }
-        return validator
-
-    @pytest.fixture
-    def manager(self, config, mock_loader, mock_validator):
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_loader.StreamDataLoader',
-                  return_value=mock_loader), \
-             patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_validator.StreamDataValidator',
-                   return_value=mock_validator):
-            return StreamDataManager(config)
-
-    def test_process_stream(self, manager):
-        data = manager.get_data()
-        assert not data.empty
-        assert len(data) == 2
-
-    def test_get_data_success(self, manager):
-        data = manager.get_data()
-        assert isinstance(data, pd.DataFrame)
-        assert len(data) == 2
-
-    def test_get_data_validation_failure(self, manager, mock_validator):
-        mock_validator.validate_source.return_value = False
-        with pytest.raises(StreamingDataValidationError):
-            manager.get_data()
-
-    def test_get_data_empty(self, manager, mock_loader):
-        mock_loader.load_data.return_value = pd.DataFrame()
-        data = manager.get_data()
-        assert data.empty
-
-    def test_metrics_tracking(self, manager):
-        manager.get_data()
-        metrics = manager.get_metrics()
-        assert metrics['manager_metrics']['total_batches'] == 1
-        assert metrics['manager_metrics']['failed_validations'] == 0
-        assert isinstance(metrics['manager_metrics']['last_success'], datetime)
+def test_manage_data_parquet():
+    config = StreamConfig(source_type='Kafka', endpoint='localhost:9092', credentials={'username': 'user'})
+    connector = StreamConnector(config)
+    loader = DataLoader(connector)
+    manager = DataManager(loader)
+    
+    # Simulate large data
+    large_data = pd.DataFrame({'timestamp': ['2024-11-16T12:00:00Z']*1000000, 'value': range(1000000)})
+    loader.fetch_data = lambda: large_data  # Override fetch to simulate large data
+    
+    result = manager.manage_data()
+    assert result == "Parquet staged"
+    assert os.path.exists('staging_area/stream_data.parquet')

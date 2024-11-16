@@ -1,175 +1,122 @@
 import pytest
-from unittest.mock import patch, MagicMock
 import pandas as pd
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main import handle_file_source
+from unittest.mock import Mock, patch
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader import FileLoader
 from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_validator import FileValidator
+from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main import handle_file_source
 
-# Mock data configurations
-MOCK_DATA = {
-    'valid_data.csv': pd.DataFrame({
-        'column1': [1, 2, 3],
-        'column2': ['a', 'b', 'c'],
-        'column3': [True, False, True]
-    }),
-    'missing_columns_data.csv': pd.DataFrame({
-        'column1': [1, 2, 3],
-        'column2': ['a', 'b', 'c']
-    }),
-    'empty_data.csv': pd.DataFrame(columns=['column1', 'column2', 'column3'])
-}
-
-
-@pytest.fixture(autouse=True)
-def patch_file_loader():
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader:
-        mock_instance = MagicMock()
-
-        # Mock __init__ method
-        mock_instance.__init__.return_value = None
-
-        # Mock attributes
-        mock_instance.file_path = MagicMock(return_value="valid_data.csv")
-        mock_instance.required_columns = MagicMock()
-        mock_instance.validator = MagicMock(spec=FileValidator)
-
-        # Mock methods
-        @staticmethod
-        def mock_validate_file(file_path):
-            return {
-                "quality_gauge": 95,
-                "validation_results": {"file_format": {"valid": True, "error": None}},
-                "required_columns": []
-            }
-
-        @staticmethod
-        def mock_load_csv(chunk_size=None):
-            return pd.DataFrame({
-                'column1': [1, 2, 3],
-                'column2': ['a', 'b', 'c'],
-                'column3': [True, False, True]
-            })
-
-        @staticmethod
-        def mock_load_json():
-            return pd.DataFrame({
-                'column1': [1, 2, 3],
-                'column2': ['a', 'b', 'c'],
-                'column3': [True, False, True]
-            })
-
-        @staticmethod
-        def mock_load_excel():
-            return pd.DataFrame({
-                'column1': [1, 2, 3],
-                'column2': ['a', 'b', 'c'],
-                'column3': [True, False, True]
-            })
-
-        @staticmethod
-        def mock_load_parquet():
-            return pd.DataFrame({
-                'column1': [1, 2, 3],
-                'column2': ['a', 'b', 'c'],
-                'column3': [True, False, True]
-            })
-
-        @staticmethod
-        def mock_load_in_chunks(reader_func, chunksize=None):
-            return reader_func("test.parquet", chunksize=chunksize)
-
-        # Assign mocked methods to the mock instance
-        mock_instance.validate_file = staticmethod(mock_validate_file)
-        mock_instance._load_csv = staticmethod(mock_load_csv)
-        mock_instance._load_json = staticmethod(mock_load_json)
-        mock_instance._load_excel = staticmethod(mock_load_excel)
-        mock_instance._load_parquet = staticmethod(mock_load_parquet)
-        mock_instance._load_in_chunks = staticmethod(mock_load_in_chunks)
-
-        # Mock os.path.exists to always return True (simulate file existence)
-        with patch('os.path.exists', return_value=True):
-            yield MockFileLoader
-
-            # Reset mocks after each test case
-            MockFileLoader.reset_mock()
-            mock_instance.file_path = MagicMock(return_value="valid_data.csv")
 
 @pytest.fixture
-def mock_file_validator():
-    """Fixture to mock the FileValidator."""
-    mock_validator = MagicMock(spec=FileValidator)  # Make sure it's a mock of the FileValidator class
-    mock_validator.validate_file.return_value = {
-        "validation_results": {"file_format": {"valid": True, "error": None}},
-        "quality_gauge": 95,
-        "required_columns": []
-    }
-    return mock_validator
+def sample_df():
+    return pd.DataFrame({
+        'column1': [1, 2, 3],
+        'column2': ['a', 'b', 'c']
+    })
 
 
-# Test valid data scenario
-def test_valid_data(caplog):
-    with caplog.at_level("INFO"):
-        result = handle_file_source("valid_data.csv", required_columns=["column1", "column2", "column3"])
-
-    assert "Data loaded successfully" in caplog.text
-    assert result["success"] is True
+@pytest.fixture
+def required_columns():
+    return ['column1', 'column2']
 
 
-# Test invalid format scenario
-@patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator)
-def test_invalid_format(mock_file_validator, caplog):
-    mock_file_validator.validate_file.return_value = {
-        "validation_results": {"file_format": {"valid": False, "error": "Invalid format"}},
-        "quality_gauge": 80,
-        "recommendations": ["File format is invalid."]
-    }
+def test_valid_data(sample_df, required_columns):
+    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader, \
+            patch(
+                'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileValidator') as MockFileValidator:
+        # Configure FileLoader mock
+        instance = MockFileLoader.return_value
+        instance.load_file.return_value = sample_df
 
-    with caplog.at_level("WARNING"):
-        result = handle_file_source("valid_data.csv", required_columns=["column1", "column2", "column3"])
-
-    assert "File quality gauge is below 90%. Quality: 80" in caplog.text
-    assert result["success"] is False
-
-
-# Test empty data scenario
-def test_empty_data(caplog):
-    with caplog.at_level("WARNING"):
-        result = handle_file_source("empty_data.csv", required_columns=["column1", "column2", "column3"])
-
-    assert "Data loaded successfully" in caplog.text
-    assert "Loaded data is empty" in caplog.text
-    assert result["success"] is False
-
-
-# Test missing required columns scenario
-def test_missing_required_columns(mock_file_validator, caplog):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator):
-        mock_file_validator.validate_file.return_value = {
-            "validation_results": {
-                "file_format": {"valid": True, "error": None},
-                "completeness": {"valid": False, "error": "Missing required columns"}
-            },
-            "quality_gauge": 70,
-            "recommendations": ["Ensure the file has all required columns."]
+        # Configure FileValidator mock
+        validator_instance = MockFileValidator.return_value
+        validator_instance.validate_file.return_value = {
+            "quality_gauge": 95,
+            "validation_results": {"all_passed": True}
         }
 
-        with caplog.at_level("WARNING"):
-            result = handle_file_source("missing_columns_data.csv", required_columns=["column1", "column2", "column3"])
+        # Execute the function
+        result = handle_file_source("dummy_path.csv", required_columns)
 
-        assert "File quality gauge is below 90%. Quality: 70" in caplog.text
-        assert result["success"] is False
+        # Assertions
+        assert result["success"] is True
+        assert result["validation_results"]["quality_gauge"] == 95
+        assert isinstance(result["data"], pd.DataFrame)
+        assert not result["data"].empty
+
+        # Verify the FileLoader was initialized correctly
+        MockFileLoader.assert_called_once_with(file_path="dummy_path.csv", required_columns=required_columns)
 
 
-# Test when the data doesn't meet the quality gauge
-def test_quality_below_threshold(mock_file_validator, caplog):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_validator.FileValidator', return_value=mock_file_validator):
-        mock_file_validator.validate_file.return_value = {
-            "validation_results": {"file_format": {"valid": True, "error": None}},
-            "quality_gauge": 85,  # Below threshold
-            "recommendations": ["File quality is below 90%. Please check the errors and fix them."]
+def test_invalid_format(required_columns):
+    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader:
+        # Configure FileLoader mock to raise an exception
+        instance = MockFileLoader.return_value
+        instance.load_file.side_effect = Exception("Invalid file format")
+
+        with pytest.raises(Exception) as exc_info:
+            handle_file_source("invalid.xyz", required_columns)
+        assert "Invalid file format" in str(exc_info.value)
+
+
+def test_empty_data(required_columns):
+    empty_df = pd.DataFrame()
+
+    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader, \
+            patch(
+                'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileValidator') as MockFileValidator:
+        # Configure FileLoader mock
+        instance = MockFileLoader.return_value
+        instance.load_file.return_value = empty_df
+
+        # Configure FileValidator mock
+        validator_instance = MockFileValidator.return_value
+        validator_instance.validate_file.return_value = {
+            "quality_gauge": 100,
+            "validation_results": {}
         }
 
-        with caplog.at_level("WARNING"):
-            result = handle_file_source("valid_data.csv", required_columns=["column1", "column2", "column3"])
-
-        assert "File quality gauge is below 90%. Quality: 85" in caplog.text
+        result = handle_file_source("empty.csv", required_columns)
         assert result["success"] is False
+        assert result["data"].empty
+
+
+def test_missing_required_columns(required_columns):
+    df_missing_columns = pd.DataFrame({'column1': [1, 2, 3]})
+
+    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader, \
+            patch(
+                'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileValidator') as MockFileValidator:
+        # Configure FileLoader mock
+        instance = MockFileLoader.return_value
+        instance.load_file.return_value = df_missing_columns
+
+        # Configure FileValidator mock
+        validator_instance = MockFileValidator.return_value
+        validator_instance.validate_file.return_value = {
+            "quality_gauge": 50,
+            "validation_results": {"missing_columns": ["column2"]}
+        }
+
+        result = handle_file_source("missing_columns.csv", required_columns)
+        assert result["success"] is False
+        assert result["validation_results"]["quality_gauge"] == 50
+
+
+def test_quality_below_threshold(sample_df, required_columns):
+    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileLoader') as MockFileLoader, \
+            patch(
+                'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.main.FileValidator') as MockFileValidator:
+        # Configure FileLoader mock
+        instance = MockFileLoader.return_value
+        instance.load_file.return_value = sample_df
+
+        # Configure FileValidator mock
+        validator_instance = MockFileValidator.return_value
+        validator_instance.validate_file.return_value = {
+            "quality_gauge": 85,
+            "validation_results": {"quality_issues": True}
+        }
+
+        result = handle_file_source("low_quality.csv", required_columns)
+        assert result["success"] is False
+        assert result["validation_results"]["quality_gauge"] == 85

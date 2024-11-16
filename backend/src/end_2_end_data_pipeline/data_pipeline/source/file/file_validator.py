@@ -1,138 +1,151 @@
 import os
+import mimetypes
 import pandas as pd
-import logging
-from typing import Dict, Tuple, Optional
-from pandas.errors import EmptyDataError
+from .config import Config
+
 
 class FileValidator:
-    def __init__(self, required_columns: Optional[list] = None, expected_encoding: str = 'utf-8'):
-        self.required_columns = required_columns if required_columns else []
-        self.expected_encoding = expected_encoding
-        self.logger = logging.getLogger(__name__)
 
-    def validate_file_format(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Validate if the file format matches the expected format (CSV, Parquet, JSON)."""
-        file_extension = os.path.splitext(file_path)[-1].lower()
-        if file_extension in ['.csv', '.parquet', '.json']:
-            return True, None
-        return False, f"Invalid file format. Expected CSV, Parquet, or JSON, but got {file_extension}"
+    @staticmethod
+    def validate_file_format(file_path: str, file_format: str):
+        """Validate if the file format is allowed."""
+        allowed_formats = Config.ALLOWED_FORMATS
+        ext = os.path.splitext(file_path)[1].lower()
 
-    def validate_completeness(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Check if the file is not empty and if required columns are present."""
+        # Validate file extension
+        if ext not in allowed_formats:
+            return False, f"Invalid file format: {ext}. Allowed formats: {', '.join(allowed_formats)}."
+
+        # If the file format is provided, ensure it's consistent with the extension
+        if file_format and file_format not in allowed_formats:
+            return False, f"Invalid file format. Allowed formats: {', '.join(allowed_formats)}."
+
+        return True, "File format is valid."
+
+    @staticmethod
+    def validate_file_size(file_path: str):
+        """Validate the file size is below the threshold."""
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)  # Convert bytes to MB
+        if file_size_mb > Config.FILE_SIZE_THRESHOLD_MB:
+            return False, f"File size exceeds the allowed limit of {Config.FILE_SIZE_THRESHOLD_MB} MB. Current size: {file_size_mb:.2f} MB."
+        return True, "File size is within the allowed limit."
+
+    @staticmethod
+    def validate_path(file_path: str):
+        """Validate if the file path exists and is accessible."""
+        if not os.path.exists(file_path):
+            return False, "The provided file path does not exist."
+
+        if not os.access(file_path, os.R_OK):
+            return False, "The file path is not readable. Please check file permissions."
+
+        return True, "File path is valid and accessible."
+
+    @staticmethod
+    def validate_is_directory(file_path: str, is_directory: bool):
+        """Validate if the file path corresponds to a directory (if requested)."""
+        if is_directory:
+            if not os.path.isdir(file_path):
+                return False, "The path is not a directory. Please provide a valid directory path."
+            return True, "Directory path is valid."
+        return True, "File path is valid."
+
+    @staticmethod
+    def validate_file_integrity(file_path: str):
+        """Check if the file is corrupt or not readable."""
+        ext = os.path.splitext(file_path)[1].lower()
+
         try:
-            if not os.path.exists(file_path):
-                return False, "File does not exist."
-
-            # Try to load the file into a DataFrame to check its contents.
-            if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, nrows=5)  # Read first 5 rows to check for content
-            elif file_path.endswith('.json'):
-                df = pd.read_json(file_path, lines=True)  # For line-delimited JSON
-            elif file_path.endswith('.parquet'):
-                df = pd.read_parquet(file_path)
-            else:
-                return False, "Unsupported file format."
-
-            if df.empty:
-                return False, "File is empty."
-
-            if self.required_columns and not all(col in df.columns for col in self.required_columns):
-                missing_cols = [col for col in self.required_columns if col not in df.columns]
-                return False, f"Missing required columns: {', '.join(missing_cols)}"
-
-            return True, None
-        except EmptyDataError:
-            return False, "File is empty."
-        except Exception as e:
-            return False, f"Error reading file: {str(e)}"
-
-    def validate_file_integrity(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Validate file integrity by ensuring it can be read without errors."""
-        try:
-            # Try loading the file into a DataFrame to check its integrity.
-            if file_path.endswith('.csv'):
-                pd.read_csv(file_path, nrows=5)  # Read first 5 rows to check integrity
-            elif file_path.endswith('.json'):
-                pd.read_json(file_path, lines=True)
-            elif file_path.endswith('.parquet'):
+            if ext == '.csv':
+                pd.read_csv(file_path)
+            elif ext == '.json':
+                pd.read_json(file_path)
+            elif ext == '.xlsx':
+                pd.read_excel(file_path)
+            elif ext == '.parquet':
                 pd.read_parquet(file_path)
             else:
-                return False, "Unsupported file format."
-
-            return True, None
+                return False, f"Unsupported file format for integrity check: {ext}."
         except Exception as e:
-            return False, f"File integrity check failed: {str(e)}"
+            return False, f"Error reading file: {str(e)}. The file may be corrupted or unreadable."
 
-    def validate_encoding(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Validate the file encoding (ensure it's UTF-8)."""
-        try:
-            with open(file_path, 'r', encoding=self.expected_encoding) as file:
-                file.read()  # Try reading the file to check encoding
-            return True, None
-        except UnicodeDecodeError:
-            return False, f"File encoding error: Expected {self.expected_encoding}, but got a different encoding."
-        except Exception as e:
-            return False, f"Error during encoding validation: {str(e)}"
+        return True, "File integrity check passed."
 
-    def validate_metadata(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Validate that the file has necessary metadata like headers for CSV."""
-        try:
-            if file_path.endswith('.csv'):
-                with open(file_path, 'r', encoding=self.expected_encoding) as file:
-                    first_line = file.readline()
-                    if not first_line:
-                        return False, "CSV file does not have headers."
-            return True, None
-        except Exception as e:
-            return False, f"Metadata validation failed: {str(e)}"
+    @staticmethod
+    def validate_directory_contents(file_path: str):
+        """Check if the directory contains valid files."""
+        if not os.path.isdir(file_path):
+            return False, "The path is not a directory. Please provide a valid directory path."
 
-    def validate_file(self, file_path: str) -> Dict:
-        """Run all validation checks and return a quality gauge and report."""
-        validation_results = {}
+        files_in_directory = os.listdir(file_path)
+        if len(files_in_directory) == 0:
+            return False, "The directory is empty. Please upload files to the directory."
 
-        # Validate file format
-        is_valid_format, format_error = self.validate_file_format(file_path)
-        validation_results["file_format"] = {"valid": is_valid_format, "error": format_error}
+        valid_files = []
+        invalid_files = []
+        for file in files_in_directory:
+            file_full_path = os.path.join(file_path, file)
+            if os.path.isfile(file_full_path):
+                valid, message = FileValidator.validate_file_format(file_full_path, '')
+                if valid:
+                    valid_files.append(file)
+                else:
+                    invalid_files.append((file, message))
 
-        # Validate completeness
-        is_complete, completeness_error = self.validate_completeness(file_path)
-        validation_results["completeness"] = {"valid": is_complete, "error": completeness_error}
+        if len(valid_files) == 0:
+            return False, "No valid files found in the directory."
 
-        # Validate file integrity
-        is_integrity_ok, integrity_error = self.validate_file_integrity(file_path)
-        validation_results["integrity"] = {"valid": is_integrity_ok, "error": integrity_error}
+        return True, f"Found {len(valid_files)} valid file(s) in the directory. Invalid files: {len(invalid_files)}."
 
-        # Validate encoding
-        is_encoding_valid, encoding_error = self.validate_encoding(file_path)
-        validation_results["encoding"] = {"valid": is_encoding_valid, "error": encoding_error}
+    @staticmethod
+    def validate_security(file_path: str):
+        """Ensure there is no potential security risk with the file path."""
+        # Check for absolute file path vulnerability
+        if os.path.isabs(file_path):
+            return False, "Absolute file paths are not allowed due to security risks (path traversal)."
 
-        # Validate metadata
-        is_metadata_valid, metadata_error = self.validate_metadata(file_path)
-        validation_results["metadata"] = {"valid": is_metadata_valid, "error": metadata_error}
+        # Check for sensitive or system files (e.g., configuration files, keys, etc.)
+        sensitive_keywords = ['config', 'secret', 'key', 'password']
+        for keyword in sensitive_keywords:
+            if keyword.lower() in file_path.lower():
+                return False, f"The file path seems to reference a sensitive file (e.g., containing '{keyword}'). Please ensure proper access rights or consider using a secure source option like cloud or API."
 
-        # Calculate the quality gauge
-        valid_checks = sum(1 for result in validation_results.values() if result["valid"])
-        total_checks = len(validation_results)
-        quality_gauge = (valid_checks / total_checks) * 100
+        # Check for potential symbolic link issues
+        if os.path.islink(file_path):
+            return False, "Symbolic links are not allowed due to potential security risks."
 
-        # Recommendations based on validation results
-        recommendations = []
-        if quality_gauge < 90:
-            recommendations.append("File quality is below 90%. Please check the errors and fix them.")
-        if not validation_results["file_format"]["valid"]:
-            recommendations.append(
-                "Invalid file format. Ensure the file is of an accepted format (CSV, JSON, or Parquet).")
-        if not validation_results["completeness"]["valid"]:
-            recommendations.append("Ensure the file has all required columns and is not empty.")
-        if not validation_results["integrity"]["valid"]:
-            recommendations.append("Check the file for corruption or invalid content.")
-        if not validation_results["encoding"]["valid"]:
-            recommendations.append(f"Ensure the file encoding is {self.expected_encoding}.")
-        if not validation_results["metadata"]["valid"]:
-            recommendations.append("Check if the file contains the necessary headers or metadata.")
+        # Check for restricted or unsafe locations (e.g., system directories)
+        restricted_paths = ['/etc', '/bin', '/usr', '/tmp', '/root']
+        if any(file_path.startswith(restricted) for restricted in restricted_paths):
+            return False, f"The file path points to a restricted location ({file_path}). Please use a secure source like cloud or API to upload the file."
 
-        return {
-            "validation_results": validation_results,
-            "quality_gauge": quality_gauge,
-            "recommendations": recommendations
-        }
+        # If the file requires specific security clearance, recommend cloud/API options
+        if FileValidator.requires_security_clearance(file_path):
+            return False, "This file appears to require special clearance. Please use a secured source option such as a cloud or API-based upload and provide the necessary access credentials."
+
+        return True, "No security risks detected."
+
+    @staticmethod
+    def requires_security_clearance(file_path: str):
+        """Check if the file requires security clearance (based on the path or other attributes)."""
+        # Placeholder for a more complex check if the file requires special clearance
+        # This can be extended to look for files in specific cloud storage paths, or files tagged for high-security access.
+        if file_path.lower().startswith("s3://") or file_path.lower().startswith("gs://"):
+            return True
+        # Example additional check for files that need API credentials (cloud, restricted access)
+        return False
+
+    @staticmethod
+    def validate_file_type_consistency(file_path: str, file_format: str):
+        """Ensure the file type matches the content."""
+        if file_format:
+            valid_format = FileValidator.validate_file_format(file_path, file_format)[0]
+            if not valid_format:
+                return False, f"Provided file format '{file_format}' does not match the file content."
+
+        return True, "File format is consistent with content."
+
+# Example usage:
+# validator = FileValidator()
+# is_valid, message = validator.validate_file_format("/path/to/file.csv", "csv")
+# print(message)

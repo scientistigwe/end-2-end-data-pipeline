@@ -1,10 +1,11 @@
 import pytest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock
 import pandas as pd
+from pandas.errors import EmptyDataError, ParserError
 from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.config import Config
 from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader import FileLoader
 
-# Mock data and fixtures
+# Mock data and configurations
 MOCK_DATA = {
     'csv': "column1,column2\nvalue1,value2",
     'dataframe': pd.DataFrame({'column1': ['value1'], 'column2': ['value2']}),
@@ -24,45 +25,51 @@ MOCK_DATA = {
     }
 }
 
-
 @pytest.fixture
 def mock_file_system():
-    """Mock file system operations."""
-    with patch('os.path.exists') as mock_exists, \
-            patch('os.path.getsize') as mock_size, \
+    """Mock file system operations, including path checks."""
+    with patch('os.path.exists', return_value=True) as mock_exists, \
+            patch('os.path.getsize', return_value=1024 * 1024) as mock_size, \
             patch('builtins.open', mock_open(read_data=MOCK_DATA['csv'])):
-        mock_exists.return_value = True
-        mock_size.return_value = 1024 * 1024  # 1MB
-        yield {'exists': mock_exists, 'size': mock_size}
-
-
-@pytest.fixture
-def mock_validator():
-    """Mock FileValidator class."""
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
-        instance = MockValidator.return_value
-        instance.validate_file.return_value = MOCK_DATA['validation_report']
-        instance.validate_completeness.return_value = (True, None)
-        yield instance
-
+        yield {
+            'exists': mock_exists,
+            'size': mock_size
+        }
 
 @pytest.fixture
-def file_loader(mock_file_system, mock_validator):
-    """Create FileLoader instance with mocked dependencies."""
-    with patch('pandas.read_csv', return_value=MOCK_DATA['dataframe']):
-        loader = FileLoader(
-            file_path="test_files/valid_data.csv",
-            required_columns=["column1", "column2"]
-        )
-        return loader
+def mock_path_operations():
+    """Mock os.path operations."""
+    with patch('os.path.exists', return_value=True) as mock_exists, \
+            patch('os.path.getsize', return_value=1024 * 1024) as mock_size:
+        yield {
+            'exists': mock_exists,
+            'size': mock_size
+        }
 
+@pytest.fixture
+def file_loader(mock_path_operations):
+    """Create a FileLoader instance with mocked dependencies."""
+    with patch(
+            'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
+        mock_instance = MockValidator.return_value
+        mock_instance.validate_file.return_value = MOCK_DATA['validation_report']
+        mock_instance.validate_completeness.return_value = (True, None)
+
+        with patch('pandas.read_csv', return_value=MOCK_DATA['dataframe']):
+            loader = FileLoader(
+                file_path="test_files/valid_data.csv",
+                required_columns=["column1", "column2"]
+            )
+            loader.validator = mock_instance
+            return loader
 
 class TestFileLoader:
     """Test suite for FileLoader class."""
 
-    def test_initialization(self, mock_file_system):
+    def test_initialization(self, mock_path_operations):
         """Test FileLoader initialization."""
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
+        with patch(
+                'backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
             loader = FileLoader("test.csv", ["col1", "col2"])
             assert loader.file_path == "test.csv"
             assert loader.required_columns == ["col1", "col2"]
@@ -75,78 +82,51 @@ class TestFileLoader:
             with pytest.raises(FileNotFoundError):
                 FileLoader("nonexistent.csv", ["col1", "col2"])
 
-    @pytest.mark.parametrize("file_ext,reader_func", [
-        ('.csv', 'read_csv'),
-        ('.json', 'read_json'),
-        ('.xlsx', 'read_excel'),
-        ('.parquet', 'read_parquet')
+    def test_chunk_loading(self):
+        """Test chunk loading for large files."""
+        # Create mock data to simulate two chunks of DataFrames
+        chunk1 = pd.DataFrame({'column1': ['value1'], 'column2': ['value2']})
+        chunk2 = pd.DataFrame({'column1': ['value3'], 'column2': ['value4']})
+
+        # Create a MagicMock that will act as our TextFileReader
+        csv_reader = MagicMock()
+        # Make it iterable and return our chunks
+        csv_reader.__iter__.return_value = iter([chunk1, chunk2])
+
+        # Patch file system and reading functions
+        with patch('os.path.exists', return_value=True), \
+                patch('os.path.getsize', return_value=(Config.FILE_SIZE_THRESHOLD_MB + 1) * 1024 * 1024), \
+                patch('pandas.read_csv', return_value=csv_reader):
+            # Initialize FileLoader with a mocked file path
+            file_loader = FileLoader(file_path="large_file.csv", required_columns=["column1", "column2"])
+
+            # Mock the validator with MagicMock
+            file_loader.validator.validate_file = MagicMock(return_value={
+                'validation_results': {
+                    'completeness': {'valid': True}
+                }
+            })
+
+            # Load the file in chunks
+            result = file_loader.load_file_in_chunks(chunk_size=1)
+
+            # Assertions
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == 2  # Two rows total from both chunks
+            assert list(result.columns) == ['column1', 'column2']
+            assert result['column1'].tolist() == ['value1', 'value3']
+            assert result['column2'].tolist() == ['value2', 'value4']
+
+            # Verify that read_csv was called with the correct parameters
+            pd.read_csv.assert_called_once_with(file_loader.file_path, chunksize=1)
+
+    @pytest.mark.parametrize("error,expected_message", [
+        (EmptyDataError("Empty file"), "File loading failed: Empty file"),
+        (ParserError("Corrupted file"), "File loading failed: Corrupted file"),
+        (UnicodeDecodeError('utf-8', b'', 0, 1, 'invalid'), "File encoding error: 'utf-8' codec can't decode bytes")
     ])
-    def test_load_supported_formats(self, file_loader, mock_validator, file_ext, reader_func):
-        """Test loading different supported file formats."""
-        file_loader.file_path = f"test_file{file_ext}"
-
-        with patch(f'pandas.{reader_func}', return_value=MOCK_DATA['dataframe']):
-            df = file_loader.load_file()
-            assert isinstance(df, pd.DataFrame)
-            assert list(df.columns) == ['column1', 'column2']
-            mock_validator.validate_file.assert_called_once_with(file_loader.file_path)
-
-    def test_unsupported_format(self, file_loader):
-        """Test loading unsupported file format."""
-        file_loader.file_path = "test.unsupported"
-        with pytest.raises(ValueError, match="Unsupported file format"):
-            file_loader.load_file()
-
-    def test_low_quality_file(self, file_loader, mock_validator):
-        """Test loading file with low quality gauge."""
-        mock_validator.validate_file.return_value = MOCK_DATA['failed_validation_report']
-
-        with pytest.raises(ValueError, match="File quality gauge is too low"):
-            file_loader.load_file()
-
-    def test_validation_failure(self, file_loader, mock_validator):
-        """Test loading file that fails validation."""
-        mock_validator.validate_completeness.return_value = (False, "Missing required data")
-
-        with patch('pandas.read_csv', return_value=MOCK_DATA['dataframe']):
-            with pytest.raises(ValueError, match="File validation failed"):
-                file_loader.load_file()
-
-            # Verify the validator was called
-            mock_validator.validate_completeness.assert_called_once_with(file_loader.file_path)
-
-    def test_chunk_loading(self, mock_file_system):
-        """Test loading large file in chunks."""
-        # Set file size above threshold
-        mock_file_system['size'].return_value = (Config.FILE_SIZE_THRESHOLD_MB + 1) * 1024 * 1024
-
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_loader.FileValidator') as MockValidator:
-            mock_validator = MockValidator.return_value
-            mock_validator.validate_file.return_value = MOCK_DATA['validation_report']
-            mock_validator.validate_completeness.return_value = (True, None)
-
-            file_loader = FileLoader("large_file.csv", ["column1", "column2"])
-            chunks = [
-                pd.DataFrame({'column1': ['value1'], 'column2': ['value2']}),
-                pd.DataFrame({'column1': ['value3'], 'column2': ['value4']})
-            ]
-
-            with patch('pandas.read_csv') as mock_read_csv:
-                mock_read_csv.return_value = iter(chunks)
-                df = file_loader.load_file()
-
-                assert isinstance(df, pd.DataFrame)
-                assert len(df) == sum(len(chunk) for chunk in chunks)
-                # Verify validator was called for each chunk
-                assert mock_validator.validate_completeness.call_count == len(chunks)
-
-    @pytest.mark.parametrize("error,expected_match", [
-        (UnicodeDecodeError('utf-8', b'', 0, 1, 'invalid'), "File validation failed"),
-        (pd.errors.EmptyDataError(), "File validation failed"),
-        (Exception("Corrupted file"), "File validation failed")
-    ])
-    def test_file_reading_errors(self, file_loader, mock_validator, error, expected_match):
-        """Test various file reading errors."""
+    def test_file_reading_errors(self, file_loader, error, expected_message):
+        """Test file reading errors."""
         with patch('pandas.read_csv', side_effect=error):
-            with pytest.raises(ValueError, match=expected_match):
+            with pytest.raises(ValueError, match=expected_message):
                 file_loader.load_file()

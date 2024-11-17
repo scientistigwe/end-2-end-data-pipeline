@@ -1,14 +1,29 @@
-import React, { useState } from 'react';
-import { TextField, Button, FormControl, FormControlLabel, RadioGroup, Radio, Typography, Checkbox } from '@mui/material';
+import React, { useState } from "react";
+import {
+  TextField,
+  Button,
+  FormControl,
+  FormControlLabel,
+  RadioGroup,
+  Radio,
+  Typography,
+  Checkbox,
+  Card,
+  CardContent,
+} from "@mui/material";
+import useFileSource from "../hooks/useFileSource"; // Import your custom hook
 
 const FileSystemForm = () => {
-  const [inputMethod, setInputMethod] = useState('upload'); // 'upload' or 'path'
+  const [inputMethod, setInputMethod] = useState("upload"); // 'upload' or 'path'
   const [files, setFiles] = useState(null);
-  const [filePath, setFilePath] = useState('');
-  const [fileFormat, setFileFormat] = useState('');
+  const [filePath, setFilePath] = useState("");
+  const [fileFormat, setFileFormat] = useState("");
   const [isDirectory, setIsDirectory] = useState(false);
 
-  const allowedFormats = ['.csv', '.json', '.parquet', '.xlsx'];
+  const { uploadFiles, response, loading, error } = useFileSource(
+    "http://127.0.0.1:5000"
+  ); // Use the base URL of your Flask API
+  const allowedFormats = [".csv", ".json", ".parquet", ".xlsx"];
 
   const handleFileChange = (event) => {
     setFiles(event.target.files);
@@ -17,56 +32,44 @@ const FileSystemForm = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (inputMethod === 'upload') {
+    const formData = new FormData();
+    if (inputMethod === "upload") {
       if (!files || files.length === 0) {
-        alert('Please upload at least one file.');
+        alert("Please upload at least one file.");
         return;
       }
       for (let i = 0; i < files.length; i++) {
-        const fileExtension = files[i].name.split('.').pop();
+        const fileExtension = files[i].name.split(".").pop();
         if (!allowedFormats.includes(`.${fileExtension}`)) {
-          alert(`Invalid file format: ${files[i].name}. Allowed formats: ${allowedFormats.join(', ')}`);
+          alert(
+            `Invalid file format: ${
+              files[i].name
+            }. Allowed formats: ${allowedFormats.join(", ")}`
+          );
           return;
         }
+        formData.append("files", files[i]);
       }
     } else {
       if (!filePath) {
-        alert('Please provide a valid file or directory path.');
+        alert("Please provide a valid file or directory path.");
         return;
       }
       if (!isDirectory && !allowedFormats.includes(fileFormat)) {
-        alert(`Invalid file format for path. Allowed formats: ${allowedFormats.join(', ')}`);
+        alert(
+          `Invalid file format for path. Allowed formats: ${allowedFormats.join(
+            ", "
+          )}`
+        );
         return;
       }
+      formData.append("filePath", filePath);
+      formData.append("fileFormat", fileFormat);
+      formData.append("isDirectory", isDirectory);
     }
 
-    const formData = new FormData();
-    if (inputMethod === 'upload') {
-      for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i]);
-      }
-    } else {
-      formData.append('filePath', filePath);
-      formData.append('fileFormat', fileFormat);
-      formData.append('isDirectory', isDirectory);
-    }
-
-    try {
-      const response = await fetch('/api/file-source', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-      if (result.status === 'success') {
-        alert('File(s) submitted successfully!');
-      } else {
-        alert('Error: ' + result.message);
-      }
-    } catch (error) {
-      console.error('Error submitting the form:', error);
-      alert('An error occurred while submitting the form.');
-    }
+    // Use the hook's uploadFiles function
+    await uploadFiles(formData);
   };
 
   return (
@@ -78,18 +81,26 @@ const FileSystemForm = () => {
           value={inputMethod}
           onChange={(e) => setInputMethod(e.target.value)}
         >
-          <FormControlLabel value="upload" control={<Radio />} label="Upload File(s)" />
-          <FormControlLabel value="path" control={<Radio />} label="File/Directory Path" />
+          <FormControlLabel
+            value="upload"
+            control={<Radio />}
+            label="Upload File(s)"
+          />
+          <FormControlLabel
+            value="path"
+            control={<Radio />}
+            label="File/Directory Path"
+          />
         </RadioGroup>
       </FormControl>
 
-      {inputMethod === 'upload' ? (
+      {inputMethod === "upload" ? (
         <div>
           <input
             type="file"
             multiple
             onChange={handleFileChange}
-            accept={allowedFormats.join(',')}
+            accept={allowedFormats.join(",")}
           />
         </div>
       ) : (
@@ -103,17 +114,49 @@ const FileSystemForm = () => {
             placeholder="Enter file or directory path"
           />
           <FormControlLabel
-            control={<Checkbox />}
-            checked={isDirectory}
-            onChange={(e) => setIsDirectory(e.target.checked)}
+            control={
+              <Checkbox
+                checked={isDirectory}
+                onChange={(e) => setIsDirectory(e.target.checked)}
+              />
+            }
             label="This is a directory"
           />
         </div>
       )}
 
-      <Button type="submit" variant="contained" color="primary">
-        Submit
+      <Button
+        type="submit"
+        variant="contained"
+        color="primary"
+        disabled={loading}
+      >
+        {loading ? "Submitting..." : "Submit"}
       </Button>
+
+      {response && (
+        <Card sx={{ marginTop: 2 }}>
+          <CardContent>
+            <Typography variant="h6" color="success.main">
+              Response:
+            </Typography>
+            <Typography variant="body1">
+              {JSON.stringify(response, null, 2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
+
+      {error && (
+        <Card sx={{ marginTop: 2 }}>
+          <CardContent>
+            <Typography variant="h6" color="error.main">
+              Error:
+            </Typography>
+            <Typography variant="body1">{error.message}</Typography>
+          </CardContent>
+        </Card>
+      )}
     </form>
   );
 };

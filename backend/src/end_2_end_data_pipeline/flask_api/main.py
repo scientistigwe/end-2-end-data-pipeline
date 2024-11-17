@@ -1,37 +1,28 @@
-# app.py
-from flask import Flask, request, jsonify
-from Crypto.Cipher import AES
-import base64
-import json
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
+from flask import Flask
+from .bp_routes import file_system_bp
+
+# Initialize Flask application
 app = Flask(__name__)
 
+# Register blueprints
+app.register_blueprint(file_system_bp, url_prefix='/file-system')
+# app.register_blueprint(api_source_bp, url_prefix='/api-source')
+# app.register_blueprint(stream_source_bp, url_prefix='/stream-source')
 
-# Encryption utility
-def encrypt_credentials(credentials):
-    key = b'Sixteen byte key'  # Secret key for AES encryption
-    cipher = AES.new(key, AES.MODE_EAX)
-    ciphertext, tag = cipher.encrypt_and_digest(json.dumps(credentials).encode())
-    return base64.b64encode(cipher.nonce + tag + ciphertext).decode()
+# Add any necessary configurations (e.g., for debugging, testing, etc.)
+app.config['DEBUG'] = True  # Example configuration for development
 
-
-# API to receive and store credentials
-@app.route('/api/stream-source', methods=['POST'])
-def configure_stream_source():
-    data = request.get_json()
-    source_type = data['sourceType']
-    credentials = data['credentials']
-
-    encrypted_credentials = encrypt_credentials(credentials)
-
-    # Here you can save the encrypted credentials securely (e.g., database or file)
-    # For simplicity, we are returning them as a response (just for demonstration).
-
-    return jsonify({
-        'status': 'success',
-        'encryptedCredentials': encrypted_credentials
-    })
-
+@app.route('/')
+def index():
+    """
+    A simple test route to verify the Flask app is running.
+    """
+    return "Welcome to the Data Pipeline API!"
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=5000)  # You can change the host/port if needed

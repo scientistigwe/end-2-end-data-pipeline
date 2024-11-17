@@ -1,6 +1,6 @@
 import logging
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.config import Config
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.file.file_fetcher import FileFetcher
+from .config import Config
+from .file_fetcher import FileFetcher
 import os
 import pandas as pd
 

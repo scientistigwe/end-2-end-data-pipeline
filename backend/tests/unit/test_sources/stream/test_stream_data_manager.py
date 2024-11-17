@@ -1,8 +1,7 @@
-import pytest
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_loader import DataLoader
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.data_manager import DataManager
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_connector import StreamConnector
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_config import StreamConfig
+from backend.backend.data_pipeline.source.stream.data_fetcher import DataLoader
+from backend.backend.data_pipeline.source.stream.stream_manager import DataManager
+from backend.backend.data_pipeline.source.stream.stream_connector import StreamConnector
+from backend.backend.data_pipeline.source.stream.stream_config import StreamConfig
 import pandas as pd
 import os
 

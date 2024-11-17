@@ -1,7 +1,7 @@
 # test_db_types.py
 
 import pytest
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_types import DatabaseType
+from backend.backend.data_pipeline.source.database.db_types import DatabaseType
 
 
 def test_database_type():

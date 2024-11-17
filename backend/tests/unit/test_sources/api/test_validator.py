@@ -1,5 +1,5 @@
 import pytest
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator import APIValidator
+from backend.backend.data_pipeline.source.api.api_validator import APIValidator
 
 @pytest.fixture
 def validator():

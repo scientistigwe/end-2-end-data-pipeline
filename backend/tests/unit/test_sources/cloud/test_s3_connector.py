@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 from botocore.exceptions import ClientError, BotoCoreError
 from botocore.config import Config
-from backend.src.end_2_end_data_pipeline.data_pipeline.exceptions import CloudConnectionError
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.cloud.s3_connector import S3Connector
+from backend.backend.data_pipeline.exceptions import CloudConnectionError
+from backend.backend.data_pipeline.source.cloud.s3_connector import S3Connector
 
 
 @pytest.fixture

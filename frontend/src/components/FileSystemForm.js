@@ -1,163 +1,182 @@
 import React, { useState } from "react";
 import {
-  TextField,
   Button,
   FormControl,
   FormControlLabel,
   RadioGroup,
   Radio,
   Typography,
-  Checkbox,
   Card,
   CardContent,
+  Alert,
+  Stack,
+  Box,
+  CircularProgress,
 } from "@mui/material";
-import useFileSource from "../hooks/useFileSource"; // Import your custom hook
+import useFileSource from "../hooks/useFileSource";
 
 const FileSystemForm = () => {
-  const [inputMethod, setInputMethod] = useState("upload"); // 'upload' or 'path'
-  const [files, setFiles] = useState(null);
-  const [filePath, setFilePath] = useState("");
-  const [fileFormat, setFileFormat] = useState("");
-  const [isDirectory, setIsDirectory] = useState(false);
-
-  const { uploadFiles, response, loading, error } = useFileSource(
+  const [uploadType, setUploadType] = useState("single");
+  const [selectedFiles, setSelectedFiles] = useState(null);
+  const { handleApiRequest, response, loading, error } = useFileSource(
     "http://127.0.0.1:5000"
-  ); // Use the base URL of your Flask API
+  );
   const allowedFormats = [".csv", ".json", ".parquet", ".xlsx"];
 
   const handleFileChange = (event) => {
-    setFiles(event.target.files);
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      if (uploadType === "single" && files.length > 1) {
+        const fileArray = new DataTransfer();
+        fileArray.items.add(files[0]);
+        setSelectedFiles(fileArray.files);
+      } else {
+        setSelectedFiles(files);
+      }
+    } else {
+      setSelectedFiles(null);
+    }
+  };
+
+  const validateFiles = (files) => {
+    if (!files || files.length === 0) {
+      throw new Error("Please select file(s) to upload");
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const fileExtension = files[i].name.split(".").pop().toLowerCase();
+      if (!allowedFormats.includes(`.${fileExtension}`)) {
+        throw new Error(
+          `Invalid file format: ${
+            files[i].name
+          }. Allowed formats: ${allowedFormats.join(", ")}`
+        );
+      }
+    }
+    return true;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    const formData = new FormData();
-    if (inputMethod === "upload") {
-      if (!files || files.length === 0) {
-        alert("Please upload at least one file.");
-        return;
-      }
-      for (let i = 0; i < files.length; i++) {
-        const fileExtension = files[i].name.split(".").pop();
-        if (!allowedFormats.includes(`.${fileExtension}`)) {
-          alert(
-            `Invalid file format: ${
-              files[i].name
-            }. Allowed formats: ${allowedFormats.join(", ")}`
-          );
-          return;
-        }
-        formData.append("files", files[i]);
-      }
-    } else {
-      if (!filePath) {
-        alert("Please provide a valid file or directory path.");
-        return;
-      }
-      if (!isDirectory && !allowedFormats.includes(fileFormat)) {
-        alert(
-          `Invalid file format for path. Allowed formats: ${allowedFormats.join(
-            ", "
-          )}`
-        );
-        return;
-      }
-      formData.append("filePath", filePath);
-      formData.append("fileFormat", fileFormat);
-      formData.append("isDirectory", isDirectory);
-    }
+    try {
+      validateFiles(selectedFiles);
 
-    // Use the hook's uploadFiles function
-    await uploadFiles(formData);
+      const formData = new FormData();
+      formData.append("inputMethod", "upload");
+      formData.append("uploadType", uploadType);
+
+      // Append each file with the same key name 'files'
+      Array.from(selectedFiles).forEach((file) => {
+        formData.append("files", file);
+      });
+
+      // Call handleApiRequest with the actionType as "upload" for file upload
+      await handleApiRequest(formData, "upload");
+    } catch (err) {
+      console.error("Submission error:", err.message);
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <FormControl component="fieldset">
-        <Typography variant="h6">Select Input Method</Typography>
-        <RadioGroup
-          row
-          value={inputMethod}
-          onChange={(e) => setInputMethod(e.target.value)}
-        >
-          <FormControlLabel
-            value="upload"
-            control={<Radio />}
-            label="Upload File(s)"
-          />
-          <FormControlLabel
-            value="path"
-            control={<Radio />}
-            label="File/Directory Path"
-          />
-        </RadioGroup>
-      </FormControl>
+    <Box maxWidth="md" margin="auto" padding={3}>
+      <Card>
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            File Upload System
+          </Typography>
 
-      {inputMethod === "upload" ? (
-        <div>
-          <input
-            type="file"
-            multiple
-            onChange={handleFileChange}
-            accept={allowedFormats.join(",")}
-          />
-        </div>
-      ) : (
-        <div>
-          <TextField
-            label="File Path / Directory Path (File formats: .csv, .json, .parquet, .xlsx)"
-            fullWidth
-            margin="normal"
-            value={filePath}
-            onChange={(e) => setFilePath(e.target.value)}
-            placeholder="Enter file or directory path"
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isDirectory}
-                onChange={(e) => setIsDirectory(e.target.checked)}
-              />
-            }
-            label="This is a directory"
-          />
-        </div>
-      )}
+          <form onSubmit={handleSubmit}>
+            <Stack spacing={3}>
+              <FormControl component="fieldset">
+                <Typography variant="subtitle2" gutterBottom>
+                  Upload Type
+                </Typography>
+                <RadioGroup
+                  row
+                  value={uploadType}
+                  onChange={(e) => {
+                    setUploadType(e.target.value);
+                    setSelectedFiles(null);
+                  }}
+                >
+                  <FormControlLabel
+                    value="single"
+                    control={<Radio />}
+                    label="Single File"
+                  />
+                  <FormControlLabel
+                    value="multiple"
+                    control={<Radio />}
+                    label="Multiple Files"
+                  />
+                </RadioGroup>
+              </FormControl>
 
-      <Button
-        type="submit"
-        variant="contained"
-        color="primary"
-        disabled={loading}
-      >
-        {loading ? "Submitting..." : "Submit"}
-      </Button>
+              <Box>
+                <input
+                  type="file"
+                  multiple={uploadType === "multiple"}
+                  onChange={handleFileChange}
+                  accept={allowedFormats.join(",")}
+                  style={{ marginBottom: "8px" }}
+                  key={uploadType}
+                />
+                <Typography
+                  variant="caption"
+                  color="textSecondary"
+                  display="block"
+                >
+                  Allowed formats: {allowedFormats.join(", ")}
+                </Typography>
+                {selectedFiles && (
+                  <Typography variant="caption" color="primary" display="block">
+                    Selected:{" "}
+                    {Array.from(selectedFiles)
+                      .map((f) => f.name)
+                      .join(", ")}
+                  </Typography>
+                )}
+              </Box>
 
-      {response && (
-        <Card sx={{ marginTop: 2 }}>
-          <CardContent>
-            <Typography variant="h6" color="success.main">
-              Response:
-            </Typography>
-            <Typography variant="body1">
-              {JSON.stringify(response, null, 2)}
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={loading || !selectedFiles}
+                startIcon={
+                  loading && <CircularProgress size={20} color="inherit" />
+                }
+              >
+                {loading ? "Processing..." : "Submit"}
+              </Button>
 
-      {error && (
-        <Card sx={{ marginTop: 2 }}>
-          <CardContent>
-            <Typography variant="h6" color="error.main">
-              Error:
-            </Typography>
-            <Typography variant="body1">{error.message}</Typography>
-          </CardContent>
-        </Card>
-      )}
-    </form>
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+
+              {response && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2">Response:</Typography>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      marginTop: "8px",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    {JSON.stringify(response, null, 2)}
+                  </pre>
+                </Alert>
+              )}
+            </Stack>
+          </form>
+        </CardContent>
+      </Card>
+    </Box>
   );
 };
 

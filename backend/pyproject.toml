@@ -1,13 +1,14 @@
-# pyproject.toml
+# backend/pyproject.toml
+
 [tool.poetry]
-name = "end-2-end-data-pipeline"
+name = "backend"
 version = "0.1.0"
-description = "End-to-end data ingestion pipeline with Flask and React"
+description = "End-to-end data ingestion pipeline with Flask"
 authors = ["Igwe Chibueze <scientistigwe@gmail.com>"]
 readme = "README.md"
-
-# Define the package location explicitly
-packages = [{ include = "src" }]
+packages = [
+    { include = "backend" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -34,7 +35,8 @@ ntplib = "^0.4.0"
 sqlparse = "^0.5.2"
 pycryptodome = "^3.21.0"
 crypto = "^1.4.1"
-uvicorn = "^0.32.0"
+openpyxl = "^3.1.5"
+psutil = "^6.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

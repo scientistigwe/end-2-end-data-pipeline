@@ -2,13 +2,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import pandas as pd
 from datetime import datetime
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_config import DatabaseConfig
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_validator import DatabaseValidator
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_types import DatabaseType
-from backend.src.end_2_end_data_pipeline.data_pipeline.exceptions import DatabaseError, DatabaseConnectionError
+from backend.backend.data_pipeline.source.database.db_config import DatabaseConfig
+from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.backend.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
+from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.backend.data_pipeline.source.database.db_validator import DatabaseValidator
+from backend.backend.data_pipeline.source.database.db_types import DatabaseType
+
 
 @pytest.fixture(scope="module")
 def db_config():

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.api.data_fetcher import APIDataFetcher
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.api.models import APIResponse
+from backend.backend.data_pipeline.source.api.data_fetcher import APIDataFetcher
+from backend.backend.data_pipeline.source.api.api_models import APIResponse
 
 
 @pytest.fixture
@@ -9,42 +9,42 @@ def fetcher():
     return APIDataFetcher()
 
 def test_test_connection_success(fetcher):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
+    with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
         mock_validate_url.return_value = (True, None)
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.api_client.APIClient.fetch_data') as mock_fetch_data:
+        with patch('backend.backend.data_pipeline.source.api.api_client.APIClient.fetch_data') as mock_fetch_data:
             mock_fetch_data.return_value = APIResponse(success=True, data={})
             response = fetcher.test_connection('https://example.com')
             assert response.success is True
 
 def test_test_connection_failure(fetcher):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
+    with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
         mock_validate_url.return_value = (False, "Invalid URL")
         response = fetcher.test_connection('invalid_url')
         assert response.success is False
         assert response.error == "Invalid URL"
 
 def test_fetch_data_success(fetcher):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
+    with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
         mock_validate_url.return_value = (True, None)
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_headers') as mock_validate_headers:
+        with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_headers') as mock_validate_headers:
             mock_validate_headers.return_value = (True, None)
-            with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.api_client.APIClient.fetch_data') as mock_fetch_data:
+            with patch('backend.backend.data_pipeline.source.api.api_client.APIClient.fetch_data') as mock_fetch_data:
                 mock_fetch_data.return_value = APIResponse(success=True, data={'key': 'value'})
                 response = fetcher.fetch_data('https://example.com', headers={'Authorization': 'Bearer token'})
                 assert response.success is True
                 assert response.data == {'key': 'value'}
 
 def test_fetch_data_url_failure(fetcher):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
+    with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
         mock_validate_url.return_value = (False, "Invalid URL")
         response = fetcher.fetch_data('invalid_url')
         assert response.success is False
         assert response.error == "Invalid URL"
 
 def test_fetch_data_headers_failure(fetcher):
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
+    with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_url') as mock_validate_url:
         mock_validate_url.return_value = (True, None)
-        with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.api.validator.APIValidator.validate_headers') as mock_validate_headers:
+        with patch('backend.backend.data_pipeline.source.api.validator.APIValidator.validate_headers') as mock_validate_headers:
             mock_validate_headers.return_value = (False, "Invalid headers")
             response = fetcher.fetch_data('https://example.com', headers={'invalid header': 'value'})
             assert response.success is False

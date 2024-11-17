@@ -1,11 +1,11 @@
 import pytest
 from datetime import datetime
 from unittest import mock
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_config import DatabaseConfig
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_types import DatabaseType
+from backend.backend.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
+from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.backend.data_pipeline.source.database.db_config import DatabaseConfig
+from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.backend.data_pipeline.source.database.db_types import DatabaseType
 
 # Fixtures with MagicMock
 

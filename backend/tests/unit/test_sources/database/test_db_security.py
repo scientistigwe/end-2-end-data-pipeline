@@ -1,5 +1,5 @@
 import pytest
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
 
 
 @pytest.fixture

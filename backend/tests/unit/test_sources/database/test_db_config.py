@@ -2,8 +2,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from io import StringIO
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_config import DatabaseConfig
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_types import DatabaseType
+from backend.backend.data_pipeline.source.database.db_config import DatabaseConfig
+from backend.backend.data_pipeline.source.database.db_types import DatabaseType
 
 def test_database_config():
     config = DatabaseConfig.from_dict({
@@ -37,7 +37,7 @@ password: test_password
     mock_file = StringIO(mock_content)
 
     # Patch the open function to return our mock file object
-    with patch('backend.src.end_2_end_data_pipeline.data_pipeline.source.database.db_config.open', return_value=mock_file):
+    with patch('backend.backend.data_pipeline.source.database.db_config.open', return_value=mock_file):
         config = DatabaseConfig.from_yaml(Path('path/to/config.yaml'))
 
     # Add assertions based on the mock YAML content

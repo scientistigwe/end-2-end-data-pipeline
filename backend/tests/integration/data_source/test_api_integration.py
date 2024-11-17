@@ -1,6 +1,6 @@
 import requests_mock
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.api.models import APIConfig, DataFormat
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.api.api_client import APIClient
+from backend.backend.data_pipeline.source.api.api_models import APIConfig, DataFormat
+from backend.backend.data_pipeline.source.api.api_client import APIClient
 
 
 def test_end_to_end():

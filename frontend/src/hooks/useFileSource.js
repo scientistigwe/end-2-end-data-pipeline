@@ -1,6 +1,5 @@
-// src/hooks/useFileSource.js
 import { useState } from "react";
-import ApiClient from "../utils/ApiClient";
+import ApiClient from "../utils/api-client";
 
 const useFileSource = (baseURL) => {
   const [loading, setLoading] = useState(false);
@@ -8,37 +7,34 @@ const useFileSource = (baseURL) => {
   const [error, setError] = useState(null);
   const apiClient = new ApiClient(baseURL);
 
-  const uploadFiles = async (files) => {
+  const handleApiRequest = async (formData, actionType) => {
     setLoading(true);
     setError(null);
-
-    const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
+    setResponse(null);
 
     try {
-      const result = await apiClient.postFileSource(formData);
-      setResponse(result);
+      if (actionType === "upload") {
+        if (!formData.get("files")) {
+          throw new Error("No files selected.");
+        }
+
+        const result = await apiClient.postFileSource(formData);
+        setResponse(result);
+      } else if (actionType === "metadata") {
+        const result = await apiClient.getFileMetadata();
+        setResponse(result);
+      } else {
+        throw new Error("Invalid action type.");
+      }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "An error occurred during the request.");
+      console.error("Error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMetadata = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiClient.getFileMetadata();
-      setResponse(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { uploadFiles, fetchMetadata, response, loading, error };
+  return { handleApiRequest, response, loading, error };
 };
 
 export default useFileSource;

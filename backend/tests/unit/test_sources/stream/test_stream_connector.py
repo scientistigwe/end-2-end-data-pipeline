@@ -1,6 +1,6 @@
 import pytest
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_config import StreamConfig
-from backend.src.end_2_end_data_pipeline.data_pipeline.source.stream.stream_connector import StreamConnector
+from backend.backend.data_pipeline.source.stream.stream_config import StreamConfig
+from backend.backend.data_pipeline.source.stream.stream_connector import StreamConnector
 
 def test_kafka_connection():
     config = StreamConfig(source_type='Kafka', endpoint='localhost:9092', credentials={'username': 'user'})

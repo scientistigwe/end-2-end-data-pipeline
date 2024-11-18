@@ -3,10 +3,10 @@ from backend.backend.data_pipeline.source.api.api_manager import ApiManager
 from backend.backend.data_pipeline.source.stream.stream_manager import StreamManager
 from backend.backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
 from backend.backend.data_pipeline.source.database.db_data_manager import DBDataManager
-from backend.backend.data_pipeline.stages.staging_area import StagingArea
+from backend.backend.core.staging.staging_area import StagingArea
 from backend.backend.data_pipeline.analysis.data_quality_gauge import DataQualityGate
-from backend.backend.data_pipeline.stages.data_conductor import DataConductor
-from backend.backend.data_pipeline.stages.message_broker import MessageBroker
+from backend.backend.core.orchestration.conductor import DataConductor
+from backend.backend.core.messaging.broker import MessageBroker
 from typing import Dict, Any, Optional
 
 class DataOrchestrator:

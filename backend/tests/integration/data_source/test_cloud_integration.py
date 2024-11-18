@@ -3,11 +3,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from backend.backend.data_pipeline.source.cloud.s3_connector import S3Connector
-from backend.backend.data_pipeline.source.cloud.s3_data_loader import S3DataLoader
-from backend.backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
-from backend.backend.data_pipeline.source.cloud.s3_security import DataSecurityManager
-from backend.backend.data_pipeline.source.cloud.s3_validator import S3Validator
+from backend.data_pipeline.source.cloud.s3_connector import S3Connector
+from backend.data_pipeline.source.cloud.s3_data_loader import S3DataLoader
+from backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
+from backend.data_pipeline.source.cloud.s3_security import DataSecurityManager
+from backend.data_pipeline.source.cloud.s3_validator import S3Validator
 
 @pytest.fixture
 def mock_boto3_session():
@@ -49,7 +49,7 @@ def s3_manager(mock_boto3_session):
 
 @pytest.fixture
 def security_manager():
-    with patch('backend.backend.data_pipeline.source.cloud.s3_security.os.environ',
+    with patch('backend.data_pipeline.source.cloud.s3_security.os.environ',
                {'ENCRYPTION_KEY': 'mock_key'}):
         return DataSecurityManager()
 
@@ -57,7 +57,7 @@ def security_manager():
 def s3_validator(s3_connector):
     return S3Validator(s3_connector)
 
-@patch('backend.backend.data_pipeline.source.cloud.s3_data_loader.pd.read_csv')
+@patch('backend.data_pipeline.source.cloud.s3_data_loader.pd.read_csv')
 def test_end_to_end_data_loading(mock_read_csv, s3_manager, mock_boto3_session):
     # Arrange
     mock_df = pd.DataFrame({'col1': [1, 2]})
@@ -81,8 +81,8 @@ def test_end_to_end_data_loading(mock_read_csv, s3_manager, mock_boto3_session):
         Key='mock_key'
     )
 
-@patch('backend.backend.data_pipeline.source.cloud.s3_security.Fernet.encrypt')
-@patch('backend.backend.data_pipeline.source.cloud.s3_security.Fernet.decrypt')
+@patch('backend.data_pipeline.source.cloud.s3_security.Fernet.encrypt')
+@patch('backend.data_pipeline.source.cloud.s3_security.Fernet.decrypt')
 def test_end_to_end_data_encryption_decryption(mock_decrypt, mock_encrypt, security_manager):
     # Arrange
     mock_encrypt.return_value = b'encrypted_data'

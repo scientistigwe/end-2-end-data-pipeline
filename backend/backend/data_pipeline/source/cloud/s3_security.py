@@ -10,7 +10,7 @@ import json
 import pandas as pd
 from dataclasses import dataclass
 from enum import Enum
-from backend.backend.data_pipeline.exceptions import DataEncodingError
+from backend.data_pipeline.exceptions import DataEncodingError
 
 
 @dataclass

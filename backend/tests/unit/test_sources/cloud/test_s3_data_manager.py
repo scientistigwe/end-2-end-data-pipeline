@@ -4,8 +4,8 @@ from unittest.mock import patch, MagicMock, call
 from datetime import datetime
 from io import BytesIO
 from botocore.config import Config
-from backend.backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager, TimeSync
-from backend.backend.data_pipeline.exceptions import CloudConnectionError, CloudQueryError, \
+from backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager, TimeSync
+from backend.data_pipeline.exceptions import CloudConnectionError, CloudQueryError, \
     DataValidationError
 
 
@@ -22,7 +22,7 @@ def mock_ntp():
 
 @pytest.fixture
 def mock_s3_connector():
-    with patch('backend.backend.data_pipeline.source.cloud.s3_data_manager.S3Connector') as mock:
+    with patch('backend.data_pipeline.source.cloud.s3_data_manager.S3Connector') as mock:
         connector = MagicMock()
         mock.return_value = connector
         yield connector

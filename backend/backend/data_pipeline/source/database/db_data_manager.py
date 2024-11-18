@@ -1,11 +1,11 @@
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime
-from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
-from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.backend.data_pipeline.source.database.db_types import DatabaseType
-from backend.backend.data_pipeline.exceptions import DatabaseError
+from backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
+from backend.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.data_pipeline.source.database.db_types import DatabaseType
+from backend.data_pipeline.exceptions import DatabaseError
 
 
 @dataclass

@@ -3,7 +3,7 @@ from typing import Generator, Any
 import psycopg2
 import pymysql
 import pymongo
-from backend.backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
+from backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
 from .db_config import DatabaseConfig
 from .db_types import DatabaseType
 

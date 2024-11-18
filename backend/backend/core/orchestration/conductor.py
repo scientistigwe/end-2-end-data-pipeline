@@ -1,8 +1,8 @@
 # core/orchestration/conductor.py
 
 from typing import Dict, List, Any, Optional
-from backend.backend.core.messaging.broker import MessageBroker
-from backend.backend.core.messaging.types import (
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
     ProcessingMessage,
     ModuleIdentifier,
     MessageType,

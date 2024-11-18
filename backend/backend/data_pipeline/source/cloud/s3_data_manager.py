@@ -6,11 +6,11 @@ from datetime import datetime
 import ntplib
 from typing import Optional
 from botocore.config import Config
-from backend.backend.data_pipeline.exceptions import (
+from backend.data_pipeline.exceptions import (
     CloudConnectionError, CloudQueryError, DataValidationError
 )
 import logging
-from backend.backend.data_pipeline.source.cloud.s3_connector import S3Connector
+from backend.data_pipeline.source.cloud.s3_connector import S3Connector
 
 # Set up logging for the script
 logging.basicConfig(level=logging.INFO)

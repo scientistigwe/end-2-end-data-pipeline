@@ -2,11 +2,11 @@ import pytest
 from unittest import mock
 from datetime import datetime
 import pandas as pd
-from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
-from backend.backend.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
-from backend.backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
-from backend.backend.data_pipeline.source.database.db_types import DatabaseType
+from backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
+from backend.data_pipeline.source.database.db_data_manager import DBDataManager, DBData
+from backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
+from backend.data_pipeline.source.database.db_types import DatabaseType
 
 
 # Mock Connection Class using MagicMock

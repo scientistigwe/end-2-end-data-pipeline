@@ -1,17 +1,27 @@
-from flask import request, jsonify, current_app
+from flask import request, jsonify
 from werkzeug.utils import secure_filename
-from backend.backend.flask_api.bp_routes import file_system_bp
-from backend.backend.data_pipeline.source.file.file_service import handle_file_upload, get_file_metadata
-from backend.backend.data_pipeline.source.file.file_config import Config  # Import the Config class
+from backend.flask_api.bp_routes import file_system_bp
+from backend.data_pipeline.source.file.file_service import FileService
+from backend.data_pipeline.source.file.file_config import Config
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger=logging.getLogger(__name__)
+
+service = FileService()
 
 @file_system_bp.route('/file-source', methods=['POST', 'OPTIONS'])
 def handle_file_source():
+    """
+    Handle multiple file uploads with comprehensive processing.
+
+    Returns:
+        JSON response with upload results
+    """
+    logger.info('Handle File Source started')
+
     if request.method == 'OPTIONS':
         return '', 204
-
-    if 'files' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No files provided'}), 400
 
     files = request.files.getlist('files')
     if not files:
@@ -19,20 +29,14 @@ def handle_file_source():
 
     file_results = []
     for file in files:
-        if file and Config.allowed_file(file.filename):  # Using the static method from Config
+        if file and Config.allowed_file(file.filename):
             try:
-                # Read the file content into memory
                 filename = secure_filename(file.filename)
                 file_content = file.read()
-
-                # Delegate the file upload logic to the service, using file content directly
-                result = handle_file_upload(file_content, filename)
-
+                result = service.handle_file_upload(file_content, filename)
                 file_results.append(result)
-
             except Exception as e:
                 file_results.append({'filename': filename, 'status': 'error', 'message': str(e)})
-
         else:
             file_results.append({'filename': file.filename, 'status': 'error', 'message': 'Invalid file format'})
 
@@ -44,7 +48,12 @@ def handle_file_source():
 
 @file_system_bp.route('/get-metadata', methods=['GET'])
 def get_metadata():
-    """Get metadata for the uploaded file content."""
+    """
+    Retrieve metadata for uploaded file.
+
+    Returns:
+        JSON response with file metadata
+    """
     file_content = request.files.get('file')
 
     if not file_content:
@@ -54,9 +63,8 @@ def get_metadata():
         }), 400
 
     try:
-        # Process the file content directly for metadata
         file_content_data = file_content.read()
-        metadata_response = get_file_metadata(file_content_data)
+        metadata_response = service.get_file_metadata(file_content_data, file_content.filename)
 
         return jsonify(metadata_response)
 

@@ -1,10 +1,10 @@
 import pandas as pd
 import pytest
 from unittest import mock
-from backend.backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
-from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.backend.data_pipeline.source.database.db_config import DatabaseConfig
-from backend.backend.data_pipeline.exceptions import DatabaseQueryError
+from backend.data_pipeline.source.database.db_data_loader import DatabaseLoader
+from backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.data_pipeline.source.database.db_config import DatabaseConfig
+from backend.data_pipeline.exceptions import DatabaseQueryError
 
 
 # Mock for cursor method to simulate DB interactions

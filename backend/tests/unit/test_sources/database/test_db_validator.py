@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.backend.data_pipeline.source.database.db_types import DatabaseType
-from backend.backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
-from backend.backend.data_pipeline.source.database.db_validator import DatabaseValidator
+from backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.data_pipeline.source.database.db_types import DatabaseType
+from backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
+from backend.data_pipeline.source.database.db_validator import DatabaseValidator
 
 @pytest.fixture
 def connector_mock():

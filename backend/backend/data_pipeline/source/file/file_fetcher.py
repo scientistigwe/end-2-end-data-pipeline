@@ -1,108 +1,74 @@
 import pandas as pd
 from io import BytesIO, StringIO
 from .file_config import Config
-from .file_validator import FileValidator
 from pandas.errors import EmptyDataError, ParserError
 
-
 class FileFetcher:
-    def __init__(self, file, file_format: str = None):
-        """
-        Initializes the FileFetcher class to handle file uploading and loading directly from memory.
+    """Handles file loading and conversion across different formats."""
+    SUPPORTED_FORMATS = {
+        'csv': pd.read_csv,
+        'json': pd.read_json,
+        'xlsx': pd.read_excel,
+        'parquet': pd.read_parquet
+    }
 
-        Args:
-            file: The file-like object to be processed (e.g., Flask's FileStorage).
-            file_format: The format of the file, if known (e.g., 'csv', 'json').
-        """
+    def __init__(self, file):
         self.file = file
-        self.file_format = file_format or self._infer_file_format()
+        self.file_format = self._infer_file_format()
+        file.seek(0)
         self.file_size_mb = len(file.read()) / (1024 * 1024)
-        file.seek(0)  # Reset file pointer after reading
-        self.validator = FileValidator()
+        file.seek(0)
 
     def _infer_file_format(self):
-        """Infers the file format based on the filename extension."""
+        """Infer file format from filename."""
         return self.file.filename.rsplit('.', 1)[-1].lower() if '.' in self.file.filename else None
 
-    def fetch_file(self):
-        """
-        Validates and loads an uploaded file.
-        """
-        # Validate file format
-        valid, message = self.validator.validate_file_format(self.file.filename, self.file_format)
-        if not valid:
-            return None, message
+    def convert_to_dataframe(self):
+        """Convert file to DataFrame, handling different formats and sizes."""
+        if self.file_format not in self.SUPPORTED_FORMATS:
+            return None, f"Unsupported file format: {self.file_format}"
 
-        # Validate file size
-        valid, message = self.validator.validate_file_size(self.file)
-        if not valid:
-            return None, message
+        if self.file_size_mb >= Config.FILE_SIZE_THRESHOLD_MB or self.file_format != 'parquet':
+            return self._convert_to_parquet()
 
-        # Validate file integrity
-        valid, message = self.validator.validate_file_integrity(self.file)
-        if not valid:
-            return None, message
+        return self._load_file()
 
-        # Validate security
-        valid, message = self.validator.validate_security(self.file)
-        if not valid:
-            return None, message
-
-        # Load the file
-        return self.load_file()
-
-    def load_file(self):
-        """
-        Loads an uploaded file based on its format (CSV, JSON, Parquet, etc.) into a pandas DataFrame.
-        """
+    def _load_file(self):
+        """Load file as DataFrame."""
         try:
-            df = self._read_file()
-            return df, "File loaded successfully."
+            reader = self.SUPPORTED_FORMATS[self.file_format]
+            if self.file_format == 'parquet':
+                df = reader(BytesIO(self.file.read()))
+            elif self.file_format in ['csv', 'json']:
+                file_content = self.file.stream.read().decode('utf-8')
+                df = reader(StringIO(file_content))
+            else:  # xlsx
+                df = reader(BytesIO(self.file.read()))
+            return df, f"{self.file_format.upper()} loaded successfully"
+        except (EmptyDataError, ParserError, UnicodeDecodeError) as e:
+            return None, f"File loading error: {str(e)}"
 
-        except (EmptyDataError, ParserError) as e:
-            return None, f"File loading failed: {str(e)}"
-        except UnicodeDecodeError as e:
-            return None, f"File encoding error: {e}"
+    def _convert_to_parquet(self):
+        """Convert file to Parquet buffer."""
+        try:
+            df, _ = self._load_file()
+            buffer = BytesIO()
+            df.to_parquet(buffer, index=False)
+            buffer.seek(0)
+            return buffer, "File converted to Parquet"
+        except Exception as e:
+            return None, f"Parquet conversion error: {str(e)}"
 
-    def _read_file(self):
-        """
-        Reads the file directly from memory based on its format (CSV, JSON, Parquet).
-        """
-        ext = f".{self.file_format}"
-
-        if ext == '.csv':
-            return pd.read_csv(StringIO(self.file.stream.read().decode('utf-8')))
-        elif ext == '.json':
-            return pd.read_json(StringIO(self.file.stream.read().decode('utf-8')))
-        elif ext == '.xlsx':
-            return pd.read_excel(BytesIO(self.file.read()))
-        elif ext == '.parquet':
-            return pd.read_parquet(BytesIO(self.file.read()))
+    def extract_metadata(self, data):
+        """Extract metadata from loaded file."""
+        if isinstance(data, pd.DataFrame):
+            df = data
         else:
-            raise ValueError("Unsupported file format")
-
-    def load_file_in_chunks(self, chunk_size: int = Config.CHUNK_SIZE):
-        """
-        Loads large files in chunks if the file size exceeds the threshold.
-        """
-        if self.file_size_mb < Config.FILE_SIZE_THRESHOLD_MB:
-            return self.load_file()
-
-        chunk_list = []
-        try:
-            # Read the file in chunks (assuming CSV for simplicity)
-            self.file.seek(0)  # Reset file pointer
-            for chunk in pd.read_csv(StringIO(self.file.stream.read().decode('utf-8')), chunksize=chunk_size):
-                chunk_list.append(chunk)
-
-            # Concatenate chunks into a final DataFrame
-            if not chunk_list:
-                raise EmptyDataError("No data was read from the file")
-
-            result = pd.concat(chunk_list, ignore_index=True)
-            return result, "File loaded in chunks successfully."
-
-        except (EmptyDataError, ParserError) as e:
-            return None, f"Chunked file loading failed: {str(e)}"
-        except UnicodeDecodeError as e:
-            return None, f"File encoding error: {e}"
+            df = pd.read_parquet(data)
+        return {
+            'filename': self.file.filename,
+            'file_size': self.file_size_mb,
+            'file_type': self.file_format,
+            'columns': list(df.columns),
+            'row_count': len(df)
+        }

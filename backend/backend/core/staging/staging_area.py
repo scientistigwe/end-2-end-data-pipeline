@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
-from backend.backend.core.messaging.types import ModuleIdentifier, ProcessingMessage, MessageType, ProcessingStatus
+from backend.core.messaging.types import ModuleIdentifier, ProcessingMessage, MessageType, ProcessingStatus
 
 
 @dataclass

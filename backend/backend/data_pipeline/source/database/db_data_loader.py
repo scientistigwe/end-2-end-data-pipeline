@@ -1,6 +1,6 @@
 from typing import Union, Dict, Any
 import pandas as pd
-from backend.backend.data_pipeline.exceptions import DatabaseQueryError
+from backend.data_pipeline.exceptions import DatabaseQueryError
 from .db_connector import DatabaseConnector
 from .db_types import DatabaseType
 

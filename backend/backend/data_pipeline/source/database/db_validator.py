@@ -1,9 +1,9 @@
 # DatabaseValidator.py
 from typing import Any
-from backend.backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.backend.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.backend.data_pipeline.source.database.db_types import DatabaseType
-from backend.backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
+from backend.data_pipeline.source.database.db_connector import DatabaseConnector
+from backend.data_pipeline.source.database.db_security import DataSecurityManager
+from backend.data_pipeline.source.database.db_types import DatabaseType
+from backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
 import sqlparse
 
 class DatabaseValidator:

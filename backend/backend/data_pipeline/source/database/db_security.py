@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import List, Dict, Any
 from cryptography.fernet import Fernet
-from backend.backend.data_pipeline.exceptions import DatabaseError
-from backend.backend.data_pipeline.source.database.db_types import DatabaseType
+from backend.data_pipeline.exceptions import DatabaseError
+from backend.data_pipeline.source.database.db_types import DatabaseType
 import os
 
 

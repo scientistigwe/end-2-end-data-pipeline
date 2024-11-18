@@ -4,8 +4,8 @@ import pandas as pd
 import io
 from unittest.mock import Mock, patch
 from pandas.errors import EmptyDataError, ParserError
-from backend.backend.data_pipeline.source.file.file_fetcher import FileFetcher
-from backend.backend.data_pipeline.source.file.file_config import Config
+from backend.data_pipeline.source.file.file_fetcher import FileFetcher
+from backend.data_pipeline.source.file.file_config import Config
 
 
 @pytest.fixture

@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import patch
-from backend.backend.data_pipeline.source.file.file_fetcher import FileFetcher
-from backend.backend.data_pipeline.source.file.file_validator import FileValidator
-from backend.backend.data_pipeline.source.file.file_config import Config
-from backend.backend.data_pipeline.source.file.file_manager import FileManager
+from backend.data_pipeline.source.file.file_fetcher import FileFetcher
+from backend.data_pipeline.source.file.file_validator import FileValidator
+from backend.data_pipeline.source.file.file_config import Config
+from backend.data_pipeline.source.file.file_manager import FileManager
 from io import BytesIO
 
 # ------------------- Security Tests ------------------- #
@@ -16,7 +16,7 @@ def test_file_validator_invalid_file_path(mock_flask_app):
         validator.validate_file_path()
 
 
-@patch("backend.backend.data_pipeline.source.file.file_fetcher.pd.read_csv")
+@patch("backend.data_pipeline.source.file.file_fetcher.pd.read_csv")
 def test_fetcher_with_malicious_content(mock_read_csv, mock_flask_app):
     # Mocking CSV reader to simulate malicious content processing
     mock_read_csv.return_value = "malicious content"

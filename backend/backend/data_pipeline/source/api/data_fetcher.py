@@ -1,8 +1,8 @@
 # api/data_fetcher.py
 from typing import Optional, Dict
-from backend.backend.data_pipeline.source.api.api_validator import APIValidator
-from backend.backend.data_pipeline.source.api.api_client import APIClient
-from backend.backend.data_pipeline.source.api.api_models import APIResponse, APIConfig
+from backend.data_pipeline.source.api.api_validator import APIValidator
+from backend.data_pipeline.source.api.api_client import APIClient
+from backend.data_pipeline.source.api.api_models import APIResponse, APIConfig
 
 
 class APIDataFetcher:

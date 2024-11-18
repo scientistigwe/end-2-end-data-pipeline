@@ -1,7 +1,7 @@
 # core/messaging/broker.py
 
 from typing import Dict, List, Any
-from backend.backend.core.messaging.types import ProcessingMessage, ModuleIdentifier, MessageType
+from backend.core.messaging.types import ProcessingMessage, ModuleIdentifier, MessageType
 
 class MessageBroker:
     """Enhanced message broker with dynamic routing and tracking"""

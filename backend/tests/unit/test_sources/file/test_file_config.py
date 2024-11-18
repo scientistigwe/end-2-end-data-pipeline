@@ -1,5 +1,5 @@
 import pytest
-from backend.backend.data_pipeline.source.file.file_config import Config
+from backend.data_pipeline.source.file.file_config import Config
 
 
 class TestConfig:

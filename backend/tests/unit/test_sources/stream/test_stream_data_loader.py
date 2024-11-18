@@ -1,7 +1,7 @@
 import pytest
-from backend.backend.data_pipeline.source.stream.stream_connector import StreamConnector
-from backend.backend.data_pipeline.source.stream.data_fetcher import DataLoader
-from backend.backend.data_pipeline.source.stream.stream_config import StreamConfig
+from backend.data_pipeline.source.stream.stream_connector import StreamConnector
+from backend.data_pipeline.source.stream.data_fetcher import DataLoader
+from backend.data_pipeline.source.stream.stream_config import StreamConfig
 import pandas as pd
 import os
 

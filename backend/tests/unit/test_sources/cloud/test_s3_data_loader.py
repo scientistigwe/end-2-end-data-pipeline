@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from backend.backend.data_pipeline.source.cloud.s3_data_loader import S3DataLoader
-from backend.backend.data_pipeline.exceptions import CloudQueryError
+from backend.data_pipeline.source.cloud.s3_data_loader import S3DataLoader
+from backend.data_pipeline.exceptions import CloudQueryError
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def s3_loader():
     return S3DataLoader(connector_mock)
 
 
-@patch('backend.backend.data_pipeline.source.cloud.s3_data_loader.pd.read_csv')
+@patch('backend.data_pipeline.source.cloud.s3_data_loader.pd.read_csv')
 def test_load_data_csv_success(mock_read_csv, s3_loader):
     mock_read_csv.return_value = pd.DataFrame({'col1': [1, 2]})
     s3_loader.s3_connector.s3.Object().get.return_value = {'Body': MagicMock(read=MagicMock(return_value=b'data'))}
@@ -21,7 +21,7 @@ def test_load_data_csv_success(mock_read_csv, s3_loader):
     mock_read_csv.assert_called_once()
 
 
-@patch('backend.backend.data_pipeline.source.cloud.s3_data_loader.pd.read_parquet')
+@patch('backend.data_pipeline.source.cloud.s3_data_loader.pd.read_parquet')
 def test_load_data_parquet_success(mock_read_parquet, s3_loader):
     mock_read_parquet.return_value = pd.DataFrame({'col1': [1, 2]})
     s3_loader.s3_connector.s3.Object().get.return_value = {'Body': MagicMock(read=MagicMock(return_value=b'data'))}

@@ -1,5 +1,5 @@
 import pytest
-from backend.backend.data_pipeline.source.stream.stream_config import StreamConfig
+from backend.data_pipeline.source.stream.stream_config import StreamConfig
 
 def test_stream_config_init():
     config = StreamConfig(source_type='Kafka', endpoint='localhost:9092', credentials={'username': 'user', 'password': 'pass'})

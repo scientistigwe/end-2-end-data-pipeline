@@ -3,6 +3,7 @@ from datetime import datetime
 import uuid
 from typing import Dict, List, Any, Optional, Callable
 from enum import Enum
+import os
 
 # Third-party imports
 from pydantic import BaseModel  # For data validation
@@ -10,32 +11,37 @@ import logging
 from concurrent.futures import ThreadPoolExecutor  # For parallel processing
 
 # Local imports - assuming these are defined in other modules
-from backend.backend.core.messaging.broker import MessageBroker
-from backend.backend.core.messaging.types import (
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
     ProcessingMessage,
     MessageType,
     ProcessingStatus,
     ModuleIdentifier,
 )
 
-from backend.backend.core.orchestration.conductor import DataConductor
-from backend.backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.conductor import DataConductor
+from backend.core.staging.staging_area import EnhancedStagingArea
 
 # Source manager imports
-from backend.backend.data_pipeline.source.file.file_manager import FileManager
-from backend.backend.data_pipeline.source.api.api_manager import ApiManager
-from backend.backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
-from backend.backend.data_pipeline.source.database.db_data_manager import DBDataManager
-from backend.backend.data_pipeline.source.stream.stream_manager import StreamManager
+from backend.data_pipeline.source.file.file_manager import FileManager
+from backend.data_pipeline.source.api.api_manager import ApiManager
+from backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
+from backend.data_pipeline.source.database.db_data_manager import DBDataManager
+from backend.data_pipeline.source.stream.stream_manager import StreamManager
 
 # Output handler imports
-from backend.backend.core.output.handlers import (
+from backend.core.output.handlers import (
     DatabaseOutputHandler,
     FileOutputHandler,
     APIOutputHandler,
     StreamOutputHandler
 )
 
+# Configure logging to ensure it outputs to the console
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+logger.info('Orchestrator Started')
 
 # Exception classes
 class OrchestratorError(Exception):
@@ -62,10 +68,6 @@ class DataOrchestrator:
     """Enhanced orchestrator for managing the entire pipeline with multi-source support"""
 
     def __init__(self, message_broker: MessageBroker, data_conductor: DataConductor):
-        # Initialize logging
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-
         # Core components
         self.message_broker = message_broker
         self.conductor = data_conductor
@@ -95,63 +97,40 @@ class DataOrchestrator:
 
         self.logger.info("DataOrchestrator initialized successfully")
 
-    def register_source_manager(self, source_type: str, manager: ManagerType) -> None:
-        """Register a data source manager"""
-        if source_type not in self.source_managers:
-            raise SourceManagerError(f"Unknown source type: {source_type}")
-
-        self.source_managers[source_type] = manager
-
-        # Subscribe to data messages from this source
-        self.message_broker.subscribe_to_module(
-            manager.module_id.get_tag(),
-            self.handle_source_data
-        )
-
-        self.logger.info(f"Registered source manager for: {source_type}")
-
-    def register_output_handler(self, destination: str, handler: HandlerFunction) -> None:
-        """Register handler for pipeline outputs"""
-        self.output_handlers[destination] = handler
-        self.logger.info(f"Registered output handler for: {destination}")
-
-    def initialize_pipeline(self) -> None:
-        """Initialize pipeline with all available modules and transitions"""
-        # Register core pipeline stages
-        stages = [
-            (ModuleIdentifier("DataIngestion", "ingest"), ["raw_data"]),
-            (ModuleIdentifier("DataQuality", "check"), ["quality_report"]),
-            (ModuleIdentifier("EDA", "analyze"), ["analysis_report"]),
-            (ModuleIdentifier("DataCleaning", "clean"), ["cleaned_data"]),
-            (ModuleIdentifier("DataTransform", "transform"), ["transformed_data"]),
-            (ModuleIdentifier("DataOutput", "output"), ["output_data"])
-        ]
-
-        # Register module flows
-        for i, (module, outputs) in enumerate(stages[:-1]):
-            next_module = stages[i + 1][0]
-            self.conductor.register_module_flow(
-                module,
-                [next_module],
-                {"status": "success", "outputs": outputs}
-            )
-
-        self.logger.info("Pipeline initialized with all stages")
+    def _get_file_format(self, filename: str) -> str:
+        """Helper method to extract file format"""
+        _, extension = os.path.splitext(filename)
+        return extension.lower()[1:] if extension else "unknown"
 
     def handle_source_data(self, message: ProcessingMessage) -> str:
         """Handle incoming data from source managers"""
         source_type = message.source_identifier.module_name.lower()
 
         try:
+            # Additional logging for file source
+            if source_type == "file":
+                metadata = message.content.get("metadata", {})
+                filename = metadata.get("filename", "unknown")
+                file_format = self._get_file_format(filename)
+                file_size = len(message.content.get("data", "")) if isinstance(message.content.get("data"),
+                                                                               (str, bytes)) else 0
+
+                self.logger.info(f"""
+                    File received by orchestrator:
+                    - Filename: {filename}
+                    - Format: {file_format}
+                    - Size: {file_size} bytes
+                    - Source Module: {message.source_identifier.get_tag()}
+                    - Timestamp: {datetime.now().isoformat()}
+                """)
+
             # Create new pipeline for this data
-            pipeline_id = self.start_pipeline({
+            pipeline_id = str(uuid.uuid4())
+            self.active_pipelines[pipeline_id] = {
                 "source_type": source_type,
                 "data": message.content.get("data"),
                 "metadata": message.content.get("metadata", {})
-            })
-
-            # Track source in pipeline state
-            self.active_pipelines[pipeline_id]["source_type"] = source_type
+            }
 
             # Create ingestion message to start processing
             ingestion_message = ProcessingMessage(
@@ -173,6 +152,7 @@ class DataOrchestrator:
         except Exception as e:
             self.logger.error(f"Error handling source data: {str(e)}")
             raise OrchestratorError(f"Failed to handle source data: {str(e)}")
+
 
     def handle_output_message(self, message: ProcessingMessage) -> None:
         """Handle pipeline output messages"""

@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 import os
 from cryptography.fernet import Fernet
-from backend.backend.data_pipeline.exceptions import DatabaseConfigError, DataPipelineError
+from backend.data_pipeline.exceptions import DatabaseConfigError, DataPipelineError
 from .db_types import DatabaseType
 
 

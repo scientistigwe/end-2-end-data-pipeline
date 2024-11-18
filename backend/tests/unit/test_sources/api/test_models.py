@@ -1,4 +1,4 @@
-from backend.backend.data_pipeline.source.api.api_models import APIResponse, APIConfig, DataFormat
+from backend.data_pipeline.source.api.api_models import APIResponse, APIConfig, DataFormat
 
 
 def test_api_response():

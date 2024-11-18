@@ -3,8 +3,8 @@ import pandas as pd
 import os
 import io
 from unittest.mock import Mock, patch
-from backend.backend.data_pipeline.source.file.file_manager import FileManager
-from backend.backend.data_pipeline.source.file.file_config import Config
+from backend.data_pipeline.source.file.file_manager import FileManager
+from backend.data_pipeline.source.file.file_config import Config
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ class TestFileManager:
         file = mock_file(content, "test.csv", "text/csv")
         manager = FileManager(file, "csv")
 
-        result = manager.prepare_for_orchestrator()
+        result = manager.prepare_for_orchestration()
         assert result["status"] == "success"
         assert "data" in result
         assert isinstance(result["data"], list)
@@ -79,7 +79,7 @@ class TestFileManager:
         # Mock the file_size_mb property
         manager.fetcher.file_size_mb = file_size_mb
 
-        result = manager.prepare_for_orchestrator()
+        result = manager.prepare_for_orchestration()
 
         if expected_output == "parquet":
             assert "file_path" in result

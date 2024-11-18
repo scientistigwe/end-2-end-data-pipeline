@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from io import BytesIO
-from backend.backend.data_pipeline.exceptions import CloudQueryError
+from backend.data_pipeline.exceptions import CloudQueryError
 
 logger = logging.getLogger(__name__)
 

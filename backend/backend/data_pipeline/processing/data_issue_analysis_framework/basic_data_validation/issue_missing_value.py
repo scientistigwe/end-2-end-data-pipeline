@@ -5,6 +5,13 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+from sqlalchemy.testing.plugin.plugin_base import logging
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # ---- Basic Data Validation Module ---- #
 
@@ -69,6 +76,7 @@ class BasicDataValidator:
 
             # Gather additional insights
             insights = self._gather_additional_insights(column)
+            logger.info(f'Result:')
 
             results[column] = MissingValueAnalysis(
                 column_name=column,
@@ -194,16 +202,16 @@ class BasicDataValidator:
         return "\n".join(report)
 
 
-# # Example usage:
-# if __name__ == "__main__":
-#     # Create sample data
-#     df = pd.DataFrame({
-#         'A': [1, np.nan, 3, np.nan, 5],
-#         'B': [np.nan, 2, np.nan, 4, np.nan],
-#         'C': [1, 2, 3, 4, 5],
-#         'D': [np.nan, np.nan, np.nan, np.nan, np.nan]
-#     })
-#
-#     validator = BasicDataValidator(df)
-#     analysis = validator.analyze_missing_values()
-#     print(validator.generate_report())
+# Example usage:
+if __name__ == "__main__":
+    # Create sample data
+    df = pd.DataFrame({
+        'A': [1, np.nan, 3, np.nan, 5],
+        'B': [np.nan, 2, np.nan, 4, np.nan],
+        'C': [1, 2, 3, 4, 5],
+        'D': [np.nan, np.nan, np.nan, np.nan, np.nan]
+    })
+
+    validator = BasicDataValidator(df)
+    analysis = validator.analyze_missing_values()
+    print(validator.generate_report())

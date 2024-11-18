@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
-from backend.backend.data_pipeline.exceptions import CloudConnectionError
+from backend.data_pipeline.exceptions import CloudConnectionError
 
 logger = logging.getLogger(__name__)
 

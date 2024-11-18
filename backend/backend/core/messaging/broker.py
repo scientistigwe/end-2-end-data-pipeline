@@ -1,141 +1,65 @@
-# message_broker.py
-from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
-import uuid
-from pathlib import Path
+# core/messaging/broker.py
 
-
-class MessageType(Enum):
-    """Types of messages that can flow through the pipeline"""
-    RECOMMENDATION = "recommendation"
-    DECISION = "decision"
-    STATUS_UPDATE = "status_update"
-    ERROR = "error"
-
-
-class MessageStatus(Enum):
-    """Status of messages in the system"""
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    WAITING_FOR_DECISION = "waiting_for_decision"
-
-
-@dataclass
-class PipelineMessage:
-    """
-    Represents a message flowing through the pipeline system.
-
-    Attributes:
-        message_id (str): Unique identifier for this message
-        source_path (str): Path to the source file that generated this message
-        module_name (str): Name of the module that generated/should receive this message
-        message_type (MessageType): Type of the message (recommendation/decision/etc)
-        content (Dict[str, Any]): The actual message content
-        status (MessageStatus): Current status of the message
-        timestamp (datetime): When the message was created
-        parent_message_id (Optional[str]): ID of the parent message if this is a response
-        priority (int): Message priority (higher number = higher priority)
-    """
-    message_id: str
-    source_path: str
-    module_name: str
-    message_type: MessageType
-    content: Dict[str, Any]
-    status: MessageStatus
-    timestamp: datetime
-    parent_message_id: Optional[str] = None
-    priority: int = 1
-
+from typing import Dict, List, Any
+from backend.backend.core.messaging.types import ProcessingMessage, ModuleIdentifier, MessageType
 
 class MessageBroker:
-    """
-    Handles message routing and tracking between different modules in the pipeline.
-
-    This broker maintains the message flow, tracks message chains, and ensures
-    proper delivery of messages between modules. It automatically generates unique
-    identifiers for messages based on their source and maintains the relationship
-    between recommendations and decisions.
-
-    Attributes:
-        messages (Dict[str, PipelineMessage]): Storage for all messages
-        module_subscriptions (Dict[str, List[Callable]]): Callbacks for module-specific messages
-        message_chains (Dict[str, List[str]]): Tracks related messages in chains
-    """
+    """Enhanced message broker with dynamic routing and tracking"""
 
     def __init__(self):
-        self.messages: Dict[str, PipelineMessage] = {}
-        self.module_subscriptions: Dict[str, List[Callable]] = {}
+        self.messages: Dict[str, ProcessingMessage] = {}
+        self.module_subscriptions: Dict[str, List[callable]] = {}
         self.message_chains: Dict[str, List[str]] = {}
+        self.pending_decisions: Dict[str, ProcessingMessage] = {}
+        self.active_modules: Dict[str, ModuleIdentifier] = {}
 
-    def generate_message_tag(self, source_path: str, module_name: str) -> str:
-        """
-        Generates a unique tag based on the source file and module name.
+    def register_module(self, module_identifier: ModuleIdentifier):
+        """Register a module with the broker"""
+        self.active_modules[module_identifier.get_tag()] = module_identifier
 
-        Args:
-            source_path (str): Path to the source file
-            module_name (str): Name of the module
+    def subscribe_to_module(self, module_tag: str, callback: callable):
+        """Subscribe to messages from a specific module"""
+        if module_tag not in self.module_subscriptions:
+            self.module_subscriptions[module_tag] = []
+        self.module_subscriptions[module_tag].append(callback)
 
-        Returns:
-            str: A unique tag combining file path, module name, and timestamp
-        """
-        path = Path(source_path)
-        base_name = path.stem
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_id = uuid.uuid4().hex[:8]
-        return f"{base_name}_{module_name}_{timestamp}_{unique_id}"
+    def publish(self, message: ProcessingMessage) -> str:
+        """Publish a message with enhanced routing"""
+        self.messages[message.message_id] = message
 
-    def publish_message(self, source_path: str, module_name: str,
-                        message_type: MessageType, content: Dict[str, Any],
-                        parent_message_id: Optional[str] = None) -> str:
-        """
-        Publishes a new message to the broker.
+        # Track message chains
+        if message.parent_message_id:
+            if message.parent_message_id not in self.message_chains:
+                self.message_chains[message.parent_message_id] = []
+            self.message_chains[message.parent_message_id].append(message.message_id)
 
-        Args:
-            source_path (str): Path to the source file generating the message
-            module_name (str): Name of the module sending the message
-            message_type (MessageType): Type of the message
-            content (Dict[str, Any]): Message content
-            parent_message_id (Optional[str]): ID of the parent message if this is a response
+        # Track pending decisions
+        if message.message_type == MessageType.RECOMMENDATION:
+            self.pending_decisions[message.message_id] = message
 
-        Returns:
-            str: The unique message ID generated for this message
-        """
-        message_id = self.generate_message_tag(source_path, module_name)
+        # Route to subscribers
+        if message.source_identifier:
+            source_tag = message.source_identifier.get_tag()
+            if source_tag in self.module_subscriptions:
+                for callback in self.module_subscriptions[source_tag]:
+                    callback(message)
 
-        message = PipelineMessage(
-            message_id=message_id,
-            source_path=source_path,
-            module_name=module_name,
-            message_type=message_type,
-            content=content,
-            status=MessageStatus.PENDING,
-            timestamp=datetime.now(),
-            parent_message_id=parent_message_id
+        return message.message_id
+
+    def submit_decision(self, message_id: str, decision: Dict[str, Any]) -> str:
+        """Submit a decision for a recommendation"""
+        if message_id not in self.pending_decisions:
+            raise ValueError("No pending recommendation found for this decision")
+
+        original_msg = self.pending_decisions[message_id]
+        decision_msg = ProcessingMessage(
+            source_identifier=original_msg.target_identifier,
+            target_identifier=original_msg.source_identifier,
+            message_type=MessageType.DECISION,
+            content=decision,
+            parent_message_id=message_id
         )
 
-        self.messages[message_id] = message
-
-        if parent_message_id:
-            if parent_message_id not in self.message_chains:
-                self.message_chains[parent_message_id] = []
-            self.message_chains[parent_message_id].append(message_id)
-
-        self._notify_subscribers(message)
-        return message_id
-
-    def _notify_subscribers(self, message: PipelineMessage) -> None:
-        """
-        Notifies all subscribers about a new message.
-
-        Args:
-            message (PipelineMessage): The message to notify about
-        """
-        if message.module_name in self.module_subscriptions:
-            for callback in self.module_subscriptions[message.module_name]:
-                callback(message)
-
+        del self.pending_decisions[message_id]
+        return self.publish(decision_msg)
 

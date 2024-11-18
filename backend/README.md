@@ -1,496 +1,269 @@
-# Data Quality Pipeline Framework
+# Enterprise Data Quality & Integration Pipeline
 
-A robust, enterprise-grade framework for automated data quality management, validation, and cleansing. This pipeline orchestrates the entire data quality lifecycle from ingestion through validation to final delivery, with comprehensive quality gates and automated issue resolution.
+An advanced, enterprise-grade framework for automated data quality management, validation, and integration with enhanced user interoperability features. This pipeline orchestrates the complete data lifecycle from multi-source ingestion through validation to final delivery, with comprehensive quality gates and intelligent workflow management.
 
-## 🏗️ Architecture Overview
+## 🏗️ System Architecture
 
 ```
-data_quality_pipeline/
-├── orchestrator/          # Pipeline orchestration and workflow management
-│   ├── stager/           # Data staging and temporary storage
-│   ├── quality_gate/     # Quality checkpoints and validation
-│   ├── conductor/        # Data flow coordination
-│   └── messager/         # Status and notification system
-├── analyzers/            # Data quality analysis modules
-│   ├── basic/           # Core validation functionality
-│   ├── text/            # Text processing and standardization
-│   ├── identifier/      # ID and key field processing
-│   ├── numeric/         # Numeric and currency handling
-│   ├── temporal/        # Date/time processing
-│   ├── code/            # Classification and coding systems
-│   ├── location/        # Geographic and address data
-│   ├── duplication/     # Duplicate detection and handling
-│   ├── domain/          # Domain-specific rules
-│   └── reference/       # Reference data management
-└── resolvers/           # Issue resolution and data cleansing
-    ├── basic/           # Core cleansing operations
-    ├── advanced/        # Complex resolution strategies
-    └── custom/          # User-defined resolution rules
+enterprise_pipeline/
+├── orchestrator/              # Enhanced pipeline orchestration
+│   ├── source_managers/      # Multi-source data ingestion
+│   │   ├── file_manager/     # File-based ingestion
+│   │   ├── api_manager/      # API integration
+│   │   ├── db_manager/       # Database connections
+│   │   ├── stream_manager/   # Real-time streaming
+│   │   └── cloud_manager/    # Cloud storage (S3, etc.)
+│   ├── message_broker/       # Advanced message handling
+│   │   ├── router/          # Intelligent message routing
+│   │   ├── tracker/         # Message chain tracking
+│   │   └── decision_handler/ # Decision management
+│   ├── flow_conductor/       # Enhanced flow management
+│   │   ├── registry/        # Module registration
+│   │   ├── router/          # Conditional routing
+│   │   └── state_tracker/   # Flow state management
+│   └── output_handler/       # Multi-destination output
+├── modules/                  # Processing modules
+│   ├── quality/             # Data quality modules
+│   ├── transformation/      # Data transformation
+│   ├── validation/          # Validation rules
+│   ├── enrichment/          # Data enrichment
+│   └── custom/              # User-defined modules
+└── interop/                 # Interoperability layer
+    ├── api/                 # REST API interface
+    ├── ui/                  # User interface
+    └── sdk/                 # Client SDK
 ```
 
-## ✨ Key Features
+## 🎯 Core Features
 
-### 🔄 Pipeline Orchestration
-- **Stager**: Temporary staging area for data validation and quality checks
-- **Quality Gate**: Configurable quality thresholds and validation rules
-- **Data Conductor**: Intelligent workflow management and process coordination
-- **Messager**: Real-time status updates and notification system
+### 🔄 Enhanced Orchestration
 
-### 🔍 Analysis Capabilities
+#### Multi-Source Data Management
+- **Dynamic Source Registration**: Plug-and-play integration of new data sources
+- **Unified Interface**: Consistent handling across different source types
+- **Automatic Pipeline Creation**: Per-batch pipeline instantiation
+- **State Tracking**: Comprehensive pipeline state management
 
-#### Detection Phase
+#### Advanced Message Processing
+- **Intelligent Routing**: Context-aware message distribution
+- **Chain Tracking**: Parent-child relationship management
+- **Decision Support**: Structured handling of decisions and recommendations
+- **Status Updates**: Real-time pipeline status monitoring
+
+#### Flow Management
+- **Dynamic Module Registration**: Support for 50+ processing modules
+- **Conditional Routing**: Rule-based flow control
+- **State Management**: Comprehensive flow state tracking
+- **Error Handling**: Robust error recovery mechanisms
+
+### 🔌 Interoperability Features
+
+#### API Integration
+```python
+from enterprise_pipeline import Pipeline
+from enterprise_pipeline.sources import APISource
+
+# Configure API source
+api_source = APISource(
+    endpoint="https://api.example.com/data",
+    auth_method="oauth2",
+    refresh_token=True
+)
+
+# Initialize pipeline with API source
+pipeline = Pipeline(source=api_source)
+
+# Start processing with callbacks
+pipeline.process(
+    on_decision_needed=decision_handler,
+    on_status_update=status_handler
+)
+```
+
+#### Custom Module Integration
+```python
+from enterprise_pipeline.modules import BaseModule
+
+class CustomProcessor(BaseModule):
+    def process(self, data, context):
+        # Implementation
+        return processed_data
+    
+    def get_decisions(self):
+        return self.pending_decisions
+```
+
+### 🔍 Quality Management
+
+#### Validation Framework
 - Multi-level validation hierarchy
 - Pattern recognition and analysis
 - Impact assessment
 - Relationship mapping
 - Confidence scoring
 
-#### Quality Categories
-1. **Basic Validation**
-   - Missing value detection
-   - Data type verification
-   - Format validation
-   - Range checking
+#### Processing Categories
+1. **Source Validation**
+   - Format verification
+   - Schema validation
+   - Data completeness
+   - Source reliability
 
-2. **Text Processing**
-   - Case normalization
-   - Whitespace handling
-   - Character set validation
-   - Pattern matching
+2. **Quality Analysis**
+   - Pattern detection
+   - Anomaly identification
+   - Relationship validation
+   - Business rule compliance
 
-3. **Identifier Management**
-   - Key field validation
-   - Cross-reference checking
-   - Format standardization
-   - Uniqueness verification
+3. **Transformation**
+   - Data standardization
+   - Format conversion
+   - Value normalization
+   - Structure alignment
 
-4. **Numeric Processing**
-   - Currency standardization
-   - Unit conversion
-   - Range validation
-   - Precision handling
-
-5. **Temporal Data**
-   - Date/time normalization
-   - Timezone handling
-   - Sequence validation
-   - Period calculations
-
-6. **Code Systems**
-   - Classification validation
-   - Code set verification
-   - Mapping validation
-   - Version control
-
-7. **Location Data**
-   - Address standardization
-   - Coordinate validation
-   - Boundary verification
-   - Geocoding support
-
-8. **Duplication Control**
-   - Exact match detection
-   - Fuzzy matching
-   - Merge handling
-   - Version conflict resolution
-
-9. **Domain Rules**
-   - Business rule validation
-   - Industry standards
-   - Compliance checking
-   - Custom validation rules
-
-10. **Reference Data**
-    - Lookup validation
-    - Code list management
-    - Master data validation
-    - Cross-reference verification
+4. **Enrichment**
+   - Reference data integration
+   - Derived value calculation
+   - External data fusion
+   - Context enhancement
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 ```bash
 python >= 3.8
-pip install -r requirements.txt
+pip install enterprise-pipeline
 ```
 
 ### Basic Usage
 
 ```python
-from quality_pipeline import QualityPipeline
-from quality_pipeline.config import Config
+from enterprise_pipeline import Pipeline
+from enterprise_pipeline.config import Config
 
-# Initialize pipeline with custom configuration
-pipeline = QualityPipeline(
+# Initialize with advanced configuration
+pipeline = Pipeline(
     config=Config(
-        FILE_SIZE_THRESHOLD_MB=100,
-        CHUNK_SIZE=50000,
-        ALLOWED_FORMATS=['csv', 'json', 'parquet', 'xlsx']
+        source_configs={
+            'api': {'rate_limit': 1000},
+            'db': {'pool_size': 10},
+            'stream': {'buffer_size': 1000}
+        },
+        processing_configs={
+            'batch_size': 50000,
+            'parallel_modules': True,
+            'decision_timeout': 300
+        }
     )
 )
 
-# Process data through pipeline
-results = pipeline.process_data(
-    input_data=your_dataset,
-    quality_threshold=0.9,
-    notification_enabled=True
+# Process with callbacks
+results = pipeline.process(
+    input_source='api',
+    output_destination='s3',
+    on_decision_needed=lambda x: handle_decision(x),
+    on_status_update=lambda x: update_status(x)
 )
 ```
 
-### Advanced Configuration
+## 📊 Monitoring & Metrics
 
-```python
-# Custom validation rules
-pipeline.add_validation_rule(
-    category='numeric',
-    rule_name='custom_range',
-    rule_func=lambda x: 0 <= x <= 100
-)
+### Real-time Monitoring
+- Pipeline state tracking
+- Module performance metrics
+- Resource utilization
+- Error rates and types
 
-# Custom resolution strategy
-pipeline.add_resolution_strategy(
-    category='duplication',
-    strategy_name='fuzzy_merge',
-    strategy_func=your_merge_function
-)
-```
-
-## 📊 Quality Metrics
-
-The pipeline provides comprehensive quality metrics:
-- Data completeness scores
+### Quality Metrics
+- Data completeness
 - Validation success rates
-- Issue detection statistics
-- Resolution effectiveness
-- Processing performance metrics
+- Processing accuracy
+- Decision response times
 
-## 🔧 Customization
+## 🔧 Configuration
 
-### Extending Validators
+### Source Configuration
+```yaml
+sources:
+  api:
+    type: rest
+    rate_limit: 1000
+    retry_config:
+      max_retries: 3
+      backoff: exponential
+  
+  database:
+    type: postgresql
+    pool_size: 10
+    timeout: 30
+```
+
+### Module Configuration
+```yaml
+modules:
+  quality:
+    enabled: true
+    parallel: true
+    timeout: 300
+    
+  transformation:
+    enabled: true
+    batch_size: 50000
+    memory_limit: "4G"
+```
+
+## 📝 Development
+
+### Adding New Sources
 ```python
-from quality_pipeline.validators import BaseValidator
+from enterprise_pipeline.sources import BaseSource
 
-class CustomValidator(BaseValidator):
+class CustomSource(BaseSource):
+    def connect(self):
+        # Implementation
+        
+    def read_batch(self):
+        # Implementation
+```
+
+### Custom Processing Modules
+```python
+from enterprise_pipeline.modules import BaseModule
+
+class CustomProcessor(BaseModule):
     def validate(self, data):
         # Implementation
-        pass
-```
-
-### Custom Resolution Rules
-```python
-from quality_pipeline.resolvers import BaseResolver
-
-class CustomResolver(BaseResolver):
-    def resolve(self, data, issues):
+        
+    def process(self, data):
         # Implementation
-        pass
-```
-
-## 📝 Testing
-
-```bash
-# Run test suite
-pytest
-
-# Run with coverage
-pytest --cov=quality_pipeline tests/
 ```
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Commit changes
-4. Push to the branch
-5. Create a Pull Request
-
-## 📜 License
-
-This project is licensed under the MIT License - see [LICENSE.md](LICENSE.md)
+3. Implement changes
+4. Add tests
+5. Submit pull request
 
 ## 📚 Documentation
 
-Full documentation is available at [docs/](docs/)
+Comprehensive documentation available at [docs/](docs/)
 
-## 🔄 Version History
+## 📅 Roadmap
 
-### v1.0.0 (Latest)
-- Comprehensive validation framework
-- Automated resolution strategies
-- Real-time quality monitoring
-- Performance optimizations
+- [ ] Stream processing enhancements
+- [ ] Machine learning integration
+- [ ] Advanced visualization
+- [ ] Distributed processing
+- [ ] Real-time analytics
 
-### v0.9.0 (Beta)
-- Initial pipeline implementation
-- Basic validation rules
-- Core resolution strategies
+## 📫 Support
 
-## 🗺️ Roadmap
-
-- [ ] Machine learning-based validation
-- [ ] Real-time streaming support
-- [ ] Advanced visualization dashboard
-- [ ] API integration layer
-- [ ] Distributed processing support
-
-## 🆘 Support
-
-- GitHub Issues: [Create an issue](https://github.com/your-repo/issues)
+- Issues: [GitHub Issues](https://github.com/your-repo/issues)
 - Documentation: [Wiki](https://github.com/your-repo/wiki)
 - Email: support@yourcompany.com
 
-## 🙏 Acknowledgments
+## 📄 License
 
-- Built with [Python](https://python.org)
-- Testing framework: [pytest](https://pytest.org)
-- Documentation: [MkDocs](https://mkdocs.org)
-- 
-# Data Quality Management Framework
-
-A comprehensive framework for analyzing and resolving data quality issues in large datasets. This framework provides a systematic approach to detecting, analyzing, and resolving various types of data quality problems through two main components: Analysis Framework and Resolution Framework.
-
-## Overview
-
-```
-data_quality_framework/
-├── data_issue_analysis_framework/   # Analysis components
-└── data_issue_resolution_framework/ # Resolution components
-```
-
-Each framework contains specialized modules for handling different categories of data quality issues:
-
-- Basic Data Validation
-- Text Standardization
-- Identifier Processing
-- Numeric/Currency Processing
-- Date/Time Processing
-- Code Classification
-- Address/Location Processing
-- Duplication Management
-- Domain-Specific Validation
-- Reference Data Management
-
-## Key Features
-
-### Analysis Framework
-- Issue Detection: Identifies various types of data quality problems
-- Pattern Analysis: Uncovers relationships and trends in issues
-- Recommendation Generation: Suggests remediation actions
-- Decision Support: Provides actionable insights
-- Confidence Scoring: Evaluates reliability of recommendations
-
-### Resolution Framework
-- Issue Validation: Verifies problems before resolution
-- Automated Cleaning: Applies appropriate resolution methods
-- Result Verification: Validates cleaning outcomes
-- Change Documentation: Records all modifications
-- Resolution History: Maintains audit trail
-
-## Installation
-
-```bash
-git clone https://github.com/yourusername/data-quality-framework.git
-cd data-quality-framework
-pip install -r requirements.txt
-```
-
-## Quick Start
-
-### Analysis Example
-
-```python
-from data_issue_analysis_framework.basic_data_validation.issue_missing_value import MissingValueIssueAnalyzer
-
-# Initialize analyzer
-analyzer = MissingValueIssueAnalyzer(confidence_threshold=0.8)
-
-# Analyze dataset
-results = analyzer.analyze(your_dataset)
-
-# Get recommendations
-report = analyzer.get_analysis_report()
-```
-
-### Resolution Example
-
-```python
-from data_issue_resolution_framework.basic_data_validation.resolved_missing_value import MissingValueIssueResolver
-
-# Initialize resolver
-resolver = MissingValueIssueResolver(resolution_strategy='imputation')
-
-# Resolve issues
-cleaned_data, report = resolver.resolve(your_dataset, identified_issues)
-
-# Get resolution history
-history = resolver.get_resolution_report()
-```
-
-## Framework Architecture
-
-### Analysis Components
-
-Each analyzer implements a four-phase approach:
-
-1. **Detection Phase**
-   - Issue identification
-   - Classification
-   - Initial assessment
-
-2. **Analysis Phase**
-   - Pattern recognition
-   - Impact evaluation
-   - Relationship mapping
-
-3. **Recommendation Phase**
-   - Solution generation
-   - Confidence scoring
-   - Priority assignment
-
-4. **Decision Support Phase**
-   - Action planning
-   - Risk assessment
-   - Alternative solutions
-
-### Resolution Components
-
-Each resolver follows a systematic cleaning process:
-
-1. **Validation Phase**
-   - Issue verification
-   - Requirement analysis
-   - Feasibility check
-
-2. **Resolution Phase**
-   - Method selection
-   - Cleaning execution
-   - Change tracking
-
-3. **Verification Phase**
-   - Result validation
-   - Quality checks
-   - Impact assessment
-
-4. **Documentation Phase**
-   - Change recording
-   - Audit trail creation
-   - Metadata management
-
-## Available Modules
-
-### Basic Data Validation
-- Missing Value Analysis/Resolution
-- Data Type Mismatch Detection
-- Required Field Validation
-- Null Check Processing
-- Empty String Handling
-
-### Text Standardization
-- Case Inconsistency Resolution
-- Whitespace Irregularity Fixing
-- Special Character Processing
-- Typo Detection/Correction
-- Pattern Normalization
-
-### Identifier Processing
-- Account Number Validation
-- Patient ID Verification
-- SKU Format Standardization
-- SSN Validation
-- Part Number Formatting
-
-### Numeric/Currency Processing
-- Currency Format Standardization
-- Unit Conversion Handling
-- Interest Calculation Validation
-- Price Format Normalization
-- Inventory Count Verification
-
-### Date/Time Processing
-- Date Format Standardization
-- Timestamp Validation
-- Timezone Error Resolution
-- Age Calculation Verification
-- Sequence Validation
-
-### Code Classification
-- Medical Code Validation
-- Transaction Code Processing
-- Batch Code Verification
-- Jurisdiction Code Handling
-- Funding Code Validation
-
-### Address/Location Processing
-- Address Format Standardization
-- Coordinate Validation
-- Jurisdiction Mapping
-- Location Code Processing
-- Postal Code Verification
-
-### Duplication Management
-- Exact Duplicate Detection
-- Fuzzy Match Processing
-- Merge Conflict Resolution
-- Version Conflict Handling
-- Resolution Strategy Implementation
-
-### Domain-Specific Validation
-- Terminology Validation
-- Instrument Verification
-- Inventory Rule Processing
-- Specification Mismatch Detection
-- Compliance Violation Handling
-
-### Reference Data Management
-- Lookup Table Validation
-- Codelist Update Processing
-- Terminology Alignment
-- Range Violation Detection
-- Reference Data Verification
-
-## Customization
-
-Each analyzer and resolver can be customized through:
-
-- Configuration parameters
-- Custom strategies
-- Threshold adjustments
-- Rule modifications
-- Pipeline customization
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-
-## Support
-
-For support, email support@your-domain.com or open an issue in the GitHub repository.
-
-## Acknowledgments
-
-- List any acknowledgments or credits here
-- Include references to any third-party libraries or tools used
-- Mention contributors if applicable
-
-## Roadmap
-
-- Add support for more data types
-- Implement machine learning-based detection
-- Enhance visualization capabilities
-- Add API endpoints
-- Create web interface
-
-## Version History
-
-- 0.1.0
-  - Initial Release
-  - Basic framework structure
-  - Core functionality implementation
+MIT License - see [LICENSE.md](LICENSE.md)

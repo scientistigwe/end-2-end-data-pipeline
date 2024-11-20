@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant UI as User Interface
+    participant FileMgr as File Manager
+    participant Orch as DataOrchestrator
+    participant Broker as MessageBroker
+    participant Cond as DataConductor
+    participant Stage as EnhancedStagingArea
+    participant DQMod as data_quality_report.py
+    participant MVMod as issue_missing_values.py
+
+    UI->>FileMgr: Upload xyz.csv
+    activate FileMgr
+    FileMgr->>FileMgr: Prepare Data (DataFrame/Parquet)
+    FileMgr->>Orch: Send Pre-processed Data & Metadata
+    deactivate FileMgr
+    activate Orch
+
+    Orch->>Stage: Stage Data & Confirm Staging
+    activate Stage
+    Stage-->>Orch: Return Staging Metadata
+    deactivate Stage
+
+    Orch->>Cond: Request Processing Flow
+    activate Cond
+    Cond->>Orch: Return Flow Plan (Modules List)
+    deactivate Cond
+
+    Orch->>DQMod: Send Data for Quality Check
+    activate DQMod
+    DQMod->>Orch: Send Quality Report
+    deactivate DQMod
+
+    Orch->>MVMod: Send Data for Missing Values Check
+    activate MVMod
+    MVMod->>Orch: Send Missing Values Analysis
+    deactivate MVMod
+
+    Orch->>UI: Compile and Send Final Report
+    UI-->>Orch: Acknowledge Report Receipt
+
+    Orch->>Broker: Log Processing Cycle (Optional)
+    deactivate Orch

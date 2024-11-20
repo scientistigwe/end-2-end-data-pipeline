@@ -8,6 +8,8 @@ It creates and runs the application instance.
 import os
 from flask_cors import CORS
 from backend.flask_api.app import create_app
+import logging
+from flask import Flask, jsonify
 
 def configure_logging():
     """
@@ -15,9 +17,6 @@ def configure_logging():
 
     This function sets up both console and file-based logging.
     """
-    import logging
-    from flask import Flask
-
     handler = logging.StreamHandler()
     file_handler = logging.FileHandler('app.log')
 
@@ -41,21 +40,24 @@ def create_flask_app():
     env = os.getenv('FLASK_ENV', 'development')
     flask_app = create_app(env)
 
+    # Apply CORS configuration only once
     CORS(flask_app, supports_credentials=True, resources={
-        r"/file-system/*": {
+        r"/pipeline-api/*": {
             "origins": ["http://localhost:3000", "http://localhost:3001"],
-            "methods": ["POST", "OPTIONS", "GET"],
-            "allow_headers": ["Content-Type"],
-        },
-        r"/api/*": {
-            "origins": ["http://localhost:3000", "http://localhost:3001"],
-            "methods": ["POST", "OPTIONS", "GET"],
-            "allow_headers": ["Content-Type"],
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
         }
     })
+
+    @flask_app.route('/pipeline-api/<path:path>', methods=['OPTIONS'])
+    def handle_preflight(path):
+        response = jsonify({'status': 'Preflight request'})
+        response.status_code = 200
+        return response
 
     return flask_app
 
 if __name__ == '__main__':
     configure_logging()
-    create_flask_app().run(debug=True)
+    app = create_flask_app()
+    app.run(debug=True)

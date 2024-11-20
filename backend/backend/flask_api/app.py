@@ -7,7 +7,7 @@ the Flask application.
 
 import os
 from flask import Flask, Blueprint, jsonify
-from backend.flask_api.bp_routes import file_system_bp
+from backend.flask_api.bp_routes import pipeline_bp
 import logging
 
 def create_app(config_name='default'):
@@ -48,7 +48,7 @@ def create_app(config_name='default'):
         os.makedirs(app.config['UPLOAD_FOLDER'])
 
     # Register blueprints
-    app.register_blueprint(file_system_bp, url_prefix='/file-system')
+    app.register_blueprint(pipeline_bp, url_prefix='/pipeline-api')
 
     # Define a simple route for testing
     @app.route('/')

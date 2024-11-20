@@ -1,7 +1,7 @@
 from flask import request, jsonify
 from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
-from backend.flask_api.bp_routes import file_system_bp
+from backend.flask_api.bp_routes import pipeline_bp
 from backend.data_pipeline.source.file.file_service import FileService
 from backend.data_pipeline.source.file.file_config import Config
 import logging
@@ -77,7 +77,7 @@ def process_single_file(file: FileStorage) -> Dict[str, Any]:
         }
 
 
-@file_system_bp.route('/file-source', methods=['POST', 'OPTIONS'])
+@pipeline_bp.route('/file-source', methods=['POST', 'OPTIONS'])
 def handle_file_source() -> tuple[Any, int]:
     """
     Handle multiple file uploads with comprehensive processing.
@@ -128,7 +128,7 @@ def handle_file_source() -> tuple[Any, int]:
         }), 500
 
 
-@file_system_bp.route('/get-metadata', methods=['GET'])
+@pipeline_bp.route('/get-metadata', methods=['GET'])
 def get_metadata() -> tuple[Any, int]:
     """
     Retrieve metadata for the last processed file.

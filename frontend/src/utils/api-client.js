@@ -14,7 +14,7 @@ export default class ApiClient {
         );
       }
 
-      const response = await fetch(`${this.baseURL}/file-system/file-source`, {
+      const response = await fetch(`${this.baseURL}/pipeline-api/file-source`, {
         method: "POST",
         // Remove the Content-Type header to let the browser set it automatically with the boundary
         headers: {
@@ -62,7 +62,7 @@ export default class ApiClient {
   async getFileMetadata() {
     try {
       const response = await fetch(
-        `${this.baseURL}/file-system/file-metadata`,
+        `${this.baseURL}/pipeline-api/file-metadata`,
         {
           method: "GET",
           headers: {
@@ -86,5 +86,82 @@ export default class ApiClient {
       console.error("Error in getFileMetadata:", error);
       throw error;
     }
+  }
+
+  async getPipelineStatus() {
+    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  async startPipeline(config) {
+    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  async stopPipeline(pipelineId) {
+    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  async makePipelineDecision(pipelineId, decision) {
+    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/decision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ decision })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  async getPipelineLogs(pipelineId) {
+    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/logs`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
   }
 }

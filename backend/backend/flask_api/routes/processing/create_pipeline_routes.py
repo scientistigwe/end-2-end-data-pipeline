@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from flask_cors import cross_origin  # Import cross_origin decorator
 from typing import Dict, Any, Tuple
 from datetime import datetime
 import logging
@@ -17,31 +18,84 @@ logger = logging.getLogger(__name__)
 
 service = FileService()
 
+
+
 def create_pipeline_routes(file_service):
     """Factory function to create pipeline routes with FileService instance"""
 
     # Get the orchestrator instance from FileService
     orchestrator = service._initialize_data_orchestrator()
 
-    @pipeline_bp.route('/pipelines/status', methods=['GET'])
-    def get_pipeline_status() -> Tuple[Dict[str, Any], int]:
-        """Get status of all active pipelines"""
-        try:
-            active_pipelines = {}
-            for pipeline_id in orchestrator.active_pipelines:
-                pipeline_status = orchestrator.monitor_pipeline_progress(pipeline_id)
-                active_pipelines[pipeline_id] = pipeline_status
 
-            return jsonify({
-                'status': 'success',
-                'pipelines': active_pipelines
-            }), 200
-        except Exception as e:
-            logger.error(f"Error getting pipeline status: {str(e)}", exc_info=True)
-            return jsonify({
-                'status': 'error',
-                'message': f'Failed to retrieve pipeline status: {str(e)}'
-            }), 500
+    @pipeline_bp.route('/pipelines/status', methods=['GET', 'OPTIONS'])
+    @cross_origin(origins='*', methods=['GET', 'OPTIONS'])  # Add CORS support
+    def get_pipeline_status() -> Tuple[Dict[str, Any], int]:
+            # Detailed logging for debugging
+            logger.info(f"Received request for pipeline status")
+            logger.info(f"Request method: {request.method}")
+            logger.info(f"Request headers: {dict(request.headers)}")
+
+            # Handle OPTIONS preflight request
+            if request.method == 'OPTIONS':
+                response = jsonify({'status': 'Preflight request'})
+                response.headers['Access-Control-Allow-Methods'] = 'GET'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+                return response
+
+            try:
+                # Verify active pipelines exist
+                if not hasattr(orchestrator, 'active_pipelines'):
+                    logger.warning("No active_pipelines attribute found on orchestrator")
+                    return jsonify({
+                        'status': 'success',
+                        'pipelines': {}
+                    }), 200
+
+                active_pipelines = {}
+                logger.info(f"Discovered active pipelines: {orchestrator.active_pipelines}")
+
+                # Process each pipeline
+                for pipeline_id in orchestrator.active_pipelines:
+                    try:
+                        # Safely get pipeline status
+                        pipeline_status = orchestrator.monitor_pipeline_progress(pipeline_id)
+                        active_pipelines[pipeline_id] = pipeline_status
+                    except Exception as pipeline_err:
+                        logger.error(f"Error processing pipeline {pipeline_id}: {str(pipeline_err)}")
+                        active_pipelines[pipeline_id] = {
+                            'status': 'ERROR',
+                            'error': str(pipeline_err)
+                        }
+
+                # Prepare response with CORS headers
+                response = jsonify({
+                    'status': 'success',
+                    'pipelines': active_pipelines
+                })
+
+                # Explicit CORS headers
+                response.headers['Access-Control-Allow-Origin'] = '*'
+                response.headers['Access-Control-Allow-Methods'] = 'GET'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+                logger.info(f"Returning pipelines: {active_pipelines}")
+                return response, 200
+
+            except Exception as e:
+                logger.error(f"Comprehensive error getting pipeline status: {str(e)}", exc_info=True)
+
+                # Error response with CORS headers
+                response = jsonify({
+                    'status': 'error',
+                    'message': f'Failed to retrieve pipeline status: {str(e)}',
+                    'details': str(e)
+                })
+
+                response.headers['Access-Control-Allow-Origin'] = '*'
+                response.headers['Access-Control-Allow-Methods'] = 'GET'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+                return response, 500
 
     @pipeline_bp.route('/pipelines/start', methods=['POST'])
     def start_pipeline() -> Tuple[Dict[str, Any], int]:

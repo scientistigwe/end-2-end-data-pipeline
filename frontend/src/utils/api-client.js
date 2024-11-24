@@ -88,20 +88,45 @@ export default class ApiClient {
     }
   }
 
-  async getPipelineStatus() {
+async getPipelineStatus() {
+  try {
+    console.log('Attempting to fetch pipeline status from:',
+      `${this.baseURL}/pipeline-api/pipelines/status`
+    );
+
     const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/status`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      credentials: 'include'
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+    // More comprehensive error handling
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Error response body:', errorText);
+
+      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('Parsed pipeline status data:', data);
+
+    return data;
+  } catch (error) {
+    console.error('Full error in getPipelineStatus:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    throw error;
   }
+}
 
   async startPipeline(config) {
     const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/start`, {

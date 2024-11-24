@@ -40,18 +40,36 @@ def create_flask_app():
     env = os.getenv('FLASK_ENV', 'development')
     flask_app = create_app(env)
 
-    # Apply CORS configuration only once
-    CORS(flask_app, supports_credentials=True, resources={
+    # More comprehensive CORS configuration
+    CORS(flask_app,
+         supports_credentials=True,
+         expose_headers=['Cache-Control', 'Content-Type'],
+         resources={
         r"/pipeline-api/*": {
-            "origins": ["http://localhost:3000", "http://localhost:3001"],
+            "origins": "*",
             "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
+            # Include all potential headers
+            "allow_headers": [
+                "Content-Type",
+                "Authorization",
+                "X-Requested-With",
+                "Accept",
+                "Origin",
+                "Cache-Control"
+            ],
         }
     })
 
+    # Explicit preflight handler
     @flask_app.route('/pipeline-api/<path:path>', methods=['OPTIONS'])
     def handle_preflight(path):
         response = jsonify({'status': 'Preflight request'})
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = (
+            'Content-Type, Authorization, X-Requested-With, '
+            'Accept, Origin, Cache-Control'
+        )
+        response.headers['Access-Control-Max-Age'] = '3600'
         response.status_code = 200
         return response
 

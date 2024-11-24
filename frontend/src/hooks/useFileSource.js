@@ -1,11 +1,15 @@
 import { useState } from "react";
 import ApiClient from "../utils/api-client";
+import usePipeline from "./usePipeline"; // Import the usePipeline hook
 
 const useFileSource = (baseURL) => {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState(null);
   const [error, setError] = useState(null);
   const apiClient = new ApiClient(baseURL);
+
+  // Use the usePipeline hook
+  const { triggerRefreshOnFileUpload } = usePipeline(apiClient);
 
   const handleApiRequest = async (formData, actionType) => {
     setLoading(true);
@@ -20,6 +24,9 @@ const useFileSource = (baseURL) => {
 
         const result = await apiClient.postFileSource(formData);
         setResponse(result);
+
+        // Trigger pipeline refresh after successful file upload
+        triggerRefreshOnFileUpload(result);
       } else if (actionType === "metadata") {
         const result = await apiClient.getFileMetadata();
         setResponse(result);

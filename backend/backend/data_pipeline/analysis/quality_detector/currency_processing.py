@@ -1,191 +1,325 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Set, Tuple, Any
-from dataclasses import dataclass
-import difflib
-import jellyfish
 import re
-from datetime import datetime
-from collections import defaultdict
+from typing import Dict, Any, List, Set, Tuple
+from dataclasses import dataclass
 from statistics import mean, stdev
 
-from fuzzywuzzy import fuzz
+from sqlalchemy.testing.plugin.plugin_base import file_config
 
 
 @dataclass
-class DuplicateAnalysis:
-    column_name: str
-    identified_as: str  # DUPLICATE or NON_DUPLICATE
+class ColumnAnalysis:
+    identified_as: str
     confidence: float
-    duplicate_types: Dict[str, List[Tuple]]
-    sample_duplicates: List[Tuple]
-    total_duplicates: int
-    duplicate_percentage: float
-    issues: Dict[str, int]
-    recommendations: List[str]
-    statistics: Dict[str, float]
+    sample_values: List[Any]
+    detected_currencies: List[str] = None
+    total_rows: int = 0
+    issues: Dict[str, int] = None
+    recommendations: List[str] = None
+    statistics: Dict[str, float] = None
 
 
-class DuplicateDetectionQualityDetector:
-    """
-    A comprehensive duplicate detector that identifies various types of duplicates in datasets
-    with a similar structure to the CurrencyProcessingQualityDetector.
-    """
-
+class CurrencyProcessingQualityDetector:
     def __init__(self, data: pd.DataFrame, confidence_threshold: float = 30.0):
         self.data = data
         self.confidence_threshold = confidence_threshold
-
-        # Column pattern indicators for likely duplicate-containing columns
-        self.duplicate_prone_patterns = [
-            r'(?i)(^|_)(name|title|description|address|location)($|_)',
-            r'(?i)(^|_)(company|organization|business|entity)($|_)',
-            r'(?i)(^|_)(identifier|reference|code|key)($|_)',
-            r'(?i)(^|_)(email|phone|contact|url)($|_)'
-        ]
-
-        # Patterns that suggest unique values are expected
-        self.unique_value_patterns = [
-            r'(?i)(^|_)(id|uuid|guid)($|_)',
-            r'(?i)(^|_)(hash|checksum|digest)($|_)',
-            r'(?i)(^|_)(timestamp|datetime|date|time)($|_)',
-            r'(?i)(^|_)(sequence|serial|auto)($|_)'
-        ]
-
-    def _calculate_confidence(self, column: str, duplicates_info: Dict[str, List[Tuple]]) -> float:
-        """Calculate confidence score for duplicate detection."""
-        score = 0
-        weights = {
-            'column_name': 30,
-            'duplicate_types': 40,
-            'value_distribution': 30
+        self.currency_symbols = {
+            '$': 'USD', '£': 'GBP', '€': 'EUR', '¥': 'JPY',
+            '₹': 'INR', '₩': 'KRW', '₽': 'RUB', 'R$': 'BRL',
+            'CHF': 'CHF', 'A$': 'AUD', 'C$': 'CAD', 'HK$': 'HKD'
         }
 
-        # Column name analysis
+        # Enhanced currency patterns
+        self.currency_codes = set(self.currency_symbols.values())
+        self.currency_regex = '|'.join([re.escape(symbol) for symbol in self.currency_symbols.keys()])
+
+        # Improved column name patterns for financial data
+        self.column_patterns = [
+            r'(?i)(^|_)(price|amount|cost|revenue|sales|payment|total|fee|charge|balance)($|_)',
+            r'(?i)(^|_)(currency|money|expense|income|invoice|bill|salary|wage)($|_)',
+            r'(?i)(^|_)(profit|loss|proceeds|return|gain)($|_)'
+        ]
+
+        # Enhanced non-currency patterns - expanded to catch more ID patterns
+        self.non_currency_patterns = [
+            r'(?i)(^|_)(percent|pct|ratio|rate|share|quantity|count|units|number)($|_)',
+            r'(?i)(^|_)(score|index|rank|rating|level|grade|tier|position)($|_)',
+            r'(?i)(^|_)(age|year|month|day|date|time|duration)($|_)',
+            r'(?i)(^|_)(margin|discount)($|_)',
+            r'(?i).*(%|percentage|ratio).*',
+            # Added patterns for IDs and non-currency identifiers
+            r'(?i).*(_)?id($|_|s$)',  # Catches ID, Id, _id, ids, etc.
+            r'(?i)(^|_)(identifier|key|code|ref|reference|num|number)($|_)',
+            r'(?i)(^|_)(row|record|entry|sequence|serial|order)(_)?num($|_)',
+            r'(?i)(^|_)(category|status|type|group|class|flag)($|_)',
+            r'(?i)(^|_)(name|description|title|label|comment|note)($|_)',
+            r'(?i)(^|_)(email|phone|address|url|link|path)($|_)',
+            r'(?i)(^|_)(latitude|longitude|lat|long|coord)($|_)'
+        ]
+
+        # Value patterns remain the same
+        self.value_patterns = [
+            rf'^[{self.currency_regex}]?\s*\d+(?:,\d{3})*(?:\.\d{{2}})?$',
+            r'^\d+(?:,\d{3})*(?:\.\d{2})?$',
+            r'^-?\d+(?:,\d{3})*(?:\.\d{2})?$',
+            rf'^[{self.currency_regex}]?\s*\d+(?:.\d{3})*(?:,\d{{2}})?$',
+            r'^\d+k$|^\d+M$|^\d+B$'
+        ]
+
+    def _calculate_confidence(self, column: str, values: pd.Series) -> float:
+        """Enhanced confidence calculation with strict ID and non-currency pattern handling."""
+        # Early return conditions for non-currency patterns
         column_lower = column.lower()
-        if any(re.search(pattern, column_lower) for pattern in self.duplicate_prone_patterns):
+
+        # Check for ID patterns and non-currency patterns first
+        if any(re.search(pattern, column_lower) for pattern in self.non_currency_patterns):
+            return 0
+
+        # Check for generic ID pattern (any column containing 'id' in any case)
+        if 'id' in column_lower:
+            return 0
+
+        score = 0
+        weights = {
+            'column_name': 40,
+            'value_format': 10,
+            'currency_symbols': 40,
+            'statistical': 10
+        }
+
+        # Early return for percentage-like columns
+        if self._is_likely_percentage(values):
+            return 0
+
+        # Column name analysis (35%)
+        if any(re.search(pattern, column_lower) for pattern in self.column_patterns):
             score += weights['column_name']
-        if any(re.search(pattern, column_lower) for pattern in self.unique_value_patterns):
-            score -= weights['column_name']
 
-        # Duplicate type analysis
-        total_duplicates = sum(len(dupes) for dupes in duplicates_info.values())
-        if total_duplicates > 0:
-            types_score = min(len(duplicates_info) * 10, weights['duplicate_types'])
-            score += types_score
+        # Value format analysis (35%)
+        valid_values = sum(self._is_currency_value(val) for val in values if pd.notna(val))
+        if len(values) > 0:
+            format_score = (valid_values / len(values)) * weights['value_format']
+            score += format_score
 
-        # Value distribution analysis
-        unique_ratio = len(self.data[column].unique()) / len(self.data[column])
-        distribution_score = (1 - unique_ratio) * weights['value_distribution']
-        score += distribution_score
+        # Currency symbol presence (20%)
+        currency_detected = sum(bool(self._detect_currencies_in_values(str(val)))
+                                for val in values if pd.notna(val))
+        if len(values) > 0:
+            symbol_score = (currency_detected / len(values)) * weights['currency_symbols']
+            score += symbol_score
+
+        # Statistical analysis (10%)
+        stats = self._calculate_statistics(values)
+        if stats:
+            mean_val = stats.get("mean", 0)
+            if mean_val < 0.0001 or mean_val > 1e8:
+                score -= weights['statistical']
+            elif 0.01 <= mean_val <= 1e8:
+                score += weights['statistical']
 
         return min(max(score, 0), 100)
 
-    def _detect_exact_duplicates(self, values: pd.Series) -> List[Tuple]:
-        """Detect completely identical values."""
-        duplicates = []
-        value_counts = values.value_counts()
-        duplicate_values = value_counts[value_counts > 1].index
+    # Rest of the methods remain the same
+    def _is_likely_percentage(self, values: pd.Series) -> bool:
+        """Check if values are likely to be percentages."""
+        try:
+            numeric_values = pd.to_numeric(values.dropna())
+            between_0_1 = (numeric_values >= 0) & (numeric_values <= 1)
+            between_0_100 = (numeric_values >= 0) & (numeric_values <= 100)
 
-        for value in duplicate_values:
-            indices = values[values == value].index.tolist()
-            for i in range(len(indices)):
-                for j in range(i + 1, len(indices)):
-                    duplicates.append((indices[i], indices[j], value, value))
+            if len(numeric_values) > 0:
+                pct_0_1 = between_0_1.mean()
+                pct_0_100 = between_0_100.mean()
 
-        return duplicates
+                return pct_0_1 > 0.9 or pct_0_100 > 0.9
+        except:
+            return False
+        return False
 
-    def _detect_case_duplicates(self, values: pd.Series) -> List[Tuple]:
-        """Detect values that differ only in letter case."""
-        case_duplicates = []
-        lowercase_dict = defaultdict(list)
+    def _extract_numeric_value(self, value: str) -> float:
+        """Extract numeric value from currency string."""
+        try:
+            value_str = str(value).upper().strip()
+            if value_str.endswith('K'):
+                return float(value_str[:-1]) * 1000
+            elif value_str.endswith('M'):
+                return float(value_str[:-1]) * 1000000
+            elif value_str.endswith('B'):
+                return float(value_str[:-1]) * 1000000000
 
-        for idx, value in values.items():
-            if pd.notna(value):
-                lowercase_dict[str(value).lower()].append((idx, value))
+            cleaned = re.sub(r'[^\d.-]', '', str(value))
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return np.nan
 
-        for entries in lowercase_dict.values():
-            if len(entries) > 1:
-                for i in range(len(entries)):
-                    for j in range(i + 1, len(entries)):
-                        if entries[i][1] != entries[j][1]:
-                            case_duplicates.append((
-                                entries[i][0],
-                                entries[j][0],
-                                entries[i][1],
-                                entries[j][1]
-                            ))
+    def _calculate_statistics(self, values: pd.Series) -> Dict[str, float]:
+        """Calculate statistical measures for the column."""
+        numeric_values = [self._extract_numeric_value(v) for v in values]
+        numeric_values = [v for v in numeric_values if not np.isnan(v)]
 
-        return case_duplicates
-
-    def _detect_fuzzy_duplicates(self, values: pd.Series, threshold: float = 80.0) -> List[Tuple]:
-        """Detect similar but not exactly matching values."""
-        fuzzy_duplicates = []
-        values_list = values.dropna()
-
-        for i, val1 in enumerate(values_list):
-            for j, val2 in enumerate(values_list[i + 1:], i + 1):
-                ratio = fuzz.ratio(str(val1), str(val2))
-                if ratio >= threshold and val1 != val2:
-                    fuzzy_duplicates.append((
-                        values_list.index[i],
-                        values_list.index[j],
-                        val1,
-                        val2
-                    ))
-
-        return fuzzy_duplicates
-
-    def _calculate_statistics(self, duplicates_info: Dict[str, List[Tuple]]) -> Dict[str, float]:
-        """Calculate statistical measures for duplicates."""
-        all_duplicates = [item for sublist in duplicates_info.values() for item in sublist]
-        if not all_duplicates:
+        if not numeric_values:
             return {}
 
-        unique_indices = set()
-        for dup in all_duplicates:
-            unique_indices.add(dup[0])
-            unique_indices.add(dup[1])
+        try:
+            return {
+                "mean": mean(numeric_values),
+                "std": stdev(numeric_values) if len(numeric_values) > 1 else 0,
+                "min": min(numeric_values),
+                "max": max(numeric_values),
+                "q1": np.percentile(numeric_values, 25),
+                "q3": np.percentile(numeric_values, 75)
+            }
+        except Exception:
+            return {}
 
-        return {
-            "total_duplicate_pairs": len(all_duplicates),
-            "unique_values_involved": len(unique_indices),
-            "average_duplicates_per_value": len(all_duplicates) / (len(unique_indices) or 1),
-            "duplicate_types_found": len(duplicates_info)
-        }
+    def _detect_currencies_in_values(self, value: str) -> Set[str]:
+        """Detect currencies in values."""
+        detected = set()
+        value_str = str(value).strip()
 
-    def _identify_issues(self, duplicates_info: Dict[str, List[Tuple]], total_rows: int) -> Dict[str, int]:
-        """Identify issues in the duplicate detection results."""
+        for symbol, code in self.currency_symbols.items():
+            if symbol in value_str:
+                detected.add(code)
+
+        for code in self.currency_codes:
+            if code in value_str.upper():
+                detected.add(code)
+
+        return detected
+
+    def _is_currency_value(self, value: Any) -> bool:
+        """Check if value matches currency format."""
+        if pd.isna(value):
+            return False
+
+        value_str = str(value).strip()
+
+        if any(symbol in value_str for symbol in self.currency_symbols):
+            return True
+
+        for pattern in self.value_patterns:
+            if re.match(pattern, value_str):
+                return True
+
+        if re.match(r'^-?\d+(\.\d{2})?$', value_str):
+            return True
+        if re.match(r'^-?\d{1,3}(,\d{3})*(\.\d{2})?$', value_str):
+            return True
+
+        return False
+
+    def analyze_column(self, column: str) -> ColumnAnalysis:
+        """Analyze a single column."""
+        values = self.data[column].dropna()
+        confidence = self._calculate_confidence(column, values)
+
+        is_currency = confidence >= self.confidence_threshold
+        detected_currencies = set()
+        if is_currency:
+            for value in values:
+                detected_currencies.update(self._detect_currencies_in_values(str(value)))
+
+        issues = self._identify_issues(values)
+        recommendations = self._generate_recommendations(issues, len(values))
+        statistics = self._calculate_statistics(values)
+
+        return ColumnAnalysis(
+            identified_as="CURRENCY" if is_currency else "NON_CURRENCY",
+            confidence=confidence,
+            sample_values=values.head(5).tolist(),
+            detected_currencies=list(detected_currencies) if is_currency else None,
+            total_rows=len(values),
+            issues=issues,
+            recommendations=recommendations,
+            statistics=statistics
+        )
+
+    def _identify_issues(self, values: pd.Series) -> Dict[str, int]:
+        """Identify issues in the column."""
         issues = {
-            "exact_duplicates": len(duplicates_info.get("exact", [])),
-            "case_inconsistencies": len(duplicates_info.get("case", [])),
-            "fuzzy_matches": len(duplicates_info.get("fuzzy", [])),
-            "format_inconsistencies": len(duplicates_info.get("whitespace", [])) +
-                                      len(duplicates_info.get("punctuation", [])),
-            "multiple_representations": len(duplicates_info.get("abbreviation", [])) +
-                                        len(duplicates_info.get("transposition", []))
+            "missing_values": 0,
+            "invalid_format": 0,
+            "negative_values": 0,
+            "inconsistent_currency": 0,
+            "decimal_precision_issues": 0,
+            "outliers": 0,
+            "zero_values": 0,
+            "mixed_formats": 0
         }
+
+        stats = self._calculate_statistics(values)
+        if not stats:
+            return issues
+
+        detected_currencies = set()
+        formats_used = set()
+
+        for value in values:
+            if pd.isna(value):
+                issues["missing_values"] += 1
+                continue
+
+            str_value = str(value)
+            curr_symbols = self._detect_currencies_in_values(str_value)
+            detected_currencies.update(curr_symbols)
+
+            formats_used.add('symbol' if curr_symbols else 'no_symbol')
+
+            try:
+                numeric_value = self._extract_numeric_value(str_value)
+
+                if np.isnan(numeric_value):
+                    issues["invalid_format"] += 1
+                    continue
+
+                if numeric_value < 0:
+                    issues["negative_values"] += 1
+                if numeric_value == 0:
+                    issues["zero_values"] += 1
+
+                iqr = stats["q3"] - stats["q1"]
+                if (numeric_value < stats["q1"] - 1.5 * iqr or
+                        numeric_value > stats["q3"] + 1.5 * iqr):
+                    issues["outliers"] += 1
+
+                if '.' in str_value and len(str_value.split('.')[-1]) != 2:
+                    issues["decimal_precision_issues"] += 1
+
+            except (ValueError, TypeError):
+                issues["invalid_format"] += 1
+
+        if len(detected_currencies) > 1:
+            issues["inconsistent_currency"] = len(values)
+        if len(formats_used) > 1:
+            issues["mixed_formats"] = len(values)
 
         return {k: v for k, v in issues.items() if v > 0}
 
     def _generate_recommendations(self, issues: Dict[str, int], total_rows: int) -> List[str]:
-        """Generate recommendations based on identified issues."""
+        """Generate recommendations based on issues."""
         recommendations = []
 
         issue_thresholds = {
-            "exact_duplicates": 0.01,
-            "case_inconsistencies": 0.02,
-            "fuzzy_matches": 0.05,
-            "format_inconsistencies": 0.03,
-            "multiple_representations": 0.02
+            "missing_values": 0.05,
+            "invalid_format": 0.02,
+            "negative_values": 0.01,
+            "inconsistent_currency": 0,
+            "decimal_precision_issues": 0.05,
+            "outliers": 0.01,
+            "zero_values": 0.05,
+            "mixed_formats": 0
         }
 
         recommendations_map = {
-            "exact_duplicates": "Remove or merge exact duplicate records",
-            "case_inconsistencies": "Standardize case formatting across all values",
-            "fuzzy_matches": "Review and resolve similar entries that may represent the same entity",
-            "format_inconsistencies": "Implement consistent formatting rules for whitespace and punctuation",
-            "multiple_representations": "Standardize abbreviations and value representations"
+            "missing_values": "Handle missing values: consider imputation or removal based on business context.",
+            "invalid_format": "Standardize currency format across all values.",
+            "negative_values": "Review negative values to ensure they represent valid transactions.",
+            "inconsistent_currency": "Normalize all values to a single currency using appropriate exchange rates.",
+            "decimal_precision_issues": "Standardize decimal precision to exactly two decimal places.",
+            "outliers": "Investigate outlier values that may indicate data entry errors or unusual transactions.",
+            "zero_values": "Review zero values to determine if they represent actual transactions or data errors.",
+            "mixed_formats": "Standardize currency notation (either always use symbols or never use them)."
         }
 
         for issue, count in issues.items():
@@ -194,71 +328,37 @@ class DuplicateDetectionQualityDetector:
 
         return recommendations
 
-    def analyze_column(self, column: str) -> DuplicateAnalysis:
-        """Analyze a single column for duplicates."""
-        values = self.data[column].dropna()
-
-        # Detect various types of duplicates
-        duplicates_info = {
-            "exact": self._detect_exact_duplicates(values),
-            "case": self._detect_case_duplicates(values),
-            "fuzzy": self._detect_fuzzy_duplicates(values)
-        }
-
-        # Calculate confidence score
-        confidence = self._calculate_confidence(column, duplicates_info)
-
-        # Calculate total duplicates and percentage
-        total_duplicates = sum(len(dupes) for dupes in duplicates_info.values())
-        duplicate_percentage = (total_duplicates / len(values)) * 100 if len(values) > 0 else 0
-
-        # Identify issues and generate recommendations
-        issues = self._identify_issues(duplicates_info, len(values))
-        recommendations = self._generate_recommendations(issues, len(values))
-
-        # Calculate statistics
-        statistics = self._calculate_statistics(duplicates_info)
-
-        return DuplicateAnalysis(
-            column_name=column,
-            identified_as="DUPLICATE" if confidence >= self.confidence_threshold else "NON_DUPLICATE",
-            confidence=confidence,
-            duplicate_types=duplicates_info,
-            sample_duplicates=list(duplicates_info.get("exact", []))[:5],
-            total_duplicates=total_duplicates,
-            duplicate_percentage=duplicate_percentage,
-            issues=issues,
-            recommendations=recommendations,
-            statistics=statistics
-        )
-
-    def run(self) -> Dict[str, DuplicateAnalysis]:
+    def run(self) -> Dict[str, ColumnAnalysis]:
         """Run analysis on all columns."""
-        results = {column: self.analyze_column(column) for column in self.data.columns}
-        return {col: analysis for col, analysis in results.items()
-                if analysis.identified_as == "DUPLICATE"}
-
+        all_results = {column: self.analyze_column(column) for column in self.data.columns}
+        return {col: analysis for col, analysis in all_results.items()
+                if analysis.identified_as == "CURRENCY"}
 
 # Example usage
 if __name__ == "__main__":
     # Example data
     data = {
-        "name": ["John Smith", "john smith", "John  Smith", "Jane Doe", "Jane  Doe"],
-        "email": ["john@example.com", "john@example.com", "jane@example.com", "jane@example.com", "jane@test.com"],
-        "id": ["001", "002", "003", "004", "005"]
+        "amount": ["$19.99", "50.00", "€100.50", "$500", "₹1000.00", "-1000", "1000000", "1,000,000.99", "$10.99"],
+        "total_cost": ["$10", "£100", "€99.99", "-200", "₹5000", "120", "$1,000.99", "$500.00", "$200"],
+        "profit": ["1000", "1500", "$2000", "$5000", "1000.25", "150.75", "$25000", "$25000", "Invalid"],
+        "percentages": [0.1, 0.25, 0.5, 0.75, 1, 0.15, 0.33, 0.66, 0.99]
     }
-    df = pd.DataFrame(data)
-
-    detector = DuplicateDetectionQualityDetector(df)
+    # file_path = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
+    file_path = r"C:\Users\admin\Downloads\fifa21_raw_data_v2.csv"
+    df = pd.read_csv(file_path, encoding='utf-8')
+    #df = pd.DataFrame(data)
+    detector = CurrencyProcessingQualityDetector(df)
     report = detector.run()
 
-    # Display results
+    # Display detailed results for currency columns only
     for column, analysis in report.items():
         print(f"\nColumn: {column}")
         print(f"Classification: {analysis.identified_as}")
         print(f"Confidence: {analysis.confidence:.2f}%")
-        print(f"Total Duplicates: {analysis.total_duplicates}")
-        print(f"Duplicate Percentage: {analysis.duplicate_percentage:.2f}%")
+        print(f"Sample Values: {analysis.sample_values}")
+
+        if analysis.detected_currencies:
+            print(f"Detected Currencies: {analysis.detected_currencies}")
 
         if analysis.issues:
             print("\nIssues Detected:")
@@ -273,4 +373,6 @@ if __name__ == "__main__":
         if analysis.statistics:
             print("\nStatistics:")
             for stat, value in analysis.statistics.items():
-                print(f"- {stat}: {value}")
+                print(f"- {stat}: {value:.2f}")
+
+        print("-" * 50)

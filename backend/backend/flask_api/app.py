@@ -1,73 +1,50 @@
-"""
-Application factory function for creating Flask instances.
-
-This module defines the create_app() function which returns an instance of
-the Flask application.
-"""
-
-import os
-from flask import Flask, Blueprint, jsonify
-from backend.flask_api.bp_routes import pipeline_bp
+from flask import Flask
+from flask_cors import CORS
 import logging
 
-def create_app(config_name='default'):
-    """
-    Create and configure the Flask application instance.
+from backend.flask_api.config import get_config
+from backend.flask_api.routes.ingestion.file_routes import create_file_routes
+from backend.flask_api.routes.processing.pipeline_routes import create_pipeline_routes
+from backend.data_pipeline.source.file.file_service import FileService
+from backend.data_pipeline.pipeline_service import PipelineService
 
-    Args:
-        config_name (str): Name of the configuration to use. Defaults to 'default'.
-
-    Returns:
-        Flask: The configured Flask application instance.
+def create_app(config_name='development'):
     """
+    Application factory for creating Flask application.
+    """
+    # Load configuration
+    config = get_config(config_name)
+
+    # Create Flask app
     app = Flask(__name__)
+    app.config.from_object(config)
 
-    # Set up basic logging to the terminal
+    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()]
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Ensure app logger inherits the basic configuration
-    app.logger.setLevel(logging.INFO)
+    # Initialize services
+    file_service = FileService()
+    pipeline_service = PipelineService()
 
-    # Configure the app (default settings; adjust as needed)
-    if config_name == 'development':
-        app.config['DEBUG'] = True
-    else:
-        app.config['DEBUG'] = False
-
-    # Set configurations for file handling
-    app.config['UPLOAD_FOLDER'] = 'uploads'
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-    app.config['ALLOWED_EXTENSIONS'] = {'csv', 'json', 'xlsx', 'parquet'}
-
-    # Ensure upload folder exists
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
+    # Create blueprints
+    file_bp = create_file_routes(file_service)
+    pipeline_bp = create_pipeline_routes(pipeline_service)
 
     # Register blueprints
-    app.register_blueprint(pipeline_bp, url_prefix='/pipeline-api')
+    app.register_blueprint(file_bp, url_prefix='/api/files')
+    app.register_blueprint(pipeline_bp, url_prefix='/api/pipelines')
 
-    # Define a simple route for testing
-    @app.route('/')
-    def index():
-        return "Welcome to the Data Pipeline API!"
-
-    # Configure app logger
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-
-    # Add handler to Flask app logger
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.INFO)
-
-    # Ensure logs are propagated
-    app.logger.propagate = True
+    # Apply CORS with detailed configuration
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": config.CORS_SETTINGS.get('origins', ['*']),
+            "methods": config.CORS_SETTINGS.get('methods', ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE']),
+            "allow_headers": config.CORS_SETTINGS.get('allow_headers', ['Content-Type', 'Authorization']),
+            "supports_credentials": True
+        }
+    })
 
     return app
-
-if __name__ == '__main__':
-    create_app().run(debug=True)

@@ -60,7 +60,6 @@ class FileService:
             dict: Processing result containing status and relevant data
         """
         filename = getattr(file_obj, 'filename', 'unknown')
-        logger.info(f"Starting file upload process for: {filename}")
 
         try:
             # Delegate processing to FileManager

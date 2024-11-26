@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import re
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List
 from dataclasses import dataclass
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
@@ -20,7 +20,7 @@ class AddressAnalysis:
     statistics: Dict[str, Any] = None
 
 
-class AddressQualityDetector:
+class AddressLocationQualityDetector:
     def __init__(self, data: pd.DataFrame, confidence_threshold: float = 30.0):
         self.data = data
         self.confidence_threshold = confidence_threshold
@@ -301,6 +301,20 @@ class AddressQualityDetector:
                 if analysis.identified_as == "ADDRESS"}
 
 
+def format_time(seconds):
+    """Convert seconds into a human-readable format"""
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        return f"{int(minutes)} minutes and {remaining_seconds:.2f} seconds"
+    else:
+        hours = seconds // 3600
+        remaining_minutes = (seconds % 3600) // 60
+        remaining_seconds = seconds % 60
+        return f"{int(hours)} hours, {int(remaining_minutes)} minutes and {remaining_seconds:.2f} seconds"
+
 # Example usage
 if __name__ == "__main__":
     # Example data
@@ -331,7 +345,7 @@ if __name__ == "__main__":
     file_path = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
     df = pd.read_csv(file_path, encoding='windows-1252')
     # df = pd.DataFrame(data)
-    detector = AddressQualityDetector(df)
+    detector = AddressLocationQualityDetector(df)
     report = detector.run()
 
     # Display detailed results for address columns only

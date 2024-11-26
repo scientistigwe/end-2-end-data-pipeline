@@ -1,158 +1,126 @@
-from flask import request, jsonify
-from werkzeug.utils import secure_filename
+from flask import Blueprint, request, jsonify
 from werkzeug.datastructures import FileStorage
-from backend.flask_api.bp_routes import pipeline_bp
-from backend.data_pipeline.source.file.file_service import FileService
-from backend.data_pipeline.source.file.file_config import Config
 import logging
-from typing import Dict, List, Any, Union
-from io import BytesIO
+from flask_cors import CORS  # Import flask_cors
+from backend.data_pipeline.source.file.file_service import FileService
+from backend.flask_api.config import Config
+from typing import Dict, Any
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-service = FileService()
-
-
-class FileWrapper:
-    """Wrapper class for file objects to provide consistent interface."""
-
-    def __init__(self, file: FileStorage):
-        self._file = file
-        self._content: Union[bytes, None] = None
-        self.filename = secure_filename(file.filename)
-
-    def read(self) -> bytes:
-        """Read file content, caching it for multiple reads."""
-        if self._content is None:
-            self._content = self._file.read()
-            self._file.seek(0)  # Reset file pointer
-        return self._content
-
-    def seek(self, offset: int) -> None:
-        """Implement seek for compatibility."""
-        self._file.seek(offset)
-
-    @property
-    def stream(self) -> BytesIO:
-        """Provide stream access to file content."""
-        return BytesIO(self.read())
-
-
-def process_single_file(file: FileStorage) -> Dict[str, Any]:
+def create_file_routes(file_service: FileService) -> Blueprint:
     """
-    Process a single file upload.
+    Create file upload routes blueprint.
 
     Args:
-        file: The uploaded file object
+        file_service (FileService): Service for handling file operations
 
     Returns:
-        Dict containing processing results
+        Blueprint: Flask blueprint with file routes
     """
-    try:
-        if not file or not file.filename:
+    file_bp = Blueprint('file_bp', __name__)
+
+    def process_file(file: FileStorage) -> Dict[str, Any]:
+        """
+        Process a single uploaded file.
+
+        Args:
+            file (FileStorage): Uploaded file object
+
+        Returns:
+            Dict: Processing result
+        """
+        try:
+            # Basic file validation
+            if not file or not file.filename:
+                return {'status': 'error', 'message': 'Invalid file'}
+
+            # Check file type (ensure extension is in allowed extensions)
+            file_extension = file.filename.split('.')[-1].lower()
+            if file_extension not in Config.ALLOWED_EXTENSIONS:
+                return {
+                    'status': 'error',
+                    'message': f'Unsupported file type: {file.filename}'
+                }
+
+            # Process file
+            result = file_service.handle_file_upload(file)
+            return result
+
+        except Exception as e:
+            logger.error(f"File processing error: {e}")
             return {
+                'filename': file.filename,
                 'status': 'error',
-                'message': 'Invalid file object'
+                'message': str(e)
             }
 
-        if not Config.allowed_file(file.filename):
-            return {
-                'status': 'error',
-                'message': f'File type not allowed: {file.filename}'
-            }
+    @file_bp.route('/upload', methods=['POST'])
+    def upload_files():
+        """
+        Handle multiple file uploads.
 
-        file_wrapper = FileWrapper(file)
-        result = service.handle_file_upload(file_wrapper)
+        Returns:
+            JSON response with upload results
+        """
+        try:
+            files = request.files.getlist('files')
 
-        logger.info(f"Successfully processed file: {file.filename}")
-        return result
+            if not files:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No files provided'
+                }), 400
 
-    except Exception as e:
-        logger.error(f"Error processing file {file.filename}: {str(e)}", exc_info=True)
-        return {
-            'filename': file.filename,
-            'status': 'error',
-            'message': str(e)
-        }
+            # Process files
+            results = [process_file(file) for file in files]
 
+            # Check overall processing status
+            if all(result['status'] == 'error' for result in results):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'All file processing failed',
+                    'details': results
+                }), 400
 
-@pipeline_bp.route('/file-source', methods=['POST', 'OPTIONS'])
-def handle_file_source() -> tuple[Any, int]:
-    """
-    Handle multiple file uploads with comprehensive processing.
+            return jsonify({
+                'status': 'success',
+                'message': f'Processed {len(files)} files',
+                'results': results
+            }), 200
 
-    Returns:
-        Tuple of (response_json, status_code)
-    """
-    logger.info('Handle File Source started')
-
-    if request.method == 'OPTIONS':
-        return '', 204
-
-    try:
-        files = request.files.getlist('files')
-        if not files:
+        except Exception as e:
+            logger.error(f"Upload processing error: {e}")
             return jsonify({
                 'status': 'error',
-                'message': 'No files provided in request'
-            }), 400
+                'message': 'Server error during upload',
+                'error': str(e)
+            }), 500
 
-        file_results: List[Dict[str, Any]] = []
+    @file_bp.route('/metadata', methods=['GET'])
+    def get_metadata():
+        """
+        Retrieve metadata for processed files.
 
-        for file in files:
-            result = process_single_file(file)
-            file_results.append(result)
-
-        # Check if all files failed processing
-        if all(result['status'] == 'error' for result in file_results):
+        Returns:
+            JSON response with file metadata
+        """
+        try:
+            metadata = file_service.get_metadata()
+            return jsonify({
+                'status': 'success',
+                'metadata': metadata
+            }), 200
+        except Exception as e:
+            logger.error(f"Metadata retrieval error: {e}")
             return jsonify({
                 'status': 'error',
-                'message': 'All file processing attempts failed',
-                'details': file_results
-            }), 400
+                'message': f'Metadata retrieval failed: {e}'
+            }), 500
 
-        # Return success if at least one file was processed
-        return jsonify({
-            'status': 'success',
-            'message': f'Processed {len(files)} files',
-            'results': file_results
-        }), 200
+    @file_bp.route('/upload', methods=['OPTIONS'])
+    def handle_options():
+        return '', 200  # Ensure OPTIONS requests are accepted
 
-    except Exception as e:
-        logger.error(f"Unexpected error in file processing: {str(e)}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'message': 'Server error during file processing',
-            'error': str(e)
-        }), 500
+    return file_bp
 
-
-@pipeline_bp.route('/get-metadata', methods=['GET'])
-def get_metadata() -> tuple[Any, int]:
-    """
-    Retrieve metadata for the last processed file.
-
-    Returns:
-        Tuple of (response_json, status_code)
-    """
-    try:
-        metadata = service.file_manager.get_metadata()
-
-        if 'error' in metadata:
-            return jsonify({
-                'status': 'error',
-                'message': metadata['error']
-            }), 400
-
-        return jsonify({
-            'status': 'success',
-            'metadata': metadata
-        }), 200
-
-    except Exception as e:
-        logger.error(f"Error retrieving metadata: {str(e)}", exc_info=True)
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to retrieve metadata: {str(e)}'
-        }), 500

@@ -1,5 +1,6 @@
 from flask import Blueprint
 
-file_system_bp = Blueprint('file_system', __name__)
+pipeline_bp = Blueprint('pipeline_bp', __name__)
 
-from .ingestion import file_system_routes
+from .ingestion import file_routes
+from .processing import pipeline_routes

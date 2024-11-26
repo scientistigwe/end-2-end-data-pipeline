@@ -1,35 +1,31 @@
 export default class ApiClient {
-  constructor(baseURL = "http://127.0.0.1:5000") {
+  constructor(baseURL = "http://127.0.0.1:5000/api") {
     this.baseURL = baseURL;
+  }
+
+  // Generic error handler
+  async handleResponse(response) {
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data; // Extract the data from the standardized response
   }
 
   async postFileSource(formData) {
     try {
-      // Log the FormData contents before sending
       console.log("Sending FormData contents:");
-      for (let [key, value] of formData.entries()) {
-        console.log(
-          `${key}:`,
-          value instanceof File ? `File: ${value.name}` : value
-        );
-      }
 
-      const response = await fetch(`${this.baseURL}/pipeline-api/file-source`, {
+      const response = await fetch(`${this.baseURL}/files/upload`, {
         method: "POST",
-        // Remove the Content-Type header to let the browser set it automatically with the boundary
         headers: {
-          // Add CORS headers if needed
           Accept: "application/json",
         },
-        // Important: Include credentials if you need to handle cookies
-        credentials: "include",
+        credentials: "include",  // Ensure credentials are included
         body: formData,
       });
 
-      // Log the raw response for debugging
-      console.log("Raw response:", response);
-
-      // Handle non-JSON responses
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error(`Received non-JSON response: ${await response.text()}`);
@@ -37,15 +33,8 @@ export default class ApiClient {
 
       const data = await response.json();
 
-      // Log the parsed response data
-      console.log("Parsed response data:", data);
-
       if (!response.ok) {
-        throw new Error(
-          `HTTP error! Status: ${response.status}, Message: ${
-            data.message || "Unknown error"
-          }`
-        );
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.message || "Unknown error"}`);
       }
 
       return data;
@@ -55,138 +44,128 @@ export default class ApiClient {
         stack: error.stack,
         cause: error.cause,
       });
+
+      if (error.message.includes("CORS")) {
+        alert("CORS Error: Please ensure the backend allows requests from this origin.");
+      }
+
       throw error;
     }
   }
 
   async getFileMetadata() {
     try {
-      const response = await fetch(
-        `${this.baseURL}/pipeline-api/file-metadata`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-          credentials: "include",
-        }
-      );
+      const response = await fetch(`${this.baseURL}/files/metadata`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        credentials: "include",  // Ensure credentials are included
+      });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `HTTP error! Status: ${response.status}, Message: ${
-            errorData.message || "Unknown error"
-          }`
-        );
-      }
-
-      return await response.json();
+      return await this.handleResponse(response);
     } catch (error) {
-      console.error("Error in getFileMetadata:", error);
+      console.error('Error Fetching Metadata:', error);
+      if (error.message.includes("CORS")) {
+        alert("CORS Error: Please ensure the backend allows requests from this origin.");
+      }
       throw error;
     }
   }
 
-async getPipelineStatus() {
-  try {
-    console.log('Attempting to fetch pipeline status from:',
-      `${this.baseURL}/pipeline-api/pipelines/status`
-    );
+  async getPipelineStatus() {
+    try {
+      const response = await fetch(`${this.baseURL}/pipelines/status`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json', // Ensure content type is correct
+        },
+        credentials: 'include'  // Ensure credentials are included
+      });
 
-    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/status`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      credentials: 'include'
-    });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
 
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-    // More comprehensive error handling
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error response body:', errorText);
-
-      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error getting pipeline status:', error);
+      if (error.message.includes("CORS")) {
+        alert("CORS Error: Please ensure the backend allows requests from this origin.");
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    console.log('Parsed pipeline status data:', data);
-
-    return data;
-  } catch (error) {
-    console.error('Full error in getPipelineStatus:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
-    throw error;
   }
-}
 
   async startPipeline(config) {
-    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(config)
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/pipelines/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(config),
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Error starting pipeline:', error);
+      throw error;
     }
-
-    return await response.json();
   }
 
   async stopPipeline(pipelineId) {
-    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/stop`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/pipelines/${pipelineId}/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Error stopping pipeline:', error);
+      throw error;
     }
-
-    return await response.json();
   }
 
   async makePipelineDecision(pipelineId, decision) {
-    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/decision`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ decision })
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/pipelines/${pipelineId}/decision`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ decision }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Error making pipeline decision:', error);
+      throw error;
     }
-
-    return await response.json();
   }
 
   async getPipelineLogs(pipelineId) {
-    const response = await fetch(`${this.baseURL}/pipeline-api/pipelines/${pipelineId}/logs`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    try {
+      const response = await fetch(`${this.baseURL}/pipelines/${pipelineId}/logs`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Error getting pipeline logs:', error);
+      throw error;
     }
-
-    return await response.json();
   }
 }

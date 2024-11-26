@@ -172,6 +172,19 @@ class MessageBroker:
             'total_callbacks': sum(len(sub.callbacks) for sub in self.module_subscriptions.values())
         }
 
+    def debug_status(self):
+        """Get detailed status of message broker"""
+        status = {
+            'registered_modules': list(self.module_subscriptions.keys()),
+            'pending_subscriptions': {k: len(v) for k, v in self.pending_subscriptions.items()},
+            'total_callbacks': sum(len(sub.callbacks) for sub in self.module_subscriptions.values()),
+            'active_messages': len(self.messages)
+        }
+
+        # Use the logger instead of print
+        self.logger.debug(f"Message Broker Debug Status: {status}")
+        return status
+
     def __del__(self):
         """Cleanup resources"""
         if hasattr(self, 'thread_pool'):

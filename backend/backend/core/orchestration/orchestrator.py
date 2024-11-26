@@ -325,20 +325,16 @@ class DataOrchestrator:
             'failed': failed
         }
 
-    def _log_registration_summary(self, registered: List[ModuleIdentifier], failed: List[ModuleIdentifier]) -> None:
-        """Log a summary of module registration results"""
-        total = len(registered) + len(failed)
-        success_rate = (len(registered) / total * 100) if total > 0 else 0
+    def print_registered_modules(self):
+        """Utility method to print all registered modules"""
+        if not hasattr(self, 'message_broker'):
+            print("Message broker not initialized")
+            return
 
-        self.logger.info(f"Module registration summary:")
-        self.logger.info(f"Total modules: {total}")
-        self.logger.info(f"Successfully registered: {len(registered)} ({success_rate:.1f}%)")
-        self.logger.info(f"Failed to register: {len(failed)}")
-
-        if failed:
-            self.logger.warning("Failed modules:")
-            for module in failed:
-                self.logger.warning(f"  - {module.get_tag()}")
+        registered_modules = self.message_broker.get_registered_modules()
+        print("Registered Modules:")
+        for module in registered_modules:
+            print(f"- {module}")
 
     def _setup_routing_graph(self):
         """
@@ -395,8 +391,12 @@ class DataOrchestrator:
     def handle_source_data(self, message: ProcessingMessage) -> str:
         """Process incoming source data with enhanced error handling and retry logic"""
         try:
+            self.logger.info(f"Handling source data: {message}")
+
             pipeline_id = str(uuid.uuid4())
             source_type = message.source_identifier.module_name.lower()
+
+            self.logger.info(f"Generated pipeline ID: {pipeline_id}, Source Type: {source_type}")
 
             # Extract and validate data
             source_data = message.content.get('data')
@@ -424,6 +424,7 @@ class DataOrchestrator:
 
             # Create and publish ingestion message
             ingestion_message = self._create_ingestion_message(pipeline_id, staging_id)
+            self.logger.info(f"Publishing ingestion message: {ingestion_message}")
             self.message_broker.publish(ingestion_message)
 
             self.logger.info(f"Pipeline {pipeline_id} initiated for {source_type} data")
@@ -451,6 +452,8 @@ class DataOrchestrator:
         for module_tag, callback in critical_subscriptions:
             try:
                 # Attempt subscription with enhanced error handling
+                self.logger.info(f"Attempting to subscribe to module tag: {module_tag}")
+                self.logger.info(f"Successfully subscribed to {module_tag}")
                 self.message_broker.subscribe_to_module(module_tag, callback)
                 successful_subscriptions.append(module_tag)
                 self.logger.info(f"Successfully subscribed to {module_tag}")
@@ -768,22 +771,22 @@ class DataOrchestrator:
             }
         )
 
-    def _log_registration_summary(self, registered: List[ModuleIdentifier], failed: List[ModuleIdentifier]):
-        """Log comprehensive registration summary"""
+    def _log_registration_summary(self, registered: List[ModuleIdentifier], failed: List[ModuleIdentifier]) -> None:
+        """Log a summary of module registration results"""
         total = len(registered) + len(failed)
-        success_rate = (len(registered) / total) * 100 if total > 0 else 0
+        success_rate = (len(registered) / total * 100) if total > 0 else 0
 
         self.logger.info(f"""
-Module Registration Summary:
-Total Attempted: {total}
-Successfully Registered: {len(registered)} ({success_rate:.1f}%)
-Failed Registrations: {len(failed)}
-""")
+        Module Registration Summary:
+        Total Attempted: {total}
+        Successfully Registered: {len(registered)} ({success_rate:.1f}%)
+        Failed Registrations: {len(failed)}
+        """)
 
         if failed:
-            self.logger.error("Failed Modules:")
+            self.logger.warning("Failed modules:")
             for module in failed:
-                self.logger.error(f"- {module.get_tag()}")
+                self.logger.warning(f"  - {module.get_tag()}")
 
     def __del__(self):
         """Enhanced cleanup with logging"""

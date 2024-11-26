@@ -18,9 +18,7 @@ import useFileSource from "../hooks/useFileSource";
 const FileSystemForm = () => {
   const [uploadType, setUploadType] = useState("single");
   const [selectedFiles, setSelectedFiles] = useState(null);
-  const { handleApiRequest, response, loading, error } = useFileSource(
-    "http://127.0.0.1:5000"
-  );
+  const { handleApiRequest, response, loading, error } = useFileSource();
   const allowedFormats = [".csv", ".json", ".parquet", ".xlsx"];
 
   const handleFileChange = (event) => {
@@ -122,11 +120,7 @@ const FileSystemForm = () => {
                   style={{ marginBottom: "8px" }}
                   key={uploadType}
                 />
-                <Typography
-                  variant="caption"
-                  color="textSecondary"
-                  display="block"
-                >
+                <Typography variant="caption" color="textSecondary" display="block">
                   Allowed formats: {allowedFormats.join(", ")}
                 </Typography>
                 {selectedFiles && (
@@ -144,9 +138,7 @@ const FileSystemForm = () => {
                 variant="contained"
                 color="primary"
                 disabled={loading || !selectedFiles}
-                startIcon={
-                  loading && <CircularProgress size={20} color="inherit" />
-                }
+                startIcon={loading && <CircularProgress size={20} color="inherit" />}
               >
                 {loading ? "Processing..." : "Submit"}
               </Button>
@@ -159,17 +151,35 @@ const FileSystemForm = () => {
 
               {response && (
                 <Alert severity="success" sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2">Response:</Typography>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      marginTop: "8px",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    {JSON.stringify(response, null, 2)}
-                  </pre>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Response:
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Response Keys:
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {JSON.stringify(Object.keys(response), null, 2)}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Message:
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {JSON.stringify(response.message, null, 2)}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Status:
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {JSON.stringify(response.status, null, 2)}
+                    </Typography>
+                  </Box>
                 </Alert>
               )}
             </Stack>

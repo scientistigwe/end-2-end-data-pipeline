@@ -63,3 +63,17 @@ class BasicDataValidationQualityDetector:
             "null_checks": self.detect_null_checks(),
             "empty_string_issues": self.detect_empty_strings(),
         }
+
+def format_time(seconds):
+    """Convert seconds into a human-readable format"""
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        return f"{int(minutes)} minutes and {remaining_seconds:.2f} seconds"
+    else:
+        hours = seconds // 3600
+        remaining_minutes = (seconds % 3600) // 60
+        remaining_seconds = seconds % 60
+        return f"{int(hours)} hours, {int(remaining_minutes)} minutes and {remaining_seconds:.2f} seconds"

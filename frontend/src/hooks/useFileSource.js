@@ -1,22 +1,25 @@
 import { useState } from "react";
 import ApiClient from "../utils/api-client";
-import usePipeline from "./usePipeline"; // Import the usePipeline hook
+import usePipeline from "./usePipeline";
 
-const useFileSource = (baseURL) => {
+const useFileSource = () => {
+  const baseURL = process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:5000/api"; // Ensure /api is included
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState(null);
   const [error, setError] = useState(null);
+
+  // Create ApiClient with the correct base URL
   const apiClient = new ApiClient(baseURL);
 
-  // Use the usePipeline hook
-  const { triggerRefreshOnFileUpload } = usePipeline(apiClient);
+  // Use the usePipeline hook with the same apiClient
+  const { triggerPipelineMonitoring } = usePipeline(apiClient);
 
   const handleApiRequest = async (formData, actionType) => {
-    setLoading(true);
-    setError(null);
-    setResponse(null);
-
     try {
+      setLoading(true);
+      setError(null);
+      setResponse(null);
+
       if (actionType === "upload") {
         if (!formData.get("files")) {
           throw new Error("No files selected.");
@@ -25,8 +28,8 @@ const useFileSource = (baseURL) => {
         const result = await apiClient.postFileSource(formData);
         setResponse(result);
 
-        // Trigger pipeline refresh after successful file upload
-        triggerRefreshOnFileUpload(result);
+        // Trigger pipeline monitoring after successful file upload
+        triggerPipelineMonitoring();
       } else if (actionType === "metadata") {
         const result = await apiClient.getFileMetadata();
         setResponse(result);

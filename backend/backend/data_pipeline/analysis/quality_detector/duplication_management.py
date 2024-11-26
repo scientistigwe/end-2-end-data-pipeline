@@ -1,502 +1,351 @@
-import pandas as pd
-import re
-from typing import List, Tuple, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Set, Tuple, Optional, Any
 import pandas as pd
 import numpy as np
+from collections import defaultdict
+import logging
+from datetime import datetime
+import time
+from tabulate import tabulate
+import colorama
+from colorama import Fore, Style
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+from itertools import combinations
+import multiprocessing
+from datasketch import MinHash, MinHashLSH
 import re
-from typing import Any, List, Tuple, Set
-from rapidfuzz import fuzz
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-import datetime
+
+colorama.init()
 
 
-class ComprehensiveDuplicateDetector:
-    def __init__(self, data: pd.DataFrame):
-        """
-        Initialize the duplicate detector with a dataset.
-        Args:
-            data: A pandas DataFrame containing the data to analyze.
-        """
-        self.data = data
-
-    @staticmethod
-    def _normalize_text(value: Optional[str]) -> str:
-        """
-        Normalize text by removing extra spaces, converting to lowercase, and handling NaNs.
-        Args:
-            value: Input string or None.
-        Returns:
-            Normalized string.
-        """
-        if not isinstance(value, str):
-            return ""
-        return re.sub(r"\s+", " ", value.strip().lower())
-
-    def find_exact_duplicates(self) -> List[Tuple[int, int]]:
-        """Find exact duplicates in the dataset."""
-        duplicates = []
-        for col in self.data.columns:
-            unique_values = {}
-            for idx, value in self.data[col].iteritems():
-                if value in unique_values:
-                    duplicates.append((unique_values[value], idx))
-                else:
-                    unique_values[value] = idx
-        return duplicates
-
-    def find_partial_duplicates(self) -> List[Tuple[int, int]]:
-        """Find duplicates based on partial matches."""
-        duplicates = []
-        for col in self.data.columns:
-            for i in range(len(self.data)):
-                for j in range(i + 1, len(self.data)):
-                    if isinstance(self.data.iloc[i, self.data.columns.get_loc(col)], str) and isinstance(
-                            self.data.iloc[j, self.data.columns.get_loc(col)], str
-                    ):
-                        if self.data.iloc[i, self.data.columns.get_loc(col)] in self.data.iloc[
-                            j, self.data.columns.get_loc(col)
-                        ] or self.data.iloc[j, self.data.columns.get_loc(col)] in self.data.iloc[
-                            i, self.data.columns.get_loc(col)
-                        ]:
-                            duplicates.append((i, j))
-        return duplicates
-
-    def find_fuzzy_duplicates(self, column: str, threshold: int = 85) -> List[Tuple[int, int]]:
-        """
-        Find fuzzy matches in a specific column using simple text comparison.
-        Args:
-            column: The column to check for duplicates.
-            threshold: Minimum similarity percentage (0-100) to consider as a match.
-        Returns:
-            List of tuple pairs (row_index_1, row_index_2) for fuzzy duplicates.
-        """
-        from rapidfuzz import fuzz
-
-        duplicates = []
-        column_data = self.data[column].fillna("").astype(str)
-        for i in range(len(column_data)):
-            for j in range(i + 1, len(column_data)):
-                if fuzz.ratio(column_data[i], column_data[j]) >= threshold:
-                    duplicates.append((i, j))
-        return duplicates
-
-    def find_whitespace_sensitive_duplicates(self, column: str) -> List[Tuple[int, int]]:
-        """
-        Detect duplicates that differ only in leading/trailing whitespaces in a column.
-        Args:
-            column: The column to check.
-        Returns:
-            List of tuple pairs (row_index_1, row_index_2) for whitespace-sensitive duplicates.
-        """
-        duplicates = []
-        column_data = self.data[column].fillna("").astype(str)
-        for i in range(len(column_data)):
-            for j in range(i + 1, len(column_data)):
-                if column_data[i].strip() == column_data[j].strip() and column_data[i] != column_data[j]:
-                    duplicates.append((i, j))
-        return duplicates
-
-    def find_cross_field_duplicates(self, column1: str, column2: str) -> List[Tuple[int, int]]:
-        """
-        Find rows where values in two columns are identical across rows.
-        Args:
-            column1: First column to compare.
-            column2: Second column to compare.
-        Returns:
-            List of tuple pairs (row_index_1, row_index_2) for cross-field duplicates.
-        """
-        duplicates = []
-        for i in range(len(self.data)):
-            for j in range(i + 1, len(self.data)):
-                if self.data.iloc[i][column1] == self.data.iloc[j][column2]:
-                    duplicates.append((i, j))
-        return duplicates
-
-    def run_detection(self, methods: List[str], columns: Optional[List[str]] = None) -> List[Tuple[int, int, str]]:
-        """
-        Execute duplicate detection across specified methods and columns.
-        Args:
-            methods: List of detection methods to use.
-                     Available: ["exact", "partial", "fuzzy", "whitespace_sensitive", "cross_field"]
-            columns: Specific columns to check for partial or cross-field duplicates (if applicable).
-        Returns:
-            List of detected duplicate pairs with the method used.
-        """
-        results = []
-
-        if "exact" in methods:
-            results.extend([(i, j, "exact") for i, j in self.find_exact_duplicates()])
-
-        if "partial" in methods and columns:
-            results.extend([(i, j, "partial") for i, j in self.find_partial_duplicates(columns)])
-
-        if "fuzzy" in methods and columns:
-            for col in columns:
-                results.extend([(i, j, f"fuzzy ({col})") for i, j in self.find_fuzzy_duplicates(col)])
-
-        if "whitespace_sensitive" in methods and columns:
-            for col in columns:
-                results.extend([(i, j, f"whitespace_sensitive ({col})") for i, j in self.find_whitespace_sensitive_duplicates(col)])
-
-        if "cross_field" in methods and len(columns) == 2:
-            results.extend([(i, j, "cross_field") for i, j in self.find_cross_field_duplicates(columns[0], columns[1])])
-
-        return results
+@dataclass
+class DuplicateResult:
+    """Structure to hold duplicate detection results"""
+    row_pairs: List[Tuple[int, int]]
+    similarity: float
+    pattern: str
+    differences: Optional[Dict[str, Tuple[Any, Any]]] = None
 
 
-class EnhancedFuzzyDuplicateDetector:
-    def __init__(self, data: pd.DataFrame, similarity_threshold: float = 0.85, model_name: str = "all-MiniLM-L6-v2"):
-        """
-        Enhanced duplicate detector leveraging modern NLP and clustering techniques.
+class DuplicateDetector:
+    def __init__(
+            self,
+            near_match_threshold: float = 0.3,
+            num_perm: int = 128,
+            n_jobs: int = -1,
+            blocking_columns: Optional[List[str]] = None
+    ):
+        self.near_match_threshold = near_match_threshold
+        self.num_perm = num_perm
+        self.n_jobs = n_jobs if n_jobs > 0 else max(1, multiprocessing.cpu_count())
+        self.blocking_columns = blocking_columns
+        self.logger = self._setup_logger()
+        self.lsh = MinHashLSH(threshold=near_match_threshold, num_perm=num_perm)
 
-        Args:
-            data: Input dataframe to process.
-            similarity_threshold: Threshold for identifying duplicates (0-1 range).
-            model_name: SentenceTransformer model for embeddings.
-        """
-        self.data = data
-        self.similarity_threshold = similarity_threshold
-        self.data = data
-        self.similarity_thresholds = similarity_thresholds or {
-            'approximate': 0.85,
-            'contextual': 0.75,
-            'semantic': 0.80
+    def _setup_logger(self) -> logging.Logger:
+        logger = logging.getLogger('FastDuplicateDetector')
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                f'{Fore.CYAN}%(asctime)s{Style.RESET_ALL} - '
+                f'{Fore.GREEN}%(levelname)s{Style.RESET_ALL} - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        return logger
+
+    def _create_minhash(self, text: str) -> MinHash:
+        """Create MinHash signature for text"""
+        mh = MinHash(num_perm=self.num_perm)
+        for d in self._get_ngrams(text):
+            mh.update(d.encode('utf8'))
+        return mh
+
+    def _get_ngrams(self, text: str, n: int = 3) -> Set[str]:
+        """Generate character n-grams from text"""
+        text = re.sub(r'\s+', '', str(text).lower())
+        return {''.join(gram) for gram in zip(*[text[i:] for i in range(n)])}
+
+    def _preprocess_text(self, text: str) -> str:
+        """Basic text preprocessing"""
+        return re.sub(r'\s+', '', str(text).lower())
+
+    def _create_blocking_key(self, row: pd.Series) -> str:
+        """Create blocking key from specified columns"""
+        if not self.blocking_columns:
+            return ''
+        return ''.join(str(row[col])[0] for col in self.blocking_columns)
+
+    def _find_exact_duplicates(self, df: pd.DataFrame) -> Tuple[List[DuplicateResult], Set[int]]:
+        """Find exact duplicates using hash-based approach"""
+        hash_dict = defaultdict(list)
+
+        # Vectorized hash computation
+        df_str = df.astype(str).fillna('')
+        row_hashes = df_str.apply(lambda x: hashlib.md5(''.join(x).encode()).hexdigest(), axis=1)
+
+        for idx, hash_val in row_hashes.items():
+            hash_dict[hash_val].append(idx)
+
+        exact_duplicates = []
+        exact_duplicate_indices = set()
+
+        for indices in hash_dict.values():
+            if len(indices) > 1:
+                for i, j in combinations(indices, 2):
+                    differences = self._get_row_differences(df.iloc[i], df.iloc[j])
+                    exact_duplicates.append(DuplicateResult(
+                        row_pairs=[(i, j)],
+                        similarity=1.0,
+                        pattern='EXACT',
+                        differences=differences
+                    ))
+                    exact_duplicate_indices.update([i, j])
+
+        return exact_duplicates, exact_duplicate_indices
+
+    def _find_near_duplicates_block(self, block_data: Tuple[str, pd.DataFrame]) -> List[DuplicateResult]:
+        """Find near duplicates within a block using MinHash LSH"""
+        block_key, block_df = block_data
+        near_duplicates = []
+
+        if len(block_df) < 2:
+            return near_duplicates
+
+        # Create MinHash signatures for each row
+        minhashes = {}
+        lsh = MinHashLSH(threshold=self.near_match_threshold, num_perm=self.num_perm)
+
+        for idx, row in block_df.iterrows():
+            # Concatenate all fields
+            text = ' '.join(str(val) for val in row)
+            mh = self._create_minhash(text)
+            minhashes[idx] = mh
+            lsh.insert(str(idx), mh)
+
+        # Find similar pairs
+        for idx1, mh1 in minhashes.items():
+            result = lsh.query(mh1)
+            for r in result:
+                idx2 = int(r)
+                if idx1 < idx2:  # Avoid duplicate pairs
+                    similarity = mh1.jaccard(minhashes[idx2])
+                    if similarity >= self.near_match_threshold:
+                        differences = self._get_row_differences(
+                            block_df.loc[idx1],
+                            block_df.loc[idx2]
+                        )
+                        near_duplicates.append(DuplicateResult(
+                            row_pairs=[(idx1, idx2)],
+                            similarity=similarity,
+                            pattern='NEAR_DUPLICATE',
+                            differences=differences
+                        ))
+
+        return near_duplicates
+
+    def _get_row_differences(self, row1: pd.Series, row2: pd.Series) -> Dict[str, Tuple[Any, Any]]:
+        """Get differences between two rows for all columns"""
+        return {
+            col: (row1[col], row2[col])
+            for col in row1.index
+            if row1[col] != row2[col]
         }
-        self.domain_rules = domain_rules or {}
-        self.duplicate_prone_patterns = [r"id", r"name", r"email", r"phone"]
-        self.unique_value_patterns = [r"serial", r"unique"]
 
-    def _normalize_text(self, text: Any) -> str:
-        """Normalize text for duplicate detection."""
-        if pd.isna(text):
-            return ""
-        return re.sub(r"\s+", " ", str(text).strip().lower())
+    def find_duplicates(self, df: pd.DataFrame) -> Dict[str, List[DuplicateResult]]:
+        """Find both exact and near duplicates in the dataframe"""
+        start_time = time.time()
+        self.logger.info(f"Starting fast duplicate analysis on {len(df):,} rows")
 
-    def _calculate_text_similarity(self, text_series: pd.Series) -> pd.DataFrame:
-        """Compute pairwise text similarity using TF-IDF and cosine similarity."""
-        normalized_texts = text_series.apply(self._normalize_text).tolist()
-        tfidf = TfidfVectorizer().fit_transform(normalized_texts)
-        similarity_matrix = cosine_similarity(tfidf)
-        return pd.DataFrame(similarity_matrix, index=text_series.index, columns=text_series.index)
+        # Find exact duplicates
+        exact_duplicates, exact_duplicate_indices = self._find_exact_duplicates(df)
 
-    def _semantic_similarity(self, text_series: pd.Series) -> pd.DataFrame:
-        """Calculate semantic similarity using sentence embeddings."""
-        normalized_texts = text_series.apply(self._normalize_text).tolist()
-        embeddings = self.model.encode(normalized_texts)
-        similarity_matrix = cosine_similarity(embeddings)
-        return pd.DataFrame(similarity_matrix, index=text_series.index, columns=text_series.index)
-
-    def _detect_clusters(self, similarity_matrix: pd.DataFrame) -> List[Set[int]]:
-        """Cluster records based on similarity matrix using DBSCAN."""
-        clustering = DBSCAN(eps=1 - self.similarity_threshold, min_samples=2, metric="precomputed")
-        labels = clustering.fit_predict(1 - similarity_matrix.values)
-        clusters = []
-        for label in set(labels):
-            if label == -1:  # Exclude noise points
-                continue
-            cluster_indices = similarity_matrix.index[labels == label].tolist()
-            clusters.append(set(cluster_indices))
-        return clusters
-
-    def find_duplicates(self, text_column: str, method: str = "tfidf") -> List[Tuple[int, int]]:
-        """
-        Find duplicates in the specified column using the chosen similarity method.
-
-        Args:
-            text_column: The name of the column to analyze.
-            method: Similarity method, one of ['tfidf', 'semantic'].
-
-        Returns:
-            List of tuples representing duplicate record indices.
-        """
-        if method not in ["tfidf", "semantic"]:
-            raise ValueError("Unsupported method. Choose between 'tfidf' and 'semantic'.")
-
-        text_series = self.data[text_column]
-        if method == "tfidf":
-            similarity_matrix = self._calculate_text_similarity(text_series)
+        # Create blocks for near-duplicate detection
+        if self.blocking_columns:
+            df['_block_key'] = df.apply(self._create_blocking_key, axis=1)
+            blocks = list(df.groupby('_block_key'))
         else:
-            similarity_matrix = self._semantic_similarity(text_series)
+            # If no blocking columns specified, process in chunks
+            chunk_size = max(100, len(df) // (self.n_jobs * 4))
+            blocks = [(str(i), chunk) for i, chunk in
+                      df.groupby(np.arange(len(df)) // chunk_size)]
 
-        clusters = self._detect_clusters(similarity_matrix)
-        duplicates = [(i, j) for cluster in clusters for i in cluster for j in cluster if i < j]
-        return duplicates
+        # Process blocks in parallel
+        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
+            near_duplicate_lists = list(executor.map(
+                self._find_near_duplicates_block,
+                blocks
+            ))
 
-    def run_detection(self, methods: List[str] = ["tfidf", "semantic"]) -> List[Tuple[int, int, str]]:
+        # Combine results
+        near_duplicates = [
+            dup for sublist in near_duplicate_lists
+            for dup in sublist
+            if not (dup.row_pairs[0][0] in exact_duplicate_indices or
+                    dup.row_pairs[0][1] in exact_duplicate_indices)
+        ]
+
+        execution_time = time.time() - start_time
+        self.logger.info(
+            f"Analysis completed in {execution_time:.2f} seconds\n"
+            f"Found {len(exact_duplicates)} exact duplicates and "
+            f"{len(near_duplicates)} near duplicates"
+        )
+
+        return {
+            'EXACT': exact_duplicates,
+            'NEAR_DUPLICATE': near_duplicates
+        }
+
+    def generate_report(self, df: pd.DataFrame, results: Dict[str, List[DuplicateResult]],
+                        execution_time: float) -> str:
+        """Generate a detailed, well-formatted report with clear difference highlighting"""
+        exact_matches = len(results.get('EXACT', []))
+        near_matches = len(results.get('NEAR_DUPLICATE', []))
+        total_duplicates = exact_matches + near_matches
+
+        # Calculate affected rows percentage
+        affected_rows = len(set(
+            idx for pattern in results.values()
+            for result in pattern
+            for pair in result.row_pairs
+            for idx in pair
+        ))
+        affected_percentage = (affected_rows / len(df)) * 100 if len(df) > 0 else 0
+
+        report_sections = [
+            f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}",
+            f"{Fore.GREEN}Duplicate Detection Analysis Report{Style.RESET_ALL}",
+            f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}\n",
+            f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+
+            f"{Fore.YELLOW}Summary Statistics:{Style.RESET_ALL}",
+            tabulate([
+                ['Total Rows Analyzed:', f"{len(df):,}"],
+                ['Affected Rows:', f"{affected_rows:,} ({affected_percentage:.1f}%)"],
+                ['Total Duplicates Found:', f"{total_duplicates:,}"],
+                ['Exact Matches:', f"{exact_matches:,}"],
+                ['Near Matches:', f"{near_matches:,}"],
+                ['Execution Time:', f"{execution_time:.2f} seconds"]
+            ], tablefmt='grid'),
+
+            f"\n{Fore.YELLOW}Duplicate Patterns:{Style.RESET_ALL}"
+        ]
+
+        # Add sample duplicates with enhanced difference reporting
+        for pattern, duplicates in results.items():
+            if duplicates:
+                report_sections.extend([
+                    f"\n{Fore.CYAN}{pattern} Duplicates ({len(duplicates)} found):{Style.RESET_ALL}"
+                ])
+
+                # Show up to 3 examples for each pattern
+                for i, dup in enumerate(duplicates[:3]):
+                    pair = dup.row_pairs[0]
+                    row1_idx, row2_idx = pair
+
+                    report_sections.extend([
+                        f"\nExample {i + 1}:",
+                        f"Row Indices: ({row1_idx}, {row2_idx})",
+                        f"Similarity: {dup.similarity:.2%}"
+                    ])
+
+                    if pattern == 'NEAR_DUPLICATE':
+                        if dup.differences:
+                            report_sections.extend([
+                                f"\n{Fore.YELLOW}Differing Columns:{Style.RESET_ALL}"
+                            ])
+
+                            # Create a table showing only the differences
+                            diff_rows = []
+                            for col, (val1, val2) in dup.differences.items():
+                                diff_rows.append([
+                                    col,
+                                    f"Row {row1_idx}: {val1}",
+                                    f"Row {row2_idx}: {val2}"
+                                ])
+
+                            report_sections.append(tabulate(
+                                diff_rows,
+                                headers=['Column', 'Value 1', 'Value 2'],
+                                tablefmt='grid'
+                            ))
+
+                            # Add summary of matching columns
+                            total_cols = len(df.columns)
+                            diff_cols = len(dup.differences)
+                            match_cols = total_cols - diff_cols
+                            report_sections.append(
+                                f"\nMatching in {match_cols}/{total_cols} columns "
+                                f"({(match_cols / total_cols) * 100:.1f}% match)"
+                            )
+                    else:  # EXACT match
+                        report_sections.append("(100% match across all columns)")
+
+                report_sections.append(f"\n{Fore.CYAN}{'=' * 40}{Style.RESET_ALL}")
+
+        # Add recommendations based on findings
+        if total_duplicates > 0:
+            recommendations = [
+                f"\n{Fore.YELLOW}Recommendations:{Style.RESET_ALL}",
+                "• Review the differing columns in near-duplicates for potential data inconsistencies",
+                "• Consider standardizing data entry for columns with frequent variations",
+                f"• Current near-duplicate threshold: {self.near_match_threshold:.0%} "
+                f"(adjust if needed based on results)",
+            ]
+            report_sections.extend(recommendations)
+
+        return "\n".join(report_sections)
+
+    def run_analysis(self, data: pd.DataFrame) -> str:
         """
-        Run duplicate detection for all text columns using specified methods.
+        Run duplicate analysis on provided DataFrame and return formatted report
 
         Args:
-            methods: List of similarity methods to use.
+            data: pandas DataFrame to analyze
 
         Returns:
-            List of detected duplicate pairs with methods used.
+            str: Formatted report of duplicate analysis results
         """
-        results = []
-        text_columns = self.data.select_dtypes(include=["object"]).columns
+        start_time = time.time()
+        self.logger.info(f"Starting duplicate analysis on {len(data):,} rows")
 
-        for col in text_columns:
-            for method in methods:
-                duplicates = self.find_duplicates(text_column=col, method=method)
-                results.extend([(i, j, f"Fuzzy match in '{col}' ({method})") for i, j in duplicates])
+        # Find duplicates
+        results = self.find_duplicates(data)
+        execution_time = time.time() - start_time
 
-        return results
+        # Generate and return the report
+        report = self.generate_report(data, results, execution_time)
+        return report
 
-    def _calculate_confidence(self, duplicates_info: Dict[str, List[Tuple]], column: Optional[str] = None) -> float:
-        """Calculate a confidence score for the duplicate detection."""
-        score = 0
-        weights = {'column_name': 30, 'duplicate_types': 40, 'value_distribution': 30}
+if __name__ == "__main__":
+    # Test with larger sample data
+    print(f"{Fore.CYAN}Testing with sample dataset...{Style.RESET_ALL}")
 
-        if column:
-            column_lower = column.lower()
-            if any(re.search(pattern, column_lower) for pattern in self.duplicate_prone_patterns):
-                score += weights['column_name']
-            if any(re.search(pattern, column_lower) for pattern in self.unique_value_patterns):
-                score -= weights['column_name']
+    # Generate larger sample data
+    np.random.seed(42)
+    n_rows = 1000
 
-        total_duplicates = sum(len(dupes) for dupes in duplicates_info.values())
-        if total_duplicates > 0:
-            types_score = min(len(duplicates_info) * 10, weights['duplicate_types'])
-            score += types_score
+    names = ['John Smith', 'Jon Smith', 'John Smyth', 'Jane Doe', 'Janet Doe']
+    emails = ['john@email.com', 'jon@email.com', 'jane@email.com']
+    phones = ['123-456-7890', '123-456-7891', '987-654-3210']
 
-        if column:
-            unique_ratio = len(self.data[column].unique()) / len(self.data[column])
-            distribution_score = (1 - unique_ratio) * weights['value_distribution']
-            score += distribution_score
+    sample_data = pd.DataFrame({
+        'name': np.random.choice(names, n_rows),
+        'email': np.random.choice(emails, n_rows),
+        'phone': np.random.choice(phones, n_rows)
+    })
 
-        return min(max(score, 0), 100)
+    # Initialize detector with blocking on first letter of name and email
+    detector = DuplicateDetector(
+        near_match_threshold=0.3,
+        blocking_columns=['name', 'email']
+    )
 
-    def _calculate_text_similarity(self, text_series: pd.Series) -> pd.DataFrame:
-        """Compute similarity using TF-IDF."""
-        normalized_texts = text_series.apply(self._normalize_text).tolist()
-        tfidf = TfidfVectorizer().fit_transform(normalized_texts)
-        similarity_matrix = cosine_similarity(tfidf)
-        return pd.DataFrame(similarity_matrix, index=text_series.index, columns=text_series.index)
+    start_time = time.time()
+    results = detector.find_duplicates(sample_data)
+    execution_time = time.time() - start_time
 
-    def _semantic_similarity(self, text_series: pd.Series) -> pd.DataFrame:
-        """Calculate semantic similarity using embeddings."""
-        if not self.use_ml:
-            raise ValueError("ML-based similarity is disabled.")
-        normalized_texts = text_series.apply(self._normalize_text).tolist()
-        embeddings = self.model.encode(normalized_texts)
-        similarity_matrix = cosine_similarity(embeddings)
-        return pd.DataFrame(similarity_matrix, index=text_series.index, columns=text_series.index)
-
-    def _generate_recommendations(self, duplicates_info: Dict[str, List[Tuple]], statistics: Dict[str, float],
-                                  impact_assessment: Dict[str, float]) -> List[str]:
-        """Generate tailored recommendations for duplicate mitigation."""
-        recommendations = []
-
-        if statistics["total_duplicates"] > 0:
-            recommendations.append("Implement automated duplicate detection in the data pipeline.")
-
-        if duplicates_info.get("exact"):
-            recommendations.append("Use pandas `drop_duplicates()` to handle exact duplicates.")
-
-        if duplicates_info.get("approximate"):
-            recommendations.append("Implement fuzzy matching with a configurable similarity threshold.")
-
-        if impact_assessment["data_quality_score"] < 70:
-            recommendations.append("Prioritize duplicate resolution to improve data quality.")
-
-        return recommendations
-
-    def get_duplicate_summary(self, analysis_results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
-        """Generate a summary DataFrame for the analysis."""
-        summary_data = []
-
-        for name, result in analysis_results.items():
-            summary_data.append({
-                "Name": name,
-                "Confidence": f"{result['confidence']:.2f}%",
-                "Total Duplicates": result["statistics"]["total_duplicates"],
-                "Types Found": len(result["duplicates"]),
-                "Quality Impact": f"{result['impact_assessment']['data_quality_score']:.2f}%",
-                "Affected Rows": f"{result['impact_assessment']['affected_rows_percentage']:.2f}%"
-            })
-
-        return pd.DataFrame(summary_data)
-
-    def export_detailed_report(self, analysis_results: Dict[str, Dict[str, Any]]) -> str:
-        """Generate a markdown report with analysis details."""
-        report = ["# Duplicate Analysis Report"]
-        report.append(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-
-        for name, result in analysis_results.items():
-            report.append(f"## {name}")
-            report.append(f"- Confidence: {result['confidence']:.2f}%")
-            report.append(f"- Total Duplicates: {result['statistics']['total_duplicates']}")
-            for recommendation in result['recommendations']:
-                report.append(f"- {recommendation}")
-
-        return "\n".join(report)
-
-    def run_analysis(self) -> Dict[str, Dict[str, Any]]:
-        """Run the full analysis."""
-        analysis_results = {}
-        for col in self.data.select_dtypes(include=["object"]):
-            duplicates = {"exact": [], "approximate": []}  # Example placeholders
-            statistics = {"total_duplicates": len(duplicates["exact"])}
-            impact_assessment = {"data_quality_score": 85.0, "affected_rows_percentage": 10.0}
-
-            confidence = self._calculate_confidence(duplicates, column=col)
-            recommendations = self._generate_recommendations(duplicates, statistics, impact_assessment)
-
-            analysis_results[col] = {
-                "duplicates": duplicates,
-                "statistics": statistics,
-                "impact_assessment": impact_assessment,
-                "confidence": confidence,
-                "recommendations": recommendations
-            }
-
-        return analysis_results
-
-
-class ComprehensiveDuplicateDetector:
-    def __init__(self, data: pd.DataFrame):
-        self.data = data
-
-    def find_exact_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data)) for j in range(i+1, len(self.data)) if all(self.data.iloc[i] == self.data.iloc[j])]
-
-    def find_partial_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                for j in range(i+1, len(self.data))
-                if self.data.iloc[i].equals(self.data.iloc[j])]
-
-    def find_case_sensitive_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                for j in range(i+1, len(self.data))
-                if self.data.iloc[i].astype(str).str.lower() == self.data.iloc[j].astype(str).lower()]
-
-    def find_whitespace_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                for j in range(i+1, len(self.data))
-                if self.data.iloc[i].astype(str).str.strip().lower() == self.data.iloc[j].astype(str).strip().lower()]
-
-    def find_fuzzy_duplicates(self, threshold: float = 0.85) -> List[Tuple[int, int]]:
-        duplicates = []
-        for col in self.data.columns:
-            for i in range(len(self.data)):
-                for j in range(i+1, len(self.data)):
-                    if isinstance(self.data.iloc[i, self.data.columns.get_loc(col)], str) and isinstance(self.data.iloc[j, self.data.columns.get_loc(col)], str):
-                        similarity = fuzz.ratio(self.data.iloc[i, self.data.columns.get_loc(col)].astype(str), self.data.iloc[j, self.data.columns.get_loc(col)].astype(str))
-                        if similarity >= threshold:
-                            duplicates.append((i, j))
-        return duplicates
-
-    def find_different_representations(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if set(self.data.iloc[i]) != set(self.data.iloc[j])]
-
-    def find_temporal_duplicates(self, time_column: str) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if self.data.iloc[i, self.data.columns.get_loc(time_column)] == self.data.iloc[j, self.data.columns.get_loc(time_column)]]
-
-    def find_aggregated_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if sum(self.data.iloc[i]) == sum(self.data.iloc[j])]
-
-    def find_contextual_duplicates(self, column1: str, column2: str) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if self.data.iloc[i][column1] == self.data.iloc[j][column2]]
-
-    def find_derived_calculated_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if np.isclose(self.data.iloc[i], self.data.iloc[j]).any()]
-
-    def find_multi_field_duplicates(self, columns: List[str]) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if set(zip(*[self.data.iloc[i][col] for col in columns])) == set(zip(*[self.data.iloc[j][col] for col in columns]))]
-
-    def find_cross_column_duplicates(self) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if set(self.data.iloc[i].tolist()) & set(self.data.iloc[j].tolist())]
-
-    def find_hierarchical_duplicates(self, group_column: str) -> List[Tuple[int, int]]:
-        return [(i, j) for i in range(len(self.data))
-                 for j in range(i+1, len(self.data))
-                 if self.data.iloc[i][group_column] == self.data.iloc[j][group_column]]
-
-    def run_detection(self, methods: List[str]) -> List[Tuple[int, int, str]]:
-        results = []
-        for method in methods:
-            if method == 'exact':
-                results.extend(self.find_exact_duplicates())
-            elif method == 'partial':
-                results.extend(self.find_partial_duplicates())
-            elif method == 'case_sensitive':
-                results.extend(self.find_case_sensitive_duplicates())
-            elif method == 'whitespace':
-                results.extend(self.find_whitespace_duplicates())
-            elif method == 'fuzzy':
-                results.extend(self.find_fuzzy_duplicates())
-            elif method == 'different_representations':
-                results.extend(self.find_different_representations())
-            elif method == 'temporal':
-                results.extend(self.find_temporal_duplicates('date'))
-            elif method == 'aggregated':
-                results.extend(self.find_aggregated_duplicates())
-            elif method == 'contextual':
-                results.extend(self.find_contextual_duplicates('location', 'name'))
-            elif method == 'derived_calculated':
-                results.extend(self.find_derived_calculated_duplicates())
-            elif method == 'multi_field':
-                results.extend(self.find_multi_field_duplicates(['name', 'email']))
-            elif method == 'cross_column':
-                results.extend(self.find_cross_column_duplicates())
-            elif method == 'hierarchical':
-                results.extend(self.find_hierarchical_duplicates('category'))
-
-        return results
-
-# Example usage
-data = pd.DataFrame({
-    'ID': [1, 2, 3, 4],
-    'Name': ['Alice', 'Bob', 'Charlie', 'David'],
-    'Age': [25, 30, 35, 40],
-    'City': ['NY', 'LA', 'NY', 'CHI'],
-    'Email': ['alice@example.com', 'bob@example.com', 'charlie@example.com', 'david@example.com'],
-    'Date': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04']
-})
-
-# Example dataset
-data = pd.DataFrame({
-    "Name": ["Alice", "Bob", "alice ", "BOB", "Charlie"],
-    "Email": ["alice@example.com", "bob@example.com", "alice@example.com", "bob@example.com", "charlie@example.com"],
-    "Age": [25, 30, 25, 30, 35]
-})
-
-detector = ComprehensiveDuplicateDetector(data)
-
-methods = [
-    'exact',
-    'partial',
-    'case_sensitive',
-    'whitespace',
-    'fuzzy',
-    'different_representations',
-    'temporal',
-    'aggregated',
-    'contextual',
-    'derived_calculated',
-    'multi_field',
-    'cross_column',
-    'hierarchical'
-]
-
-results = detector.run_detection(methods)
-
-print("Detected duplicates:")
-for result in results:
-    print(f"Row {result[0]} and Row {result[1]}")
+    print(detector.generate_report(sample_data, results, execution_time))

@@ -56,6 +56,12 @@ workalendar = "^17.0.0"
 fuzzywuzzy = "^0.18.0"
 python-levenshtein = "^0.26.1"
 sentence-transformers = "^3.3.1"
+mmh3 = "^5.0.1"
+datasketch = "^1.6.5"
+pybloom-live = "^4.0.0"
+tqdm = "^4.67.1"
+colorama = "^0.4.6"
+tabulate = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import usePipeline from '../hooks/usePipeline';
 import ApiClient from '../utils/api-client';
 import {
@@ -43,12 +43,36 @@ const PipelineMonitor = () => {
     refreshPipelines,
   } = usePipeline(apiClient);
 
-  const filteredPipelines = filterPipelines({
-    status: statusFilter,
-    search: searchTerm,
-  });
+  // Memoize filtered pipelines
+  const filteredPipelines = useMemo(() =>
+    filterPipelines({
+      status: statusFilter,
+      search: searchTerm,
+    }),
+    [filterPipelines, statusFilter, searchTerm]
+  );
 
-  const getStatusIcon = (status) => {
+  // Determine if any active pipelines exist
+  const hasActivePipelines = useMemo(() =>
+    Object.values(pipelines).some(pipeline =>
+      ['WAITING', 'PROCESSING'].includes(pipeline.status)
+    ),
+    [pipelines]
+  );
+
+  // Auto-refresh logic with reduced frequency for active pipelines
+  useEffect(() => {
+    // Only set up auto-refresh if there are active pipelines
+    if (!hasActivePipelines) return;
+
+    const refreshInterval = setInterval(() => {
+      refreshPipelines();
+    }, 10000); // Reduced to every 10 seconds when active
+
+    return () => clearInterval(refreshInterval);
+  }, [hasActivePipelines, refreshPipelines]);
+
+  const getStatusIcon = useCallback((status) => {
     switch (status) {
       case 'COMPLETED':
         return <CheckCircleIcon color="success" />;
@@ -61,27 +85,32 @@ const PipelineMonitor = () => {
       default:
         return <WarningIcon color="disabled" />;
     }
-  };
+  }, []);
 
-  const handleDecision = async (pipelineId, decision) => {
+  const handleDecision = useCallback(async (pipelineId, decision) => {
     try {
       await makePipelineDecision(pipelineId, decision);
     } catch (err) {
       console.error('Decision error:', err);
     }
-  };
+  }, [makePipelineDecision]);
 
+  // Render the component
   return (
     <div style={{ padding: '24px' }}>
       {/* Header with Stats */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h4">Pipeline Monitor</Typography>
-          <IconButton onClick={refreshPipelines} disabled={loading}>
+          <IconButton
+            onClick={refreshPipelines}
+            disabled={loading}
+          >
             <RefreshIcon />
           </IconButton>
         </div>
 
+        {/* Stats Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginTop: '16px' }}>
           {Object.entries({
             Total: { value: stats.total, color: 'textPrimary' },

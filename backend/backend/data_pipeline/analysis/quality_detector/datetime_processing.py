@@ -947,8 +947,8 @@ if __name__ == "__main__":
     # Create test DataFrame
     # test_df = pd.DataFrame(test_data)
 
-    file_path = r"C:\Users\admin\Downloads\Power Query\2020 Order Data.csv"
-    test_df = pd.read_csv(file_path, encoding='windows-1252')
+    filepath = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
+    test_df = pd.read_csv(filepath, encoding='windows-1252')
 
     print("Input DataFrame:")
     print("\nStarting validation process...")

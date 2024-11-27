@@ -4,6 +4,9 @@ import uuid
 from io import BytesIO
 import pandas as pd
 from typing import Dict, Tuple, Any, Optional
+
+from torch.utils.hipify.hipify_python import meta_data
+
 from .file_validator import FileValidator
 from .file_fetcher import FileFetcher
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier, ProcessingStatus
@@ -31,71 +34,55 @@ class FileManager:
             self.processed_data: Optional[Dict[str, Any]] = None
             self.pending_files: Dict[str, Dict[str, Any]] = {}
 
-    def _extract_metadata_from_content(self, file_obj: Any) -> Dict[str, Any]:
-        """Extract comprehensive metadata from file content."""
-        try:
-            file_content = file_obj.read()
-            filename = file_obj.filename
-
-            metadata = {
-                'filename': filename,
-                'file_size': len(file_content),
-                'file_type': filename.split('.')[-1].lower()
-            }
-
-            file_metadata_extractors = {
-                '.csv': lambda content: pd.read_csv(BytesIO(content), nrows=1),
-                '.json': lambda content: pd.read_json(BytesIO(content)),
-                '.xlsx': lambda content: pd.read_excel(BytesIO(content), sheet_name=None),
-                '.parquet': lambda content: pd.read_parquet(BytesIO(content))
-            }
-
-            ext = f".{metadata['file_type']}"
-            extractor = file_metadata_extractors.get(ext)
-
-            if extractor:
-                df = extractor(file_content)
-
-                if ext == '.xlsx':
-                    metadata['sheet_names'] = list(df.keys())
-                    metadata['columns'] = list(df[list(df.keys())[0]].columns)
-                else:
-                    metadata['columns'] = list(df.columns) if hasattr(df, 'columns') else []
-                    metadata['row_count'] = len(df) if hasattr(df, '__len__') else 0
-
-            return metadata
-
-        except Exception as e:
-            logger.error(f"Metadata extraction error: {str(e)}")
-            raise ValueError(f"Failed to extract metadata: {str(e)}")
-
     def get_file_metadata(self, file_obj: Any) -> Dict[str, Any]:
-        """Generate metadata for a given file object."""
+        """Generate metadata for a given file object using FileFetcher."""
         try:
-            metadata = self._extract_metadata_from_content(file_obj)
+            file_fetcher = FileFetcher(file_obj)
+            metadata = file_fetcher.extract_metadata()
+            logger.info(f'Metadata: {metadata}')
             return {'status': 'success', 'metadata': metadata}
         except Exception as e:
             logger.error(f"Metadata generation error: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _validate_file(self, file_obj: Any) -> Tuple[bool, str]:
-        """Perform all file validations."""
+    def _validate_file(self, file_fetcher: FileFetcher) -> Tuple[bool, str]:
+        """
+        Perform file validations using FileFetcher and its extracted metadata.
+        """
         try:
-            validation_checks = [
-                self.validator.validate_file_format,
-                self.validator.validate_file_size,
-                self.validator.validate_file_integrity,
-                self.validator.validate_security
-            ]
+            # Retrieve metadata from FileFetcher
+            metadata = file_fetcher.get_metadata()
+            if "error" in metadata:
+                logger.warning(f"File validation failed: {metadata['error']}")
+                return False, metadata["error"]
 
-            for check in validation_checks:
-                valid, message = check(file_obj)
-                if not valid:
-                    logger.warning(f"File validation failed: {message}")
-                    return False, message
+            # Validate file format and size using metadata
+            format_valid, format_message = self.validator.validate_file_format(metadata)
+            if not format_valid:
+                logger.warning(f"File format validation failed: {format_message}")
+                return False, format_message
+
+            size_valid, size_message = self.validator.validate_file_size(metadata)
+            if not size_valid:
+                logger.warning(f"File size validation failed: {size_message}")
+                return False, size_message
+
+            # Validate file integrity using the preloaded file content
+            data = file_fetcher.load_file()
+            integrity_valid, integrity_message = self.validator.validate_file_integrity(data)
+            if not integrity_valid:
+                logger.warning(f"File integrity validation failed: {integrity_message}")
+                return False, integrity_message
+
+            # Additional file-specific checks
+            if metadata["file_type"] not in ["csv", "json", "parquet", "xlsx"]:
+                return False, "File type not allowed. Expected file types are 'csv', 'json', 'parquet', and 'xlsx'"
+
+            logger.info("File validation successful")
             return True, "Validation successful"
+
         except Exception as e:
-            logger.error(f"File validation error: {str(e)}")
+            logger.error(f"File validation error: {str(e)}", exc_info=True)
             return False, f"Validation error: {str(e)}"
 
     def _create_file_obj(self, file_content: bytes, filename: str) -> Any:
@@ -128,63 +115,38 @@ class FileManager:
             return FileObj(file_content, filename)
 
     def process_file(self, file: Any) -> Dict[str, Any]:
-            """Main method to process the file and return structured data."""
-            filename = getattr(file, 'filename', 'unknown')
-            logger.info(f"Starting to process file: {filename}")
+        """Main method to process the file and return structured data."""
+        filename = getattr(file, 'filename', 'unknown')
+        logger.info(f"Processing file: {filename}")
 
-            try:
-                # Reset processed data for new file
-                self.processed_data = None
+        try:
+            # Create FileFetcher instance
+            file_fetcher = FileFetcher(file)
 
-                # Read file content
-                file_content = file.read()
-                if not file_content:
-                    return self._send_error_message(filename, "Empty file content")
+            # Load file, extract and validate metadata
+            data, message = file_fetcher.load_file()
+            metadata = file_fetcher.extract_metadata()
+            if not meta_data:
+                return {"status": "error", "message": message}
 
-                # Create file object
-                file_obj = self._create_file_obj(file_content, filename)
+            # Validate file integrity
+            valid, message = FileValidator.validate_file_integrity(data)
+            if not valid:
+                return {"status": "error", "message": message}
 
-                # Get metadata
-                metadata_result = self.get_file_metadata(file_obj)
-                if metadata_result['status'] != 'success':
-                    return self._send_error_message(filename, metadata_result['message'])
+            # Store metadata and data for processing
+            self.processed_data = {
+                "filename": filename,
+                "status": "success",
+                "metadata": metadata,
+                "data": data.to_dict(orient="records")
+            }
 
-                # Validate file
-                is_valid, message = self._validate_file(file_obj)
-                if not is_valid:
-                    return self._send_error_message(filename, message)
+            return self.processed_data
 
-                # Process file using FileFetcher
-                file_fetcher = FileFetcher(file_obj)
-                data, message = file_fetcher.convert_to_dataframe()
-
-                if data is None:
-                    return self._send_error_message(filename, message)
-
-                # Handle different data types
-                if isinstance(data, BytesIO):
-                    df = pd.read_parquet(data)
-                else:
-                    df = data
-
-                self.processed_data = {
-                    'filename': filename,
-                    'status': 'success',
-                    'source_type': 'file',
-                    'metadata': metadata_result['metadata'],
-                    'data': df.to_dict(orient='records')
-                }
-
-                # Store in pending files and send to orchestrator
-                file_id = str(uuid.uuid4())
-                self.pending_files[file_id] = self.processed_data
-                self._send_success_message(file_id, self.processed_data)
-
-                return self.processed_data
-
-            except Exception as e:
-                logger.error(f"File processing error: {str(e)}", exc_info=True)
-                return self._send_error_message(filename, str(e))
+        except Exception as e:
+            logger.error(f"Processing failed for file {filename}: {str(e)}")
+            return {"status": "error", "message": str(e)}
 
     def _send_success_message(self, file_id: str, processed_data: Dict[str, Any]) -> None:
             """Send success message to orchestrator with complete processed data"""
@@ -279,21 +241,3 @@ class FileManager:
         logger.error(f"Sending error message: {error_msg}")
         self.message_broker.publish(error_msg)
         return error_data
-
-    def get_metadata(self) -> Dict[str, Any]:
-        """Extract metadata from processed file."""
-        try:
-            if not self.processed_data:
-                return {"error": "No file has been processed yet"}
-
-            metadata = self.processed_data.get('metadata', {})
-            return {
-                "file_size_mb": metadata.get('file_size', 0) / (1024 * 1024),
-                "file_format": metadata.get('file_type', 'unknown'),
-                "columns": metadata.get('columns', []),
-                "row_count": metadata.get('row_count', 0)
-            }
-
-        except Exception as e:
-            logger.error(f"Metadata extraction error: {str(e)}")
-            return {"error": str(e)}

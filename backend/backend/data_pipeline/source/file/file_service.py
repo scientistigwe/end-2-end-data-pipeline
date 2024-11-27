@@ -84,7 +84,7 @@ class FileService:
             dict: File metadata or error information
         """
         try:
-            return self.file_manager.get_metadata()
+            return self.file_manager.get_file_metadata()
         except Exception as e:
             logger.error(f"Error retrieving metadata: {str(e)}", exc_info=True)
             return {

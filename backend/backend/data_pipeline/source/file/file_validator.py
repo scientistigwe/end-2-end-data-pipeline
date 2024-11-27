@@ -3,28 +3,26 @@ import mimetypes
 import pandas as pd
 import magic
 from .file_config import Config
+from typing import Tuple
 
 
 class FileValidator:
     """Comprehensive file validation utilities."""
 
     @staticmethod
-    def validate_file_format(file, file_format=None):
+    def validate_file_format(file_fetcher: 'FileFetcher', file_format=None) -> Tuple[bool, str]:
         """
-        Validate if the uploaded file format is allowed.
+        Validate if the uploaded file format is allowed using FileFetcher metadata.
 
         Args:
-            file: File object to validate
+            file_fetcher: FileFetcher instance
             file_format (str, optional): Specific file format to validate against
 
         Returns:
             tuple: (boolean success status, validation message)
         """
-        # Detect file extension from filename or content type
-        ext = (os.path.splitext(file.filename)[1].lower().replace('.', '')
-               if hasattr(file, 'filename')
-               else mimetypes.guess_extension(file.content_type))
-
+        metadata = file_fetcher.get_metadata()
+        ext = metadata.get('file_type', '').lower()
         allowed_formats = Config.ALLOWED_FORMATS
 
         if ext not in allowed_formats:
@@ -36,82 +34,63 @@ class FileValidator:
         return True, "File format is valid."
 
     @staticmethod
-    def validate_file_size(file):
+    def validate_file_size(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
         """
-        Validate the file size is below the threshold.
+        Validate the file size is below the threshold using FileFetcher metadata.
 
         Args:
-            file: File object to check
+            file_fetcher: FileFetcher instance
 
         Returns:
             tuple: (boolean success status, size validation message)
         """
-        file.seek(0)
-        file_size_mb = len(file.read()) / (1024 * 1024)
-        file.seek(0)
+        metadata = file_fetcher.get_metadata()
+        file_size_mb = metadata.get("file_size_mb", 0)
 
         if file_size_mb > Config.FILE_SIZE_THRESHOLD_MB:
             return False, f"File size exceeds {Config.FILE_SIZE_THRESHOLD_MB} MB. Current size: {file_size_mb:.2f} MB."
+
         return True, "File size is within the allowed limit."
 
     @staticmethod
-    def validate_file_integrity(file):
+    def validate_file_integrity(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
         """
-        Check if the uploaded file is corrupt or unreadable.
+        Check if the uploaded file is corrupt or unreadable using the preloaded data.
 
         Args:
-            file: File object to validate
+            file_fetcher: FileFetcher instance
 
         Returns:
             tuple: (boolean success status, integrity check message)
         """
         try:
-            # Determine file extension
-            ext = (os.path.splitext(file.filename)[1].lower().replace('.', '')
-                   if hasattr(file, 'filename')
-                   else mimetypes.guess_extension(file.content_type))
+            # Use the preloaded data from FileFetcher
+            df, message = file_fetcher.load_file()
 
-            readers = {
-                'csv': pd.read_csv,
-                'json': pd.read_json,
-                'xlsx': pd.read_excel,
-                'parquet': pd.read_parquet
-            }
+            if df is None:
+                return False, f"Error reading file: {message}. The file may be corrupted or unreadable."
 
-            if ext not in readers:
-                return False, f"Unsupported file format for integrity check: {ext}."
-
-            # Read the entire content
-            content = file.read()
-
-            # Use BytesIO to create a file-like object
-            import io
-            file_buffer = io.BytesIO(content)
-
-            readers[ext](file_buffer)
+            return True, "File integrity check passed."
 
         except Exception as e:
             return False, f"Error reading file: {str(e)}. The file may be corrupted or unreadable."
 
-        return True, "File integrity check passed."
-
     @staticmethod
-    def validate_security(file):
+    def validate_security(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
         """
-        Perform security checks on the uploaded file.
+        Perform security checks on the uploaded file based on its content.
 
         Args:
-            file: File object to validate
+            file_fetcher: FileFetcher instance
 
         Returns:
             tuple: (boolean security status, security check message)
         """
         try:
-            # Read the entire content
-            content = file.read()
+            # Use the preloaded content from FileFetcher
+            content = file_fetcher.file.read()
 
             # Use python-magic to detect mime type
-            import magic
             mime_type = magic.from_buffer(content, mime=True)
 
             supported_mimes = {

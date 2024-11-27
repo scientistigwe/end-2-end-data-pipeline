@@ -4,157 +4,151 @@ import re
 from typing import Dict, Any, List, Set, Tuple
 from dataclasses import dataclass
 from statistics import mean, stdev
+import logging
 
-from sqlalchemy.testing.plugin.plugin_base import file_config
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ColumnAnalysis:
-    identified_as: str
-    confidence: float
-    sample_values: List[Any]
+class ColumnClassification:
+    """Enhanced classification for currency columns."""
+    confidence_level: str
+    confidence_score: float
     detected_currencies: List[str] = None
+    sample_values: List[Any] = None
     total_rows: int = 0
     issues: Dict[str, int] = None
     recommendations: List[str] = None
     statistics: Dict[str, float] = None
 
 
-class CurrencyProcessingQualityDetector:
-    def __init__(self, data: pd.DataFrame, confidence_threshold: float = 30.0):
+class EnhancedCurrencyDetector:
+    def __init__(self, data: pd.DataFrame,
+                 confidence_thresholds: Dict[str, float] = None):
+        """
+        Initialize currency detector with input data and confidence thresholds.
+
+        Args:
+            data (pd.DataFrame): Input DataFrame to analyze
+            confidence_thresholds (Dict[str, float], optional): Custom confidence levels
+        """
         self.data = data
-        self.confidence_threshold = confidence_threshold
-        self.currency_symbols = {
+        self.confidence_thresholds = confidence_thresholds or {
+            'HIGH': 70.0,
+            'MEDIUM': 40.0,
+            'LOW': 20.0
+        }
+
+        # Enhanced currency symbols dictionary
+        self.currency_symbols: Dict[str, str] = {
             '$': 'USD', '£': 'GBP', '€': 'EUR', '¥': 'JPY',
             '₹': 'INR', '₩': 'KRW', '₽': 'RUB', 'R$': 'BRL',
             'CHF': 'CHF', 'A$': 'AUD', 'C$': 'CAD', 'HK$': 'HKD'
         }
 
-        # Enhanced currency patterns
-        self.currency_codes = set(self.currency_symbols.values())
-        self.currency_regex = '|'.join([re.escape(symbol) for symbol in self.currency_symbols.keys()])
+        # Prepare currency-related patterns
+        self.currency_codes: set = set(self.currency_symbols.values())
+        self.currency_regex: str = '|'.join([re.escape(symbol) for symbol in self.currency_symbols.keys()])
 
-        # Improved column name patterns for financial data
-        self.column_patterns = [
-            r'(?i)(^|_)(price|amount|cost|revenue|sales|payment|total|fee|charge|balance)($|_)',
-            r'(?i)(^|_)(currency|money|expense|income|invoice|bill|salary|wage)($|_)',
-            r'(?i)(^|_)(profit|loss|proceeds|return|gain)($|_)'
+        # Column name patterns for financial data
+        self.column_patterns: List[str] = [
+            r'(?i)(_cost|_price|_amount|_fee)|((cost|price|amount|fee)$)',
+            r'(?i)(_)?((total_)?(price|amount|cost|revenue|sales|payment|fee))\b',
+            r'(?i)(_)?((total_)?(currency|money|expense|income|invoice|bill|salary|wage))\b',
+            r'(?i)(_)?((total_)?(profit|loss))\b',
+            r'(?i)((unit|avg|list|net|gross)_?(price|amount|value))\b',
+            r'(?i)((unit|transaction|order)_?(cost|price|value))\b',
         ]
 
-        # Enhanced non-currency patterns - expanded to catch more ID patterns
+        # Non-currency and exclusion patterns
         self.non_currency_patterns = [
             r'(?i)(^|_)(percent|pct|ratio|rate|share|quantity|count|units|number)($|_)',
             r'(?i)(^|_)(score|index|rank|rating|level|grade|tier|position)($|_)',
             r'(?i)(^|_)(age|year|month|day|date|time|duration)($|_)',
             r'(?i)(^|_)(margin|discount)($|_)',
             r'(?i).*(%|percentage|ratio).*',
-            # Added patterns for IDs and non-currency identifiers
-            r'(?i).*(_)?id($|_|s$)',  # Catches ID, Id, _id, ids, etc.
-            r'(?i)(^|_)(identifier|key|code|ref|reference|num|number)($|_)',
-            r'(?i)(^|_)(row|record|entry|sequence|serial|order)(_)?num($|_)',
-            r'(?i)(^|_)(category|status|type|group|class|flag)($|_)',
-            r'(?i)(^|_)(name|description|title|label|comment|note)($|_)',
-            r'(?i)(^|_)(email|phone|address|url|link|path)($|_)',
-            r'(?i)(^|_)(latitude|longitude|lat|long|coord)($|_)'
+            r'(?i).*(_)?id($|_|s$)',
         ]
 
-        # Value patterns remain the same
+        # Value patterns for currency detection
         self.value_patterns = [
-            rf'^[{self.currency_regex}]?\s*\d+(?:,\d{3})*(?:\.\d{{2}})?$',
+            rf'^[{self.currency_regex}]?\s*\d+(?:,\d{{3}})*(?:\.\d{{2}})?$',
             r'^\d+(?:,\d{3})*(?:\.\d{2})?$',
             r'^-?\d+(?:,\d{3})*(?:\.\d{2})?$',
             rf'^[{self.currency_regex}]?\s*\d+(?:.\d{3})*(?:,\d{{2}})?$',
-            r'^\d+k$|^\d+M$|^\d+B$'
+            r'^-?\d+k$|^-?\d+M$|^-?\d+B$'
         ]
 
     def _calculate_confidence(self, column: str, values: pd.Series) -> float:
-        """Enhanced confidence calculation with strict ID and non-currency pattern handling."""
-        # Early return conditions for non-currency patterns
-        column_lower = column.lower()
-
-        # Check for ID patterns and non-currency patterns first
-        if any(re.search(pattern, column_lower) for pattern in self.non_currency_patterns):
-            return 0
-
-        # Check for generic ID pattern (any column containing 'id' in any case)
-        if 'id' in column_lower:
-            return 0
-
-        score = 0
-        weights = {
-            'column_name': 40,
-            'value_format': 10,
-            'currency_symbols': 40,
-            'statistical': 10
+        """Calculate confidence score for a column being a currency column."""
+        column_lower = self.normalize_column_name(column)
+        weights: Dict[str, float] = {
+            'column_name': 45.0,
+            'value_format': 30.0,
+            'currency_symbols': 15.0,
+            'statistical': 10.0
         }
+        score: float = 0.0
 
-        # Early return for percentage-like columns
-        if self._is_likely_percentage(values):
-            return 0
+        # Column name match
+        score += sum(
+            weights['column_name'] for pattern in self.column_patterns
+            if re.search(pattern, column_lower)
+        )
 
-        # Column name analysis (35%)
-        if any(re.search(pattern, column_lower) for pattern in self.column_patterns):
-            score += weights['column_name']
-
-        # Value format analysis (35%)
-        valid_values = sum(self._is_currency_value(val) for val in values if pd.notna(val))
+        # Value format analysis
+        valid_values = sum(
+            self._is_currency_value(val)
+            for val in values
+            if pd.notna(val)
+        )
         if len(values) > 0:
-            format_score = (valid_values / len(values)) * weights['value_format']
-            score += format_score
+            score += (valid_values / len(values)) * weights['value_format']
 
-        # Currency symbol presence (20%)
-        currency_detected = sum(bool(self._detect_currencies_in_values(str(val)))
-                                for val in values if pd.notna(val))
+        # Currency symbol detection
+        currency_detected = sum(
+            bool(self._detect_currencies_in_values(str(val)))
+            for val in values
+            if pd.notna(val)
+        )
         if len(values) > 0:
-            symbol_score = (currency_detected / len(values)) * weights['currency_symbols']
-            score += symbol_score
+            score += (currency_detected / len(values)) * weights['currency_symbols']
 
-        # Statistical analysis (10%)
+        # Statistical validation
         stats = self._calculate_statistics(values)
         if stats:
-            mean_val = stats.get("mean", 0)
-            if mean_val < 0.0001 or mean_val > 1e8:
-                score -= weights['statistical']
-            elif 0.01 <= mean_val <= 1e8:
+            mean_val = stats.get("mean", 0.0)
+            if 10.0 <= mean_val <= 1e7:
                 score += weights['statistical']
 
-        return min(max(score, 0), 100)
+        # Penalty for non-currency indicators
+        if any(re.search(pattern, column_lower) for pattern in self.non_currency_patterns):
+            score *= 0.3
 
-    # Rest of the methods remain the same
-    def _is_likely_percentage(self, values: pd.Series) -> bool:
-        """Check if values are likely to be percentages."""
-        try:
-            numeric_values = pd.to_numeric(values.dropna())
-            between_0_1 = (numeric_values >= 0) & (numeric_values <= 1)
-            between_0_100 = (numeric_values >= 0) & (numeric_values <= 100)
+        return min(max(score, 0.0), 100.0)
 
-            if len(numeric_values) > 0:
-                pct_0_1 = between_0_1.mean()
-                pct_0_100 = between_0_100.mean()
+    def _calculate_enhanced_confidence(self, column: str, values: pd.Series) -> Tuple[float, str]:
+        """
+        Determine confidence score and level for a column.
 
-                return pct_0_1 > 0.9 or pct_0_100 > 0.9
-        except:
-            return False
-        return False
+        Returns:
+        - Confidence score (0-100)
+        - Confidence level ('HIGH', 'MEDIUM', 'LOW', 'INSUFFICIENT')
+        """
+        base_score = self._calculate_confidence(column, values)
 
-    def _extract_numeric_value(self, value: str) -> float:
-        """Extract numeric value from currency string."""
-        try:
-            value_str = str(value).upper().strip()
-            if value_str.endswith('K'):
-                return float(value_str[:-1]) * 1000
-            elif value_str.endswith('M'):
-                return float(value_str[:-1]) * 1000000
-            elif value_str.endswith('B'):
-                return float(value_str[:-1]) * 1000000000
-
-            cleaned = re.sub(r'[^\d.-]', '', str(value))
-            return float(cleaned)
-        except (ValueError, TypeError):
-            return np.nan
+        if base_score >= self.confidence_thresholds['HIGH']:
+            return base_score, 'HIGH'
+        elif base_score >= self.confidence_thresholds['MEDIUM']:
+            return base_score, 'MEDIUM'
+        elif base_score >= self.confidence_thresholds['LOW']:
+            return base_score, 'LOW'
+        else:
+            return base_score, 'INSUFFICIENT'
 
     def _calculate_statistics(self, values: pd.Series) -> Dict[str, float]:
-        """Calculate statistical measures for the column."""
+        """Calculate statistical measures for a column."""
         numeric_values = [self._extract_numeric_value(v) for v in values]
         numeric_values = [v for v in numeric_values if not np.isnan(v)]
 
@@ -172,6 +166,22 @@ class CurrencyProcessingQualityDetector:
             }
         except Exception:
             return {}
+
+    def _extract_numeric_value(self, value: str) -> float:
+        """Extract numeric value from currency string."""
+        try:
+            value_str = str(value).upper().strip()
+            if value_str.endswith('K'):
+                return float(value_str[:-1]) * 1000
+            elif value_str.endswith('M'):
+                return float(value_str[:-1]) * 1000000
+            elif value_str.endswith('B'):
+                return float(value_str[:-1]) * 1000000000
+
+            cleaned = re.sub(r'[^\d.-]', '', str(value))
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return np.nan
 
     def _detect_currencies_in_values(self, value: str) -> Set[str]:
         """Detect currencies in values."""
@@ -209,34 +219,16 @@ class CurrencyProcessingQualityDetector:
 
         return False
 
-    def analyze_column(self, column: str) -> ColumnAnalysis:
-        """Analyze a single column."""
-        values = self.data[column].dropna()
-        confidence = self._calculate_confidence(column, values)
-
-        is_currency = confidence >= self.confidence_threshold
-        detected_currencies = set()
-        if is_currency:
-            for value in values:
-                detected_currencies.update(self._detect_currencies_in_values(str(value)))
-
-        issues = self._identify_issues(values)
-        recommendations = self._generate_recommendations(issues, len(values))
-        statistics = self._calculate_statistics(values)
-
-        return ColumnAnalysis(
-            identified_as="CURRENCY" if is_currency else "NON_CURRENCY",
-            confidence=confidence,
-            sample_values=values.head(5).tolist(),
-            detected_currencies=list(detected_currencies) if is_currency else None,
-            total_rows=len(values),
-            issues=issues,
-            recommendations=recommendations,
-            statistics=statistics
-        )
+    def normalize_column_name(self, column: str) -> str:
+        """Normalize column name to handle special characters and compound words."""
+        column = column.lower()
+        column = re.sub(r'[^\w\s]', '_', column)
+        column = re.sub(r'\s+', '_', column)
+        column = re.sub(r'(?<!^)(?=[A-Z])', '_', column).lower()
+        return column.strip('_')
 
     def _identify_issues(self, values: pd.Series) -> Dict[str, int]:
-        """Identify issues in the column."""
+        """Identify potential issues in the column."""
         issues = {
             "missing_values": 0,
             "invalid_format": 0,
@@ -297,7 +289,7 @@ class CurrencyProcessingQualityDetector:
         return {k: v for k, v in issues.items() if v > 0}
 
     def _generate_recommendations(self, issues: Dict[str, int], total_rows: int) -> List[str]:
-        """Generate recommendations based on issues."""
+        """Generate recommendations based on detected issues."""
         recommendations = []
 
         issue_thresholds = {
@@ -312,14 +304,14 @@ class CurrencyProcessingQualityDetector:
         }
 
         recommendations_map = {
-            "missing_values": "Handle missing values: consider imputation or removal based on business context.",
-            "invalid_format": "Standardize currency format across all values.",
-            "negative_values": "Review negative values to ensure they represent valid transactions.",
-            "inconsistent_currency": "Normalize all values to a single currency using appropriate exchange rates.",
-            "decimal_precision_issues": "Standardize decimal precision to exactly two decimal places.",
-            "outliers": "Investigate outlier values that may indicate data entry errors or unusual transactions.",
-            "zero_values": "Review zero values to determine if they represent actual transactions or data errors.",
-            "mixed_formats": "Standardize currency notation (either always use symbols or never use them)."
+            "missing_values": "Handle missing values: consider imputation or removal.",
+            "invalid_format": "Standardize currency format.",
+            "negative_values": "Review negative values for transaction accuracy.",
+            "inconsistent_currency": "Normalize to a single currency using exchange rates.",
+            "decimal_precision_issues": "Standardize to two decimal places.",
+            "outliers": "Investigate outlier values for data integrity.",
+            "zero_values": "Validate zero value transactions.",
+            "mixed_formats": "Standardize currency notation."
         }
 
         for issue, count in issues.items():
@@ -328,34 +320,57 @@ class CurrencyProcessingQualityDetector:
 
         return recommendations
 
-    def run(self) -> Dict[str, ColumnAnalysis]:
-        """Run analysis on all columns."""
-        all_results = {column: self.analyze_column(column) for column in self.data.columns}
-        return {col: analysis for col, analysis in all_results.items()
-                if analysis.identified_as == "CURRENCY"}
+    def analyze_column(self, column: str) -> ColumnClassification:
+        """Analyze a single column with multi-level confidence."""
+        values = self.data[column].dropna()
+
+        confidence_score, confidence_level = self._calculate_enhanced_confidence(column, values)
+
+        if confidence_level == 'INSUFFICIENT':
+            return None
+
+        detected_currencies = set()
+        for value in values:
+            detected_currencies.update(self._detect_currencies_in_values(str(value)))
+
+        issues = self._identify_issues(values)
+        recommendations = self._generate_recommendations(issues, len(values))
+
+        return ColumnClassification(
+            confidence_level=confidence_level,
+            confidence_score=confidence_score,
+            detected_currencies=list(detected_currencies),
+            sample_values=values.head(5).tolist(),
+            total_rows=len(values),
+            issues=issues,
+            recommendations=recommendations,
+            statistics=self._calculate_statistics(values)
+        )
+
+    def run(self) -> Dict[str, ColumnClassification]:
+        """Run analysis on all columns with currency potential."""
+        results = {}
+        for column in self.data.columns:
+            analysis = self.analyze_column(column)
+            if analysis is not None:
+                results[column] = analysis
+
+        return results
+
 
 # Example usage
 if __name__ == "__main__":
-    # Example data
-    data = {
-        "amount": ["$19.99", "50.00", "€100.50", "$500", "₹1000.00", "-1000", "1000000", "1,000,000.99", "$10.99"],
-        "total_cost": ["$10", "£100", "€99.99", "-200", "₹5000", "120", "$1,000.99", "$500.00", "$200"],
-        "profit": ["1000", "1500", "$2000", "$5000", "1000.25", "150.75", "$25000", "$25000", "Invalid"],
-        "percentages": [0.1, 0.25, 0.5, 0.75, 1, 0.15, 0.33, 0.66, 0.99]
-    }
-    # file_path = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
-    file_path = r"C:\Users\admin\Downloads\fifa21_raw_data_v2.csv"
-    df = pd.read_csv(file_path, encoding='utf-8')
-    #df = pd.DataFrame(data)
-    detector = CurrencyProcessingQualityDetector(df)
+    filepath = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
+    df = pd.read_csv(filepath, encoding='windows-1252')
+
+    detector = EnhancedCurrencyDetector(df)
     report = detector.run()
 
-    # Display detailed results for currency columns only
+    # Detailed reporting
     for column, analysis in report.items():
         print(f"\nColumn: {column}")
-        print(f"Classification: {analysis.identified_as}")
-        print(f"Confidence: {analysis.confidence:.2f}%")
-        print(f"Sample Values: {analysis.sample_values}")
+        print(f"Confidence Level: {analysis.confidence_level}")
+        print(f"Confidence Score: {analysis.confidence_score:.2f}%")
 
         if analysis.detected_currencies:
             print(f"Detected Currencies: {analysis.detected_currencies}")
@@ -369,10 +384,5 @@ if __name__ == "__main__":
             print("\nRecommendations:")
             for rec in analysis.recommendations:
                 print(f"- {rec}")
-
-        if analysis.statistics:
-            print("\nStatistics:")
-            for stat, value in analysis.statistics.items():
-                print(f"- {stat}: {value:.2f}")
 
         print("-" * 50)

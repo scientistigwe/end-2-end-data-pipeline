@@ -1,53 +1,55 @@
-import uuid
-from typing import Dict, List, Any, Optional, Callable, Tuple, Type
-from enum import Enum
-import os
-from datetime import datetime, timedelta
-from dataclasses import dataclass, field
-import logging
-import traceback
-import time
-import threading
+# Standard library imports
 import functools
-
+import logging
+import os
+import threading
+import time
+import traceback
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 # Third-party imports
 from pydantic import BaseModel
-from concurrent.futures import ThreadPoolExecutor
 
-# Local imports (assumed to be defined in respective modules)
-from backend.core.messaging.broker import MessageBroker
-from backend.core.metrics.performance_tracker import PerformanceTracker
-from backend.core.messaging.types import (
-    ProcessingMessage,
-    MessageType,
-    ProcessingStatus,
-    ModuleIdentifier
+# Core imports
+from backend.core.config.data_processing_enums import (
+    DataIssueType,
+    ProcessingModule,
+    build_routing_graph
 )
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
+    MessageType,
+    ModuleIdentifier,
+    ProcessingMessage,
+    ProcessingStatus
+)
+from backend.core.metrics.performance_tracker import PerformanceTracker
 from backend.core.orchestration.conductor import DataConductor
+from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.staging.staging_area import EnhancedStagingArea
-from backend.core.config.data_processing_enums import ProcessingModule, DataIssueType, build_routing_graph
 
-# Import managers and handlers
-from backend.data_pipeline.source.file.file_manager import FileManager
+# Pipeline source managers
 from backend.data_pipeline.source.api.api_manager import ApiManager
 from backend.data_pipeline.source.cloud.s3_data_manager import S3DataManager
 from backend.data_pipeline.source.database.db_data_manager import DBDataManager
+from backend.data_pipeline.source.file.file_manager import FileManager
 from backend.data_pipeline.source.stream.stream_manager import StreamManager
+
+# Output handlers
 from backend.core.output.handlers import (
+    APIOutputHandler,
     DatabaseOutputHandler,
     FileOutputHandler,
-    APIOutputHandler,
     StreamOutputHandler
 )
 
-import logging
-from typing import Dict, List, Any, Optional, Callable
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
-import uuid
-import traceback
-
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def retry_decorator(max_attempts=3, base_delay=1, backoff_factor=2, allowed_exceptions=(Exception,)):
     """
@@ -69,13 +71,13 @@ def retry_decorator(max_attempts=3, base_delay=1, backoff_factor=2, allowed_exce
                 try:
                     result = func(self, *args, **kwargs)
                     if attempt > 1:
-                        self.logger.info(f"Operation succeeded on attempt {attempt}")
+                        logger.info(f"Operation succeeded on attempt {attempt}")
                     return result
 
                 except allowed_exceptions as e:
                     last_exception = e
                     delay = base_delay * (backoff_factor ** (attempt - 1))
-                    self.logger.warning(
+                    logger.warning(
                         f"Attempt {attempt} failed. Retrying in {delay:.2f} seconds. "
                         f"Error: {str(e)}"
                     )
@@ -100,36 +102,15 @@ class RetryExhaustedError(OrchestratorError):
 
 @dataclass
 class RetryConfig:
-    """Configuration for retry mechanism
-
-    Attributes:
-        max_attempts (int): Maximum number of retry attempts
-        base_delay (float): Initial delay between retries in seconds
-        backoff_factor (float): Multiplier for exponential backoff
-        allowed_exceptions (Tuple[Type[Exception], ...]): Exception types eligible for retry
-    """
+    """Configuration for retry mechanism"""
     max_attempts: int = 3
     base_delay: float = 1.0
     backoff_factor: float = 2.0
-    allowed_exceptions: Tuple[Type[Exception], ...] = (OrchestratorError,)
-
+    allowed_exceptions: Tuple[Type[Exception], ...] = (Exception,)
 
 @dataclass
 class PipelineMetadata:
-    """Tracks comprehensive pipeline execution data
-
-    Attributes:
-        pipeline_id (str): Unique identifier for the pipeline
-        source_type (str): Type of data source
-        start_time (datetime): Pipeline start timestamp
-        end_time (Optional[datetime]): Pipeline completion timestamp
-        status (ProcessingStatus): Current pipeline status
-        data_size (int): Size of processed data
-        stages_completed (List[str]): List of completed processing stages
-        user_decisions (List[Dict[str, Any]]): Record of user decisions
-        performance_metrics (Dict[str, Any]): Performance tracking metrics
-        recommendations (List[str]): System-generated recommendations
-    """
+    """Tracks pipeline execution data"""
     pipeline_id: str
     source_type: str
     start_time: datetime = field(default_factory=datetime.now)
@@ -167,67 +148,47 @@ class TrafficMetadata:
 
 
 class DataOrchestrator:
-    """Main orchestrator for data processing pipelines
+    """Main orchestrator for data processing pipelines"""
 
-    Coordinates data flow, manages processing stages, and handles system resources
-    while maintaining operational metrics and error handling.
-    """
-    def __init__(self,
-                 message_broker: Optional[MessageBroker] = None,
-                 data_conductor: Optional[DataConductor] = None,
-                 staging_area: Optional[EnhancedStagingArea] = None,
-                 logger: Optional[logging.Logger] = None):
-        """Initialize orchestrator with enhanced message handling"""
-
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            data_conductor: Optional[DataConductor] = None,
+            staging_area: Optional[EnhancedStagingArea] = None
+    ):
+        """Initialize orchestrator with component registry integration"""
         # Core components
         self.message_broker = message_broker
         self.conductor = data_conductor
         self.staging_area = staging_area
+        self.registry = ComponentRegistry()
+        self.logger = logging.getLogger(__name__)
 
-        # Enhanced logging setup
-        self.logger = logger or logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
+        # Get consistent UUID from registry
+        self.module_id = ModuleIdentifier(
+            "DataOrchestrator",
+            "manage_pipeline",
+            self.registry.get_component_uuid("DataOrchestrator")
+        )
 
-        # Performance and metrics
+        # Initialize tracking and resources
+        self.active_pipelines: Dict[str, PipelineMetadata] = {}
+        self.source_managers: Dict[str, Any] = {}
+        self.output_handlers: Dict[str, Callable] = {}
+
+        # Configure components
         self.performance_tracker = PerformanceTracker()
-
-        # Configuration with UUID-based instance identification
-        self.instance_id = str(uuid.uuid4())
-        self.module_id = ModuleIdentifier("DataOrchestrator", "manage_pipeline", self.instance_id)
         self.retry_config = RetryConfig()
-
-        # Enhanced tracking with timestamps
-        self.active_pipelines: Dict[str, PipelineMetadata] = {}
-        self.active_traffic: Dict[str, TrafficMetadata] = {}
-
-        # Resource management with proper cleanup
-        self.source_managers: Dict[str, Any] = {}
-        self.output_handlers: Dict[str, Callable] = {}
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
 
-        # Tracking
-        self.active_pipelines: Dict[str, PipelineMetadata] = {}
-        self.active_traffic: Dict[str, TrafficMetadata] = {}
-
-        # Resource management
-        self.source_managers: Dict[str, Any] = {}
-        self.output_handlers: Dict[str, Callable] = {}
-        self.thread_pool = ThreadPoolExecutor(max_workers=4)
-
-        # Register all potential modules BEFORE setup
-        self._register_all_potential_modules()
-
-        # Message handling setup
+        # Initialize messaging and routing
+        self._initialize_messaging()
         self._setup_routing_graph()
-        self._setup_message_subscriptions()
 
-        # Routing configuration
-        self.routing_graph = build_routing_graph()
-        self.initial_routing = {'default': 'data_quality_module'}
+        # Initialize source managers
+        self._initialize_source_managers()
 
-        # Initialization sequence
-        self._initialize_components()
-
+        logger.info(f"DataOrchestrator initialized with source managers: {list(self.source_managers.keys())}")
 
     def _initialize_components(self):
         """Initialize components in correct sequence with error handling"""
@@ -253,6 +214,58 @@ class DataOrchestrator:
         except Exception as e:
             self.logger.error(f"Initialization failed: {str(e)}")
             raise RuntimeError(f"Orchestrator initialization failed: {str(e)}")
+
+    def _initialize_source_managers(self):
+        """Initialize and register source managers"""
+        try:
+            # Create source managers with shared message broker
+            self.source_managers = {
+                "file": FileManager(self.message_broker),
+                # "api": ApiManager(self.message_broker),
+                # "s3": S3DataManager(self.message_broker),
+                # "database": DBDataManager(self.message_broker),
+                # "stream": StreamManager(self.message_broker)
+            }
+
+            # Register each manager
+            for source_type, manager in self.source_managers.items():
+                self.register_source_manager(source_type, manager)
+                logger.info(f"Registered source manager: {source_type}")
+
+        except Exception as e:
+            logger.error(f"Error initializing source managers: {str(e)}")
+            raise
+
+    def register_source_manager(self, source_type: str, manager: Any):
+        """Register data source manager
+
+        Args:
+            source_type (str): Type of data source
+            manager (Any): Manager instance for the source type
+        """
+        self.source_managers[source_type.lower()] = manager
+        logger.info(f"Registered source manager for type: {source_type}")
+
+    def _initialize_messaging(self):
+        """Initialize message broker registration and subscriptions"""
+        try:
+            # Register with message broker
+            self.message_broker.register_module(self.module_id)
+
+            # Set up critical subscriptions
+            subscriptions = [
+                (self.module_id.get_tag(), self.manage_pipeline),
+                (f"pipeline_status.update.{self.module_id.instance_id}", self._update_pipeline_status),
+                (f"user_decision.handle.{self.module_id.instance_id}", self._handle_user_decision),
+            ]
+
+            for tag, handler in subscriptions:
+                self.message_broker.subscribe_to_module(tag, handler)
+                self.logger.info(f"Subscribed to {tag}")
+
+        except Exception as e:
+            self.logger.error(f"Messaging initialization failed: {str(e)}")
+            raise
 
     def _register_orchestrator(self):
         """Register the orchestrator itself with the message broker"""
@@ -344,6 +357,14 @@ class DataOrchestrator:
         # Use the build_routing_graph() function to create the routing configuration
         self.routing_graph = build_routing_graph()
 
+        # Add explicit routing for file processing
+        self.routing_graph.setdefault('file_source', {}).update({
+            None: 'data_orchestrator',  # Default route
+            'process_file': self.module_id.get_tag()
+        })
+
+        self.logger.info(f"Routing graph updated: {self.routing_graph}")
+
         # Set a default initial routing if not already set
         if not hasattr(self, 'initial_routing'):
             self.initial_routing = {'default': 'data_quality_module'}
@@ -369,15 +390,6 @@ class DataOrchestrator:
             "Review error details and system configuration"
         )
 
-    def register_source_manager(self, source_type: str, manager: Any):
-        """Register data source manager
-
-        Args:
-            source_type (str): Type of data source
-            manager (Any): Manager instance for the source type
-        """
-        self.source_managers[source_type] = manager
-
     def register_output_handler(self, destination: str, handler: Callable):
         """Register output destination handler
 
@@ -388,50 +400,68 @@ class DataOrchestrator:
         self.output_handlers[destination] = handler
 
     @retry_decorator(max_attempts=3, base_delay=1)
-    def handle_source_data(self, message: ProcessingMessage) -> str:
-        """Process incoming source data with enhanced error handling and retry logic"""
+    def manage_pipeline(self, message: ProcessingMessage) -> str:
+        """Manage a pipeline by processing source data and initiating the workflow."""
+        pipeline_id = str(uuid.uuid4())
+
         try:
-            self.logger.info(f"Handling source data: {message}")
-
-            pipeline_id = str(uuid.uuid4())
             source_type = message.source_identifier.module_name.lower()
+            source_type = 'file' if source_type == 'filemanager' else source_type
 
-            self.logger.info(f"Generated pipeline ID: {pipeline_id}, Source Type: {source_type}")
-
-            # Extract and validate data
             source_data = message.content.get('data')
-            if not source_data:
-                raise ValueError("No data provided in message")
+            source_metadata = message.content.get('metadata')
 
-            metadata = message.content.get('metadata', {})
+            if not source_data or not source_metadata:
+                raise ValueError("Missing data or metadata in message")
 
-            # Create pipeline metadata with enhanced tracking
             pipeline_metadata = PipelineMetadata(
                 pipeline_id=pipeline_id,
                 source_type=source_type,
-                data_size=len(str(source_data)),
-                creation_time=datetime.now(),
-                source_message_id=message.message_id
+                data_size=len(str(source_data))
             )
 
-            # Track performance and stage data
-            self.performance_tracker.track_pipeline_start(pipeline_id, message)
-            staging_id = self.staging_area.stage_data(source_data, metadata)
-
-            # Update pipeline status
-            pipeline_metadata.stages_completed.append("Staged")
             self.active_pipelines[pipeline_id] = pipeline_metadata
 
-            # Create and publish ingestion message
-            ingestion_message = self._create_ingestion_message(pipeline_id, staging_id)
-            self.logger.info(f"Publishing ingestion message: {ingestion_message}")
-            self.message_broker.publish(ingestion_message)
+            # Stage data with proper metadata
+            staging_metadata = {
+                'source_module': message.source_identifier,
+                'file_type': source_metadata.get('file_type', 'unknown'),
+                'format': source_metadata.get('format', ''),
+                'size_bytes': source_metadata.get('size_bytes', 0),
+                'row_count': source_metadata.get('row_count'),
+                'columns': source_metadata.get('columns', [])
+            }
 
-            self.logger.info(f"Pipeline {pipeline_id} initiated for {source_type} data")
+            staging_id = self.staging_area.stage_data(source_data, staging_metadata)
+            pipeline_metadata.stages_completed.append("Staged")
+            self.logger.info(f"Data staged successfully with ID: {staging_id}")
+
+            # Direct to quality report module
+            quality_report_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    "DataQualityReport",
+                    "generate_report",
+                    self.registry.get_component_uuid("DataQualityReport")
+                ),
+                message_type=MessageType.ACTION,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'staging_id': staging_id,
+                    'action': 'generate_quality_report',
+                    'data': source_data,
+                    'metadata': source_metadata
+                }
+            )
+
+            self.message_broker.publish(quality_report_message)
+            self.logger.info(f"Data sent for quality analysis: {pipeline_id}")
+
             return pipeline_id
 
         except Exception as e:
-            self._handle_pipeline_error(pipeline_id, e)
+            self.logger.error(f"Pipeline initialization failed: {str(e)}")
+            self.handle_pipeline_error(pipeline_id, e)
             raise
 
     def _setup_message_subscriptions(self):
@@ -443,7 +473,7 @@ class DataOrchestrator:
             (self.module_id.get_tag(), self._handle_internal_message),
             (f"pipeline_status.update.{self.instance_id}", self._update_pipeline_status),
             (f"user_decision.handle.{self.instance_id}", self._handle_user_decision),
-            (f"source_data.ingest.{self.instance_id}", self.handle_source_data),
+            (f"source_data.ingest.{self.instance_id}", self.manage_pipeline),
         ]
 
         successful_subscriptions = []
@@ -787,6 +817,101 @@ class DataOrchestrator:
             self.logger.warning("Failed modules:")
             for module in failed:
                 self.logger.warning(f"  - {module.get_tag()}")
+
+    def print_diagnostic_info(self):
+        """Print diagnostic information about message broker and subscriptions"""
+        self.logger.info("=== Diagnostic Information ===")
+
+        # Print registered modules
+        registered_modules = self.message_broker.get_registered_modules()
+        self.logger.info("Registered Modules:")
+        for module in registered_modules:
+            self.logger.info(f"- {module}")
+
+        # Print current subscriptions
+        subscriptions = self.message_broker.get_current_subscriptions()
+        self.logger.info("Current Subscriptions:")
+        for tag, callbacks in subscriptions.items():
+            self.logger.info(f"Tag: {tag}, Callbacks: {callbacks}")
+
+    @retry_decorator(max_attempts=3, base_delay=1)
+    def publish_with_retry(self, message: ProcessingMessage):
+        """Publish message with retry logic"""
+        try:
+            self.logger.info(f"Attempting to publish message: {message}")
+            self.message_broker.publish(message)
+            self.logger.info("Message published successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to publish message: {str(e)}")
+            raise
+
+    def _create_pipeline_metadata(self, pipeline_id: str, source_type: str,
+                                  message: ProcessingMessage) -> PipelineMetadata:
+        """Create pipeline metadata with tracking information"""
+        return PipelineMetadata(
+            pipeline_id=pipeline_id,
+            source_type=source_type,
+            data_size=len(str(message.content)),
+            start_time=datetime.now()
+        )
+
+    def _initiate_pipeline_processing(self, pipeline_id: str, staging_id: str) -> None:
+        """Initiate pipeline processing with proper message routing"""
+        try:
+            ingestion_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                message_type=MessageType.ACTION,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'staging_id': staging_id,
+                    'action': 'start_processing',
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+
+            self.message_broker.publish(ingestion_message)
+            self.logger.info(f"Initiated processing for pipeline: {pipeline_id}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initiate pipeline processing: {str(e)}")
+            raise
+
+    def handle_pipeline_error(self, pipeline_id: str, error: Exception) -> None:
+        """Handle pipeline errors with proper error reporting"""
+        try:
+            if pipeline_id in self.active_pipelines:
+                pipeline = self.active_pipelines[pipeline_id]
+                pipeline.status = ProcessingStatus.ERROR
+                pipeline.end_time = datetime.now()
+
+                # Generate error recommendation
+                recommendation = self._generate_error_recommendation(error)
+                pipeline.recommendations.append(recommendation)
+
+                # Create error details
+                error_details = {
+                    'timestamp': datetime.now(),
+                    'error_type': type(error).__name__,
+                    'error_message': str(error),
+                    'stage': pipeline.stages_completed[-1] if pipeline.stages_completed else 'unknown',
+                    'recommendation': recommendation
+                }
+
+                # Publish error notification
+                error_message = ProcessingMessage(
+                    source_identifier=self.module_id,
+                    message_type=MessageType.ERROR,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error_details': error_details
+                    }
+                )
+                self.message_broker.publish(error_message)
+
+                self.logger.error(f"Pipeline {pipeline_id} failed: {str(error)}")
+
+        except Exception as e:
+            self.logger.error(f"Error handling pipeline failure: {str(e)}")
 
     def __del__(self):
         """Enhanced cleanup with logging"""

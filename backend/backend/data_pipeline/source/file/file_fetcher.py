@@ -29,19 +29,71 @@ class FileFetcher:
         logger.info(f'Filename: {self.file.filename}')
         return self.file.filename.rsplit('.', 1)[-1].lower() if '.' in self.file.filename else None
 
-    def convert_to_dataframe(self):
-        """Convert file to DataFrame, handling different formats and sizes."""
+    def convert_to_dataframe(self) -> Tuple[pd.DataFrame, str]:
+        """
+        Convert the file to a DataFrame based on its format.
+
+        Supports file formats: CSV, JSON, Excel (XLSX), and Parquet.
+
+        Returns:
+            Tuple:
+            - DataFrame: The converted DataFrame (or None if conversion fails)
+            - str: Message indicating success or failure
+        """
         if self.file_format not in self.SUPPORTED_FORMATS:
             return None, f"Unsupported file format: {self.file_format}"
 
-        if self.file_size_mb >= Config.FILE_SIZE_THRESHOLD_MB or self.file_format != 'parquet':
-            return self._convert_to_parquet()
+        try:
+            # Reset file pointer before reading
+            self.file.seek(0)
+
+            # Get the appropriate reader for the file format
+            reader = self.SUPPORTED_FORMATS[self.file_format]
+
+            if self.file_format == "parquet":
+                # Read Parquet file directly
+                df = reader(BytesIO(self.file.read()))
+
+            elif self.file_format in ["csv", "json"]:
+                # Detect encoding and read CSV/JSON files
+                raw_data = self.file.read()
+                detected_encoding = chardet.detect(raw_data).get("encoding", "utf-8")
+                logger.info(f"Detected encoding for {self.file_format.upper()}: {detected_encoding}")
+                file_content = raw_data.decode(detected_encoding)
+                df = reader(StringIO(file_content))
+
+            elif self.file_format == "xlsx":
+                # Read Excel file
+                df = reader(BytesIO(self.file.read()))
+
+            else:
+                return None, f"Unsupported file format: {self.file_format}"
+
+            return df, f"{self.file_format.upper()} loaded successfully"
+
+        except EmptyDataError:
+            return None, "File is empty or contains no data"
+        except ParserError as e:
+            return None, f"File parsing error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error converting {self.file_format.upper()} to DataFrame: {str(e)}", exc_info=True)
+            return None, f"Conversion error: {str(e)}"
+
+        # Use FileFetcher for comprehensive conversion
+        try:
+            file_fetcher = FileFetcher(file)
+            return file_fetcher.convert_to_dataframe()
+        except Exception as e:
+            return None, f"Conversion failed: {str(e)}"
 
         return self.load_file()
 
     def load_file(self) -> Tuple[Any, str]:
         """Load the file into a DataFrame or equivalent structure with encoding detection."""
         try:
+            # Always reset file pointer to the beginning
+            self.file.seek(0)
+
             reader = self.SUPPORTED_FORMATS[self.file_format]
 
             # Handle Parquet files
@@ -52,7 +104,7 @@ class FileFetcher:
             elif self.file_format in ['csv', 'json']:
                 raw_data = self.file.read()  # Read file content as bytes
                 detected_encoding = chardet.detect(raw_data)['encoding']
-                logger.info(f"Detected Encoding2: {detected_encoding}")
+                logger.info(f"Detected Encoding: {detected_encoding}")
 
                 file_content = raw_data.decode(detected_encoding or 'utf-8')  # Decode with detected encoding
                 df = reader(StringIO(file_content))  # Use pandas reader with StringIO
@@ -96,6 +148,13 @@ class FileFetcher:
 
         except Exception as e:
             return {"error": f"Metadata extraction error: {str(e)}"}
+
+    def get_metadata(self) -> Dict[str, Any]:
+        """
+        Get metadata from the file. Alias for extract_metadata for consistency.
+        Ensures backward compatibility with FileManager's expectations.
+        """
+        return self.extract_metadata()
 
     def _convert_to_parquet(self):
         """Convert file to Parquet buffer."""

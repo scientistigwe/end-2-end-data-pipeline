@@ -4,24 +4,25 @@ import pandas as pd
 import magic
 from .file_config import Config
 from typing import Tuple
+import logging
 
+logger = logging.getLogger(__name__)
 
 class FileValidator:
     """Comprehensive file validation utilities."""
 
     @staticmethod
-    def validate_file_format(file_fetcher: 'FileFetcher', file_format=None) -> Tuple[bool, str]:
+    def validate_file_format(metadata: dict, file_format=None) -> Tuple[bool, str]:
         """
-        Validate if the uploaded file format is allowed using FileFetcher metadata.
+        Validate if the uploaded file format is allowed using metadata.
 
         Args:
-            file_fetcher: FileFetcher instance
+            metadata: File metadata dictionary
             file_format (str, optional): Specific file format to validate against
 
         Returns:
             tuple: (boolean success status, validation message)
         """
-        metadata = file_fetcher.get_metadata()
         ext = metadata.get('file_type', '').lower()
         allowed_formats = Config.ALLOWED_FORMATS
 
@@ -34,17 +35,16 @@ class FileValidator:
         return True, "File format is valid."
 
     @staticmethod
-    def validate_file_size(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
+    def validate_file_size(metadata: dict) -> Tuple[bool, str]:
         """
-        Validate the file size is below the threshold using FileFetcher metadata.
+        Validate the file size is below the threshold.
 
         Args:
-            file_fetcher: FileFetcher instance
+            metadata: File metadata dictionary
 
         Returns:
             tuple: (boolean success status, size validation message)
         """
-        metadata = file_fetcher.get_metadata()
         file_size_mb = metadata.get("file_size_mb", 0)
 
         if file_size_mb > Config.FILE_SIZE_THRESHOLD_MB:
@@ -53,22 +53,19 @@ class FileValidator:
         return True, "File size is within the allowed limit."
 
     @staticmethod
-    def validate_file_integrity(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
+    def validate_file_integrity(data: pd.DataFrame) -> Tuple[bool, str]:
         """
-        Check if the uploaded file is corrupt or unreadable using the preloaded data.
+        Check if the data is valid and readable.
 
         Args:
-            file_fetcher: FileFetcher instance
+            data: Pandas DataFrame of file contents
 
         Returns:
             tuple: (boolean success status, integrity check message)
         """
         try:
-            # Use the preloaded data from FileFetcher
-            df, message = file_fetcher.load_file()
-
-            if df is None:
-                return False, f"Error reading file: {message}. The file may be corrupted or unreadable."
+            if data is None or data.empty:
+                return False, "File appears to be empty or unreadable."
 
             return True, "File integrity check passed."
 
@@ -76,19 +73,19 @@ class FileValidator:
             return False, f"Error reading file: {str(e)}. The file may be corrupted or unreadable."
 
     @staticmethod
-    def validate_security(file_fetcher: 'FileFetcher') -> Tuple[bool, str]:
+    def validate_security(content: bytes) -> Tuple[bool, str]:
         """
-        Perform security checks on the uploaded file based on its content.
+        Perform security checks on the file content.
 
         Args:
-            file_fetcher: FileFetcher instance
+            content: Raw file content in bytes
 
         Returns:
             tuple: (boolean security status, security check message)
         """
         try:
-            # Use the preloaded content from FileFetcher
-            content = file_fetcher.file.read()
+            if not content:  # Check if content is empty
+                return False, "Empty file content"
 
             # Use python-magic to detect mime type
             mime_type = magic.from_buffer(content, mime=True)
@@ -98,10 +95,15 @@ class FileValidator:
                 'application/json',
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'application/x-parquet',
-                'application/vnd.ms-excel',  # Additional Excel mime type
-                'application/octet-stream'  # Fallback for some Parquet files
+                'application/vnd.ms-excel',
+                'application/octet-stream',  # For some binary formats
+                'text/plain'  # For some CSV files
             }
 
-            return mime_type in supported_mimes, f"Security check: {mime_type}"
+            if mime_type in supported_mimes:
+                return True, f"Security check passed: {mime_type}"
+
+            return False, f"Unsupported mime type: {mime_type}"
+
         except Exception as e:
             return False, f"Security validation failed: {str(e)}"

@@ -1,41 +1,283 @@
 import logging
-import io
 import uuid
 from io import BytesIO
 import pandas as pd
 from typing import Dict, Tuple, Any, Optional
+import traceback
 
-from torch.utils.hipify.hipify_python import meta_data
-
+from backend.core.registry.component_registry import ComponentRegistry
+from backend.core.messaging.types import (
+    ProcessingMessage,
+    MessageType,
+    ModuleIdentifier,
+    ProcessingStatus
+)
 from .file_validator import FileValidator
 from .file_fetcher import FileFetcher
-from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier, ProcessingStatus
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class FileManager:
-    def __init__(self, message_broker):
-            self.message_broker = message_broker
-            self.module_id = ModuleIdentifier("FileManager", "process_file")
-            self.validator = FileValidator()
+    """Enhanced file management system with consistent messaging integration"""
 
+    # ----------------
+    # Initialization
+    # ----------------
+
+    def __init__(self, message_broker):
+        """Initialize FileManager with enhanced component registration"""
+        self.message_broker = message_broker
+        self.registry = ComponentRegistry()
+        self.validator = FileValidator()
+
+        # Initialize with consistent UUID
+        component_uuid = self.registry.get_component_uuid("FileManager")
+        self.module_id = ModuleIdentifier(
+            "FileManager",
+            "process_file",
+            component_uuid
+        )
+
+        # Track processing state
+        self.pending_files: Dict[str, Dict[str, Any]] = {}
+        self.processed_data: Optional[Dict[str, Any]] = None
+
+        # Register and subscribe
+        self._initialize_messaging()
+        logger.info(f"FileManager initialized with ID: {self.module_id.get_tag()}")
+
+    def _initialize_messaging(self) -> None:
+        """Set up message broker registration and subscriptions"""
+        try:
             # Register with message broker
             self.message_broker.register_module(self.module_id)
 
-            # Subscribe to orchestrator responses using the correct method
-            self.message_broker.subscribe_to_module(
-                ModuleIdentifier("DataOrchestrator", "manage_pipeline").get_tag(),
-                self._handle_orchestrator_response
+            # Get orchestrator ID with consistent UUID
+            orchestrator_id = ModuleIdentifier(
+                "DataOrchestrator",
+                "manage_pipeline",
+                self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            logger.info('File Manager Started with Message Broker')
-            self.processed_data: Optional[Dict[str, Any]] = None
-            self.pending_files: Dict[str, Dict[str, Any]] = {}
+            # Subscribe to orchestrator responses
+            self.message_broker.subscribe_to_module(
+                orchestrator_id.get_tag(),
+                self._handle_orchestrator_response
+            )
+            logger.info("FileManager messaging initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing messaging: {str(e)}")
+            raise
 
+    # ----------------
+    # Main Processing Flow
+    # ----------------
+    def process_file(self, file: Any) -> Dict[str, Any]:
+        """Main entry point for file processing"""
+        filename = self._get_filename(file)
+        file_id = str(uuid.uuid4())
+
+        logger.info(f"Starting processing for file: {filename} (ID: {file_id})")
+
+        try:
+            # Step 1: Initialize file fetcher
+            file_fetcher = FileFetcher(file)
+
+            # Step 2: Validate file
+            is_valid, validation_message = self._validate_file(file_fetcher)
+            if not is_valid:
+                return self._handle_error(filename, validation_message)
+
+            # Step 3: Process file data
+            processed_data = self._process_file_data(file_fetcher, filename)
+            if processed_data["status"] == "error":
+                return processed_data
+
+            # Step 4: Track pending file
+            self.pending_files[file_id] = {
+                "filename": filename,
+                "processed_data": processed_data,
+                "status": "pending"
+            }
+
+            # Step 5: Send to orchestrator
+            self._send_to_orchestrator(file_id, processed_data)
+            return processed_data
+
+        except Exception as e:
+            error_msg = f"Unexpected error processing file: {str(e)}"
+            logger.error(f"{error_msg}\n{traceback.format_exc()}")
+            return self._handle_error(filename, error_msg)
+
+    # ----------------
+    # File Processing Helpers
+    # ----------------
+    def _process_file_data(self, file_fetcher: FileFetcher, filename: str) -> Dict[str, Any]:
+        """Process file data with comprehensive error handling"""
+        try:
+            # Convert to DataFrame
+            data, conversion_message = file_fetcher.convert_to_dataframe()
+            if data is None:
+                return self._handle_error(filename, conversion_message)
+
+            # Extract metadata
+            metadata = file_fetcher.extract_metadata()
+            if 'error' in metadata:
+                return self._handle_error(filename, metadata['error'])
+
+            return {
+                "filename": filename,
+                "status": "success",
+                "metadata": metadata,
+                "data": data.to_dict(orient="records")
+            }
+        except Exception as e:
+            return self._handle_error(filename, str(e))
+
+    def _validate_file(self, file_fetcher: FileFetcher) -> Tuple[bool, str]:
+        """
+        Perform file validations using FileFetcher and FileValidator.
+        """
+        try:
+            # Reset file pointer at the start of validation
+            file_fetcher.file.seek(0)
+
+            # First, validate security (do this first as it reads raw bytes)
+            security_valid, security_message = self.validator.validate_security(file_fetcher.file.read())
+            if not security_valid:
+                logger.warning(f"Security validation failed: {security_message}")
+                return False, security_message
+
+            # Reset file pointer after security check
+            file_fetcher.file.seek(0)
+
+            # Get metadata
+            metadata = file_fetcher.extract_metadata()
+            if "error" in metadata:
+                logger.warning(f"File validation failed: {metadata['error']}")
+                return False, metadata["error"]
+
+            # Validate format
+            format_valid, format_message = self.validator.validate_file_format(metadata)
+            if not format_valid:
+                logger.warning(f"File format validation failed: {format_message}")
+                return False, format_message
+
+            # Validate size
+            size_valid, size_message = self.validator.validate_file_size(metadata)
+            if not size_valid:
+                logger.warning(f"File size validation failed: {size_message}")
+                return False, size_message
+
+            # Reset file pointer before loading data
+            file_fetcher.file.seek(0)
+
+            # Get and validate data
+            data, message = file_fetcher.load_file()
+            if data is None:
+                logger.warning(f"File loading failed: {message}")
+                return False, message
+
+            # Validate integrity
+            integrity_valid, integrity_message = self.validator.validate_file_integrity(data)
+            if not integrity_valid:
+                logger.warning(f"File integrity validation failed: {integrity_message}")
+                return False, integrity_message
+
+            logger.info("File validation successful")
+            return True, "Validation successful"
+
+        except Exception as e:
+            logger.error(f"File validation error: {str(e)}", exc_info=True)
+            return False, f"Validation error: {str(e)}"
+
+    # ----------------
+    # Orchestrator Communication
+    # ----------------
+    def _send_to_orchestrator(self, file_id: str, processed_data: Dict[str, Any]) -> None:
+        """Send processed data to orchestrator"""
+        try:
+            orchestrator_id = ModuleIdentifier(
+                "DataOrchestrator",
+                "manage_pipeline",
+                self.registry.get_component_uuid("DataOrchestrator")
+            )
+
+            message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=orchestrator_id,
+                message_type=MessageType.ACTION,
+                content={
+                    'file_id': file_id,  # This file_id needs to match what's in pending_files
+                    'action': 'process_file_data',
+                    'data': processed_data['data'],
+                    'metadata': processed_data['metadata'],
+                    'source_type': 'file',
+                    'filename': processed_data['filename']
+                }
+            )
+
+            # Store in pending files before sending
+            if file_id not in self.pending_files:
+                self.pending_files[file_id] = {
+                    "filename": processed_data['filename'],
+                    "status": "pending"
+                }
+
+            logger.info(f"Sending data to orchestrator: {orchestrator_id.get_tag()}")
+            self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Error sending to orchestrator: {str(e)}")
+            self._handle_error(processed_data['filename'], str(e))
+
+    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
+        """Handle responses from orchestrator"""
+        try:
+            file_id = message.content.get('file_id')
+            if not file_id or file_id not in self.pending_files:
+                logger.warning(f"Received response for unknown file ID: {file_id}")
+                return
+
+            file_data = self.pending_files[file_id]
+
+            if message.message_type == MessageType.ACTION:
+                logger.info(f"File {file_data['filename']} processed successfully")
+                self._cleanup_pending_file(file_id)
+            elif message.message_type == MessageType.ERROR:
+                logger.error(f"Error processing file {file_data['filename']}")
+                self._handle_orchestrator_error(file_id, message.content.get('error'))
+
+        except Exception as e:
+            logger.error(f"Error handling orchestrator response: {str(e)}")
+
+    # ----------------
+    # Error Handling
+    # ----------------
+    def _handle_error(self, filename: str, error_message: str) -> Dict[str, Any]:
+        """Centralized error handling"""
+        error_data = {
+            'filename': filename,
+            'status': 'error',
+            'message': error_message,
+            'traceback': traceback.format_exc()
+        }
+        logger.error(f"Error processing {filename}: {error_message}")
+        return error_data
+
+    def _handle_orchestrator_error(self, file_id: str, error_message: str) -> None:
+        """Handle orchestrator-reported errors"""
+        if file_id in self.pending_files:
+            file_data = self.pending_files[file_id]
+            logger.error(f"Processing failed for file {file_data['filename']}: {error_message}")
+            self._cleanup_pending_file(file_id)
+
+    # ----------------
+    # Utility Methods
+    # ----------------
     def get_file_metadata(self, file_obj: Any) -> Dict[str, Any]:
-        """Generate metadata for a given file object using FileFetcher."""
+        """Public method to generate file metadata"""
         try:
             file_fetcher = FileFetcher(file_obj)
             metadata = file_fetcher.extract_metadata()
@@ -45,199 +287,24 @@ class FileManager:
             logger.error(f"Metadata generation error: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _validate_file(self, file_fetcher: FileFetcher) -> Tuple[bool, str]:
-        """
-        Perform file validations using FileFetcher and its extracted metadata.
-        """
-        try:
-            # Retrieve metadata from FileFetcher
-            metadata = file_fetcher.get_metadata()
-            if "error" in metadata:
-                logger.warning(f"File validation failed: {metadata['error']}")
-                return False, metadata["error"]
+    def _get_filename(self, file: Any) -> str:
+        """Extract filename from various file object types"""
+        if hasattr(file, 'filename'):
+            return file.filename
+        elif hasattr(file, 'name'):
+            return file.name
+        elif isinstance(file, str):
+            return file.split('/')[-1]
+        elif isinstance(file, pd.DataFrame):
+            return 'DataFrame'
+        elif isinstance(file, BytesIO):
+            return 'BytesIO'
+        return 'unknown'
 
-            # Validate file format and size using metadata
-            format_valid, format_message = self.validator.validate_file_format(metadata)
-            if not format_valid:
-                logger.warning(f"File format validation failed: {format_message}")
-                return False, format_message
+    def _cleanup_pending_file(self, file_id: str) -> None:
+        """Clean up processed file data"""
+        if file_id in self.pending_files:
+            del self.pending_files[file_id]
 
-            size_valid, size_message = self.validator.validate_file_size(metadata)
-            if not size_valid:
-                logger.warning(f"File size validation failed: {size_message}")
-                return False, size_message
 
-            # Validate file integrity using the preloaded file content
-            data = file_fetcher.load_file()
-            integrity_valid, integrity_message = self.validator.validate_file_integrity(data)
-            if not integrity_valid:
-                logger.warning(f"File integrity validation failed: {integrity_message}")
-                return False, integrity_message
 
-            # Additional file-specific checks
-            if metadata["file_type"] not in ["csv", "json", "parquet", "xlsx"]:
-                return False, "File type not allowed. Expected file types are 'csv', 'json', 'parquet', and 'xlsx'"
-
-            logger.info("File validation successful")
-            return True, "Validation successful"
-
-        except Exception as e:
-            logger.error(f"File validation error: {str(e)}", exc_info=True)
-            return False, f"Validation error: {str(e)}"
-
-    def _create_file_obj(self, file_content: bytes, filename: str) -> Any:
-            """Create a standardized file object for processing."""
-
-            class FileObj:
-                def __init__(self, content: bytes, filename: str):
-                    self._content = content
-                    self.filename = filename
-                    self.content_type = f'application/{filename.split(".")[-1]}'
-                    self._position = 0
-
-                def read(self) -> bytes:
-                    return self._content
-
-                def seek(self, pos: int) -> None:
-                    self._position = pos
-
-                @property
-                def stream(self) -> 'StreamWrapper':
-                    return self.StreamWrapper(self._content)
-
-                class StreamWrapper:
-                    def __init__(self, content: bytes):
-                        self._content = content
-
-                    def read(self) -> bytes:
-                        return self._content
-
-            return FileObj(file_content, filename)
-
-    def process_file(self, file: Any) -> Dict[str, Any]:
-        """Main method to process the file and return structured data."""
-        filename = getattr(file, 'filename', 'unknown')
-        logger.info(f"Processing file: {filename}")
-
-        try:
-            # Create FileFetcher instance
-            file_fetcher = FileFetcher(file)
-
-            # Load file, extract and validate metadata
-            data, message = file_fetcher.load_file()
-            metadata = file_fetcher.extract_metadata()
-            if not meta_data:
-                return {"status": "error", "message": message}
-
-            # Validate file integrity
-            valid, message = FileValidator.validate_file_integrity(data)
-            if not valid:
-                return {"status": "error", "message": message}
-
-            # Store metadata and data for processing
-            self.processed_data = {
-                "filename": filename,
-                "status": "success",
-                "metadata": metadata,
-                "data": data.to_dict(orient="records")
-            }
-
-            return self.processed_data
-
-        except Exception as e:
-            logger.error(f"Processing failed for file {filename}: {str(e)}")
-            return {"status": "error", "message": str(e)}
-
-    def _send_success_message(self, file_id: str, processed_data: Dict[str, Any]) -> None:
-            """Send success message to orchestrator with complete processed data"""
-            success_msg = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier("DataOrchestrator", "manage_pipeline"),
-                message_type=MessageType.ACTION,
-                content={
-                    'file_id': file_id,
-                    'action': 'process_file_data',
-                    'data': processed_data['data'],
-                    'metadata': processed_data['metadata'],
-                    'source_type': 'file',
-                    'filename': processed_data['filename']
-                }
-            )
-            logger.info(f"Sending complete processed data to orchestrator for file: {processed_data['filename']}")
-            self.message_broker.publish(success_msg)
-
-    def _send_error_message(self, filename: str, error_message: str) -> Dict[str, Any]:
-            """Helper method to send error messages to orchestrator"""
-            error_data = {
-                'filename': filename,
-                'status': 'error',
-                'source_type': 'file',
-                'message': error_message
-            }
-
-            error_msg = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier("DataOrchestrator", "manage_pipeline"),
-                message_type=MessageType.ERROR,
-                content={
-                    'action': 'handle_file_error',
-                    'error_data': error_data
-                }
-            )
-
-            logger.error(f"Sending error message: {error_msg}")
-            self.message_broker.publish(error_msg)
-            return error_data
-
-    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
-            """Handle responses from the orchestrator"""
-            try:
-                file_id = message.content.get('file_id')
-                if not file_id or file_id not in self.pending_files:
-                    logger.warning(f"Received response for unknown file ID: {file_id}")
-                    return
-
-                if message.message_type == MessageType.ACTION:
-                    logger.info(
-                        f"File {self.pending_files[file_id]['filename']} successfully processed by orchestrator")
-                    # Clean up pending file
-                    del self.pending_files[file_id]
-                elif message.message_type == MessageType.ERROR:
-                    logger.error(
-                        f"Orchestrator reported error for file {self.pending_files[file_id]['filename']}: {message.content.get('error')}")
-                    # Handle retry logic or cleanup as needed
-                    self._handle_orchestrator_error(file_id, message.content.get('error'))
-
-            except Exception as e:
-                logger.error(f"Error handling orchestrator response: {str(e)}")
-
-    def _handle_orchestrator_error(self, file_id: str, error_message: str) -> None:
-            """Handle errors reported by the orchestrator"""
-            if file_id in self.pending_files:
-                file_data = self.pending_files[file_id]
-                logger.error(f"Processing failed for file {file_data['filename']}: {error_message}")
-                # Implement retry logic or cleanup as needed
-                del self.pending_files[file_id]
-
-    def _send_error_message(self, filename: str, error_message: str) -> Dict[str, Any]:
-        """Helper method to send error messages to orchestrator"""
-        error_data = {
-            'filename': filename,
-            'status': 'error',
-            'source_type': 'file',
-            'message': error_message
-        }
-
-        error_msg = ProcessingMessage(
-            source_identifier=self.module_id,
-            target_identifier=ModuleIdentifier("DataOrchestrator", "manage_pipeline"),
-            message_type=MessageType.ERROR,
-            content={
-                'action': 'handle_file_error',
-                'error_data': error_data
-            }
-        )
-
-        logger.error(f"Sending error message: {error_msg}")
-        self.message_broker.publish(error_msg)
-        return error_data

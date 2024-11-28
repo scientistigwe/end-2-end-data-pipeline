@@ -5,6 +5,7 @@ from backend.core.messaging.broker import MessageBroker
 from backend.core.orchestration.conductor import DataConductor
 from backend.core.staging.staging_area import EnhancedStagingArea
 from backend.core.orchestration.orchestrator import DataOrchestrator
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -50,28 +51,44 @@ class FileService:
 
     def handle_file_upload(self, file_obj: Any) -> Dict[str, Any]:
         """
-        Service layer method to handle file uploads.
-        Provides error handling and logging around FileManager operations.
+        Service layer method to handle file uploads using FileManager.
 
         Args:
-            file_obj: File object with read() method and filename attribute
+            file_obj: File object to be processed
 
         Returns:
             dict: Processing result containing status and relevant data
         """
         filename = getattr(file_obj, 'filename', 'unknown')
+        logger.info(f"Handling file upload: {filename}")
 
         try:
-            # Delegate processing to FileManager
+            # Delegate to FileManager for processing
             result = self.file_manager.process_file(file_obj)
-            logger.info(f"Successfully processed file: {filename}")
+
+            # Replace NaN values with None
+            def replace_nan(obj):
+                if isinstance(obj, dict):
+                    return {k: replace_nan(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [replace_nan(v) for v in obj]
+                elif pd.isna(obj):
+                    return None
+                return obj
+
+            result = replace_nan(result)
+
+            # Log the result
+            logger.info(f"File upload result for {filename}: {result.get('status')}")
+
             return result
 
         except Exception as e:
-            logger.error(f"Error processing file {filename}: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error during file upload for {filename}", exc_info=True)
+
             return {
                 'status': 'error',
-                'message': str(e),
+                'message': f"File upload failed: {str(e)}",
                 'filename': filename
             }
 

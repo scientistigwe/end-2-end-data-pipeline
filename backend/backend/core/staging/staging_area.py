@@ -1,13 +1,11 @@
-# core/staging/staging_area.py
-
-from dataclasses import dataclass, field, replace
-from typing import Dict, Any, Optional, List, Callable
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import uuid
 import logging
-
 from backend.core.metrics.metrics_manager import MetricsManager
 from backend.core.messaging.broker import MessageBroker
+from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import (
     ModuleIdentifier,
     ProcessingMessage,
@@ -15,296 +13,157 @@ from backend.core.messaging.types import (
     ProcessingStatus
 )
 
+logger = logging.getLogger(__name__)
 
 @dataclass
-class DataQualityCheck:
-    """Comprehensive data quality check configuration"""
-    name: str
-    check_function: Callable[[Any], bool]
-    severity: str = 'warning'
-    description: Optional[str] = None
-    last_run: Optional[datetime] = None
-    failures: int = 0
+class QualityCheckResult:
+    passed: bool
+    score: float
+    message: str
 
 
 @dataclass
 class StagingMetadata:
-    """Enhanced metadata for staged data with quality tracking"""
+    """Enhanced metadata for staged data"""
     source_module: ModuleIdentifier
-    stage_id: str
-    data_type: str
-    format: str
-    size_bytes: int
-    row_count: Optional[int]
-    columns: Optional[List[str]]
-    tags: Dict[str, str]
+    stage_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    data_type: str = ""
+    file_format: str = ""
+    size_bytes: int = 0
+    row_count: Optional[int] = None
+    columns: Optional[List[str]] = None
     quality_score: float = 1.0
-    processing_chain: List[str] = field(default_factory=list)
-    quality_checks: List[DataQualityCheck] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-    retention_period: Optional[timedelta] = field(default_factory=lambda: timedelta(days=7))
-
-
+    retention_period: timedelta = field(default_factory=lambda: timedelta(days=7))
 
 
 class EnhancedStagingArea:
-    """
-    Advanced staging area with comprehensive data management,
-    quality checks, and intelligent routing
-    """
+    """Advanced staging area with data management and quality tracking"""
 
     def __init__(self, message_broker: MessageBroker):
-        # Core staging storage
         self.staging_area: Dict[str, Dict[str, Any]] = {}
-
-        # Messaging and tracking
         self.message_broker = message_broker
-
-        # Create module identifiers for registration
-        self.module_id = ModuleIdentifier("StagingArea", "manage_data")
-        self.data_staged_module = ModuleIdentifier("StagingArea", "data_staged")
-        self.quality_check_module = ModuleIdentifier("StagingArea", "quality_check")
-
-        # Logging and monitoring
+        self.registry = ComponentRegistry()
+        self.metrics = {
+            'total_staged_data': 0,
+            'quality_check_failures': 0,
+            'data_quality_avg_score': 1.0
+        }
         self.logger = logging.getLogger(__name__)
+        self._initialize_messaging()
 
-        # Quality and performance metrics
-        self.metrics_manager = MetricsManager()
+    def _initialize_messaging(self):
+        """Initialize messaging components"""
+        self.module_id = ModuleIdentifier(
+            "StagingArea",
+            "manage_data",
+            self.registry.get_component_uuid("StagingArea")
+        )
+        self.data_staged_module = ModuleIdentifier(
+            "StagingArea",
+            "data_staged",
+            self.registry.get_component_uuid("StagingArea")
+        )
 
-        # Register modules with message broker
+        # Register modules
         self.message_broker.register_module(self.module_id)
         self.message_broker.register_module(self.data_staged_module)
-        self.message_broker.register_module(self.quality_check_module)
 
-        # Setup message subscriptions
-        self._setup_message_subscriptions()
-
-
-    def _setup_message_subscriptions(self):
-        """Set up message subscriptions for staging area events"""
-        subscriptions = [
-            (self.data_staged_module.get_tag(), self._handle_data_staged),
-            (self.quality_check_module.get_tag(), self._run_quality_checks)
-        ]
-
-        for tag, handler in subscriptions:
-            self.message_broker.subscribe_to_module(tag, handler)
-
-
-    def stage_data(self, data: Any, metadata: StagingMetadata) -> str:
-        """
-        Stage data with comprehensive quality checks and tracking
-
-        Returns:
-            Staging ID for the staged data
-        """
-        # Generate unique staging ID
-        staging_id = metadata.stage_id or str(uuid.uuid4())
-
-        # Run initial quality checks
-        quality_checks = self._setup_quality_checks(metadata)
-        metadata = replace(metadata, quality_checks=quality_checks)
-
-        # Run quality checks
-        quality_results = self._run_quality_checks(data, metadata)
-
-        # Update metadata with quality results
-        metadata.quality_score = quality_results['overall_score']
-
-        # Store staged data
-        self.staging_area[staging_id] = {
-            "data": data,
-            "metadata": metadata,
-            "status": ProcessingStatus.STAGED
-        }
-
-        # Update metrics
-        self.metrics_manager.increment_metric('total_staged_data')
-        self.metrics_manager.update_average_metric(
-            'data_quality_avg_score',
-            overall_score,
-            self.metrics_manager.get_metric('total_staged_data', 1)
+        # Set up subscriptions
+        self.message_broker.subscribe_to_module(
+            self.data_staged_module.get_tag(),
+            self._handle_data_staged
         )
 
-        # Publish staging message
-        staging_message = ProcessingMessage(
+        self.logger.info("Staging Area messaging initialized")
+
+    def stage_data(self, data: Any, metadata: Dict) -> str:
+        try:
+            staging_metadata = StagingMetadata(
+                source_module=metadata.get('source_module'),
+                data_type=metadata.get('file_type', 'unknown'),
+                file_format=metadata.get('format', 'unknown'),
+                size_bytes=metadata.get('size_bytes', 0),
+                row_count=metadata.get('row_count'),
+                columns=metadata.get('columns')
+            )
+
+            staging_id = staging_metadata.stage_id
+            self.staging_area[staging_id] = {
+                "data": data,
+                "metadata": staging_metadata,
+                "status": ProcessingStatus.PENDING  # Using enum
+            }
+
+            self._publish_staged_message(staging_id, staging_metadata)
+            self.logger.info(f"Data staged successfully with ID: {staging_id}")
+            return staging_id
+
+        except Exception as e:
+            self.logger.error(f"Error staging data: {str(e)}")
+            raise ValueError(f"Failed to stage data: {str(e)}")
+
+    def _publish_staged_message(self, staging_id: str, metadata: StagingMetadata):
+        message = ProcessingMessage(
             source_identifier=self.module_id,
+            target_identifier=self.data_staged_module,
             message_type=MessageType.STATUS_UPDATE,
+            status=ProcessingStatus.PENDING,  # Using enum
             content={
                 'staging_id': staging_id,
-                'quality_score': metadata.quality_score,
-                'data_type': metadata.data_type
+                'status': ProcessingStatus.PENDING.value,  # Using enum value
+                'metadata': {
+                    'data_type': metadata.data_type,
+                    'file_format': metadata.file_format,
+                    'size_bytes': metadata.size_bytes,
+                    'row_count': metadata.row_count,
+                    'columns': metadata.columns,
+                    'quality_score': metadata.quality_score,
+                    'created_at': metadata.created_at.isoformat()
+                }
             }
         )
-        self.message_broker.publish(staging_message)
+        self.message_broker.publish(message)
 
-        return staging_id
-
-
-    def _setup_quality_checks(self, metadata: StagingMetadata) -> List[DataQualityCheck]:
-        """
-        Configure default and custom quality checks based on data type
-        """
-        default_checks = [
-            DataQualityCheck(
-                name='size_check',
-                check_function=lambda data: metadata.size_bytes > 0,
-                description='Ensure data is not empty'
-            ),
-            DataQualityCheck(
-                name='type_check',
-                check_function=lambda data: isinstance(data, type(data)),
-                description='Verify data type consistency'
-            )
-        ]
-
-        # TODO: Add more specific checks based on data_type and format
-
-        return default_checks
-
-
-    def _run_quality_checks(self, data: Any, metadata: StagingMetadata) -> Dict[str, Any]:
-        """
-        Run comprehensive data quality checks
-
-        Args:
-            data: Data to be checked
-            metadata: Metadata associated with the data
-
-        Returns:
-            Detailed quality check results with overall score and individual check details
-        """
-        check_results = []
-        failed_checks = []
-        check_scores = []
-
-        # Run default quality checks
-        for quality_check in metadata.quality_checks:
-            try:
-                # Execute the quality check
-                check_passed = quality_check.check_function(data)
-
-                # Determine check score based on severity
-                if check_passed:
-                    check_score = 1.0
-                    check_status = 'PASSED'
-                else:
-                    # Different severity levels impact scoring
-                    if quality_check.severity == 'critical':
-                        check_score = 0.0
-                    elif quality_check.severity == 'warning':
-                        check_score = 0.5
-                    else:
-                        check_score = 0.75
-
-                    check_status = 'FAILED'
-                    failed_checks.append(quality_check)
-
-                    # Log the failure
-                    self.logger.warning(
-                        f"Quality check failed: {quality_check.name} - "
-                        f"Severity: {quality_check.severity}"
-                    )
-
-                # Compile check result
-                check_result = {
-                    'name': quality_check.name,
-                    'passed': check_passed,
-                    'status': check_status,
-                    'severity': quality_check.severity,
-                    'description': quality_check.description,
-                    'score': check_score
-                }
-                check_results.append(check_result)
-                check_scores.append(check_score)
-
-                # Update check metadata
-                quality_check.last_run = datetime.now()
-                if not check_passed:
-                    quality_check.failures += 1
-
-            except Exception as e:
-                # Handle unexpected errors during quality check
-                error_result = {
-                    'name': quality_check.name,
-                    'passed': False,
-                    'status': 'ERROR',
-                    'severity': 'critical',
-                    'description': f"Check execution failed: {str(e)}",
-                    'score': 0.0
-                }
-                check_results.append(error_result)
-                failed_checks.append(quality_check)
-
-                self.logger.error(
-                    f"Quality check {quality_check.name} failed with error: {e}"
-                )
-
-        # Calculate overall quality score
-        total_checks = len(metadata.quality_checks)
-        overall_score = (
-            sum(check_scores) / total_checks
-            if total_checks > 0
-            else 1.0
-        )
-
-        # Update global metrics
-        self.metrics['quality_check_failures'] += len(failed_checks)
-        self.metrics['data_quality_avg_score'] = (
-                                                         self.metrics['data_quality_avg_score'] *
-                                                         (self.metrics['total_staged_data'] - 1) /
-                                                         self.metrics['total_staged_data']
-                                                 ) + (overall_score / self.metrics['total_staged_data'])
-
-        # Prepare comprehensive results
-        quality_results = {
-            'overall_score': overall_score,
-            'total_checks': total_checks,
-            'passed_checks': total_checks - len(failed_checks),
-            'failed_checks': len(failed_checks),
-            'check_results': check_results,
-            'failed_check_details': [
-                {
-                    'name': check.name,
-                    'severity': check.severity,
-                    'description': check.description
-                } for check in failed_checks
-            ]
-        }
-
-        return quality_results
-
+    def get_staged_data(self, staging_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve staged data and metadata by ID"""
+        staged_data = self.staging_area.get(staging_id)
+        if staged_data:
+            self.logger.info(f"Retrieved staged data for ID: {staging_id}")
+            return staged_data
+        self.logger.warning(f"No staged data found for ID: {staging_id}")
+        return None
 
     def update_staging_status(self, staging_id: str, status: ProcessingStatus,
                               additional_metadata: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Update the status of staged data and broadcast status change
-
-        Args:
-            staging_id: Unique identifier for staged data
-            status: New processing status
-            additional_metadata: Optional additional metadata to update
-        """
+        """Update status and metadata of staged data"""
         if staging_id not in self.staging_area:
             self.logger.error(f"Staging ID {staging_id} not found")
             return
 
-        # Retrieve current staging entry
-        staging_entry = self.staging_area[staging_id]
-        metadata = staging_entry['metadata']
+        staged_data = self.staging_area[staging_id]
 
-        # Update metadata
+        # Check if status actually changed
+        if staged_data['status'] == status:
+            return
+
+        staged_data['status'] = status
+
         if additional_metadata:
-            metadata = replace(metadata, **additional_metadata)
+            staged_data['metadata'].updated_at = datetime.now()
+            for key, value in additional_metadata.items():
+                setattr(staged_data['metadata'], key, value)
 
-        # Update status
-        staging_entry['status'] = status
-        staging_entry['metadata'] = metadata
+        # Only publish update if status changed
+        self._publish_status_update(staging_id, status, staged_data['metadata'])
+        self.logger.info(f"Updated staging status to {status.value} for ID: {staging_id}")
 
-        # Broadcast status change message
-        status_message = ProcessingMessage(
+    def _publish_status_update(self, staging_id: str, status: ProcessingStatus, metadata: StagingMetadata):
+        """Publish status update message"""
+        message = ProcessingMessage(
             source_identifier=self.module_id,
+            target_identifier=self.data_staged_module,
             message_type=MessageType.STATUS_UPDATE,
             content={
                 'staging_id': staging_id,
@@ -312,26 +171,33 @@ class EnhancedStagingArea:
                 'metadata': metadata.__dict__
             }
         )
-        self.message_broker.publish(status_message)
+        self.message_broker.publish(message)
 
+    def _handle_data_staged(self, message: ProcessingMessage) -> None:
+        """Handle data staged events"""
+        try:
+            content = message.content
+            if 'staging_id' not in content:
+                raise ValueError("Missing staging_id in message")
 
-    def get_staged_data(self, staging_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve staged data by its staging ID
+            staging_id = content['staging_id']
+            if staging_id in self.staging_area:
+                current_status = self.staging_area[staging_id]['status']
+                # Only update if not already completed
+                if current_status != ProcessingStatus.COMPLETED:
+                    self.update_staging_status(
+                        staging_id=staging_id,
+                        status=ProcessingStatus.COMPLETED
+                    )
+                    self.logger.info(f"Updated status for staged data: {staging_id}")
+            else:
+                self.logger.warning(f"No staged data found for ID: {staging_id}")
 
-        Args:
-            staging_id: Unique identifier for staged data
-
-        Returns:
-            Dictionary containing staged data and metadata, or None if not found
-        """
-        return self.staging_area.get(staging_id)
-
+        except Exception as e:
+            self.logger.error(f"Error handling staged data: {str(e)}")
 
     def cleanup_expired_data(self) -> None:
-        """
-        Remove staged data that has exceeded its retention period
-        """
+        """Remove expired staged data"""
         current_time = datetime.now()
         expired_ids = [
             sid for sid, entry in self.staging_area.items()
@@ -341,34 +207,35 @@ class EnhancedStagingArea:
         for staging_id in expired_ids:
             del self.staging_area[staging_id]
             self.metrics['total_staged_data'] -= 1
-
-            # Log cleanup
             self.logger.info(f"Removed expired staging data: {staging_id}")
 
+    def _run_quality_checks(self, data: Any, metadata: StagingMetadata) -> float:
+        """Run basic quality checks and return quality score"""
+        checks = [
+            self._check_data_presence(data),
+            self._check_size(data, metadata),
+            self._check_format(metadata)
+        ]
 
-    def _handle_data_staged(self, message: ProcessingMessage) -> None:
-        """
-        Handle incoming data staging events from message broker
-        """
-        try:
-            # Extract staging details from message
-            staging_data = message.content
+        score = sum(check.score for check in checks) / len(checks)
+        metadata.quality_score = score
 
-            # Validate incoming data
-            if not all(key in staging_data for key in ['data', 'metadata']):
-                raise ValueError("Invalid staging message format")
+        if any(not check.passed for check in checks):
+            self.metrics['quality_check_failures'] += 1
 
-            # Stage the data
-            self.stage_data(
-                data=staging_data['data'],
-                metadata=staging_data['metadata']
-            )
-        except Exception as e:
-            self.logger.error(f"Error handling staged data: {e}")
-            # Optionally, publish an error message
-            error_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                message_type=MessageType.ERROR,
-                content={'error': str(e)}
-            )
-            self.message_broker.publish(error_message)
+        return score
+
+    def _check_data_presence(self, data: Any) -> QualityCheckResult:
+        if data is None:
+            return QualityCheckResult(False, 0.0, "Data is missing")
+        return QualityCheckResult(True, 1.0, "Data present")
+
+    def _check_size(self, data: Any, metadata: StagingMetadata) -> QualityCheckResult:
+        if metadata.size_bytes == 0:
+            return QualityCheckResult(False, 0.0, "Empty data")
+        return QualityCheckResult(True, 1.0, "Valid size")
+
+    def _check_format(self, metadata: StagingMetadata) -> QualityCheckResult:
+        if not metadata.file_format:
+            return QualityCheckResult(False, 0.5, "Unknown format")
+        return QualityCheckResult(True, 1.0, "Valid format")

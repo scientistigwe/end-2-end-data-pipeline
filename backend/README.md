@@ -267,3 +267,12 @@ Comprehensive documentation available at [docs/](docs/)
 ## 📄 License
 
 MIT License - see [LICENSE.md](LICENSE.md)
+
+Questions:
+Pipeline Progress Monitoring:
+Do you need periodic health checks for pipelines that are neither completed nor in an error state?
+Dynamic Resource Scaling:
+Is there a mechanism for scaling up resources dynamically based on active pipelines or processing load?
+System Restart:
+Upon system restart, how are incomplete pipelines recovered or resumed?
+This design is an excellent foundation for a sophisticated orchestration framework. Let me know if you'd like further help refining specific parts or integrating new features.

@@ -73,33 +73,29 @@ export default class ApiClient {
     }
   }
 
-  async getPipelineStatus() {
-    try {
-      const response = await fetch(`${this.baseURL}/pipelines/status`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json', // Ensure content type is correct
-        },
-        credentials: 'include'  // Ensure credentials are included
-      });
+async getPipelineStatus() {
+  try {
+    const response = await fetch(`${this.baseURL}/pipelines/status`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include'
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error getting pipeline status:', error);
-      if (error.message.includes("CORS")) {
-        alert("CORS Error: Please ensure the backend allows requests from this origin.");
-      }
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
-  }
 
+    const data = await response.json();
+    return data.data?.pipelines || {};
+  } catch (error) {
+    console.error('Error getting pipeline status:', error);
+    throw error;
+  }
+}
   async startPipeline(config) {
     try {
       const response = await fetch(`${this.baseURL}/pipelines/start`, {

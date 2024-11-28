@@ -436,14 +436,13 @@ class DataOrchestrator:
             pipeline_metadata.stages_completed.append("Staged")
             self.logger.info(f"Data staged successfully with ID: {staging_id}")
 
-            # Direct to quality report module
+            # Get initial route from conductor
+            initial_module = self.conductor.get_initial_route()
+
+            # Create quality report message
             quality_report_message = ProcessingMessage(
                 source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    "DataQualityReport",
-                    "generate_report",
-                    self.registry.get_component_uuid("DataQualityReport")
-                ),
+                target_identifier=initial_module,
                 message_type=MessageType.ACTION,
                 content={
                     'pipeline_id': pipeline_id,
@@ -454,8 +453,9 @@ class DataOrchestrator:
                 }
             )
 
+            # Publish to quality report module
             self.message_broker.publish(quality_report_message)
-            self.logger.info(f"Data sent for quality analysis: {pipeline_id}")
+            self.logger.info(f"Data sent to quality report module: {pipeline_id}")
 
             return pipeline_id
 
@@ -912,6 +912,27 @@ class DataOrchestrator:
 
         except Exception as e:
             self.logger.error(f"Error handling pipeline failure: {str(e)}")
+
+    def monitor_pipeline_progress(self, pipeline_id: str) -> Dict[str, Any]:
+        """Monitor and return pipeline progress"""
+        try:
+            if pipeline_id not in self.active_pipelines:
+                return None
+
+            pipeline = self.active_pipelines[pipeline_id]
+            return {
+                'status': pipeline.get('status', 'UNKNOWN'),
+                'current_stage': pipeline.get('current_stage', 'Initializing'),
+                'progress': pipeline.get('progress', 0),
+                'stages_completed': pipeline.get('stages_completed', []),
+                'start_time': pipeline.get('start_time'),
+                'requires_decision': pipeline.get('requires_decision', False),
+                'decision_message': pipeline.get('decision_message', '')
+            }
+
+        except Exception as e:
+            logger.error(f"Error monitoring pipeline {pipeline_id}: {e}")
+            return None
 
     def __del__(self):
         """Enhanced cleanup with logging"""

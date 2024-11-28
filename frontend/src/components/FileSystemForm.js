@@ -18,7 +18,7 @@ import useFileSource from "../hooks/useFileSource";
 const FileSystemForm = () => {
   const [uploadType, setUploadType] = useState("single");
   const [selectedFiles, setSelectedFiles] = useState(null);
-  const { handleApiRequest, response, loading, error } = useFileSource();
+  const { uploadFile, response, loading, error } = useFileSource();  // Changed to use uploadFile
   const allowedFormats = [".csv", ".json", ".parquet", ".xlsx"];
 
   const handleFileChange = (event) => {
@@ -69,8 +69,9 @@ const FileSystemForm = () => {
         formData.append("files", file);
       });
 
-      // Call handleApiRequest with the actionType as "upload" for file upload
-      await handleApiRequest(formData, "upload");
+      // Use uploadFile instead of handleApiRequest
+      await uploadFile(formData);
+
     } catch (err) {
       console.error("Submission error:", err.message);
     }
@@ -145,7 +146,7 @@ const FileSystemForm = () => {
 
               {error && (
                 <Alert severity="error" sx={{ mt: 2 }}>
-                  {error}
+                  {error.message}
                 </Alert>
               )}
 

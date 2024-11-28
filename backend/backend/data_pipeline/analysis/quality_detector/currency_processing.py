@@ -23,7 +23,7 @@ class ColumnClassification:
     statistics: Dict[str, float] = None
 
 
-class EnhancedCurrencyDetector:
+class CurrencyQualityDetector:
     def __init__(self, data: pd.DataFrame,
                  confidence_thresholds: Dict[str, float] = None):
         """
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     filepath = r"C:\Users\admin\Downloads\South_Superstore_V1.csv"
     df = pd.read_csv(filepath, encoding='windows-1252')
 
-    detector = EnhancedCurrencyDetector(df)
+    detector = CurrencyQualityDetector(df)
     report = detector.run()
 
     # Detailed reporting

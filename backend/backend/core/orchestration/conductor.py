@@ -12,6 +12,7 @@ from backend.core.messaging.types import (
     MessageType,
     ProcessingStatus
 )
+from backend.core.registry.component_registry import ComponentRegistry
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -48,9 +49,14 @@ class DataConductor:
     def __init__(self, message_broker: MessageBroker, config_manager: Optional[ConfigurationManager] = None):
         self.config_manager = config_manager or ConfigurationManager()
         self.message_broker = message_broker
+        self.registry = ComponentRegistry()
 
         # Initialize module identifiers with instance UUID
-        self.module_id = ModuleIdentifier("DataConductor", "manage_flow")
+        self.module_id = ModuleIdentifier(
+            "DataConductor",
+            "manage_flow",
+            self.registry.get_component_uuid("DataConductor")
+        )
         self.flow_completed_module = ModuleIdentifier("DataConductor", "flow_completed")
         self.flow_status_module = ModuleIdentifier("DataConductor", "flow_status")
 
@@ -239,3 +245,16 @@ class DataConductor:
             'active_flows': self.metrics.active_flows,
             'avg_processing_time': self.metrics.avg_processing_time
         }
+
+    def get_initial_route(self) -> ModuleIdentifier:
+        """Return the initial module for new data processing"""
+        try:
+            return ModuleIdentifier(
+                "DataQualityReport",
+                "generate_report",
+                self.registry.get_component_uuid("DataQualityReport")
+            )
+        except Exception as e:
+            logger.error(f"Error getting initial route: {str(e)}")
+            # Return a default route or raise the error based on your needs
+            raise

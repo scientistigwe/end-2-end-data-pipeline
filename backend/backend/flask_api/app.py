@@ -1,17 +1,17 @@
 from flask import Flask
 from flask_cors import CORS
 import logging
-
 from backend.flask_api.config import get_config
 from backend.flask_api.routes.ingestion.file_routes import create_file_routes
 from backend.flask_api.routes.processing.pipeline_routes import create_pipeline_routes
 from backend.data_pipeline.source.file.file_service import FileService
 from backend.data_pipeline.pipeline_service import PipelineService
+from backend.core.app.factory import create_application_components
+
+# backend/flask_api/app.py
 
 def create_app(config_name='development'):
-    """
-    Application factory for creating Flask application.
-    """
+    """Application factory for creating Flask application."""
     # Load configuration
     config = get_config(config_name)
 
@@ -25,9 +25,19 @@ def create_app(config_name='development'):
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Initialize services
-    file_service = FileService()
-    pipeline_service = PipelineService()
+    # Initialize core components
+    components = create_application_components()
+    app.components = components
+
+    # Initialize services with injected dependencies
+    file_service = FileService(
+        message_broker=components['message_broker'],
+        orchestrator=components['orchestrator']
+    )
+    pipeline_service = PipelineService(
+        orchestrator=components['orchestrator'],
+        message_broker=components['message_broker']
+    )
 
     # Create blueprints
     file_bp = create_file_routes(file_service)

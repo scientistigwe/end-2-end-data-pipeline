@@ -20,6 +20,49 @@ const usePipeline = (apiClient) => {
   const isMountedRef = useRef(true);
   const fetchInProgressRef = useRef(false);
 
+  // Add stage transition tracking
+  const [stageTransitions, setStageTransitions] = useState({});
+
+  // Add the missing makePipelineDecision function
+  const makePipelineDecision = useCallback(async (pipelineId, decision) => {
+    try {
+      setLoading(true);
+      const response = await apiClient.makePipelineDecision(pipelineId, decision);
+
+      // Refresh pipeline status after decision
+      await fetchPipelineStatus();
+
+      return response;
+    } catch (err) {
+      setError(err.message || "Failed to make pipeline decision");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [apiClient]);
+
+  // Enhanced status monitoring
+  const monitorStageTransitions = useCallback((currentPipelines) => {
+    Object.entries(currentPipelines).forEach(([id, pipeline]) => {
+      const previousStage = stageTransitions[id]?.currentStage;
+      const currentStage = pipeline.staging?.current_stage;
+
+      if (previousStage !== currentStage) {
+        setStageTransitions(prev => ({
+          ...prev,
+          [id]: {
+            currentStage,
+            previousStage,
+            transitionTime: new Date().toISOString()
+          }
+        }));
+
+        // Log stage transition
+        console.log(`Pipeline ${id} transitioned from ${previousStage} to ${currentStage}`);
+      }
+    });
+  }, [stageTransitions]);
+
   // Calculate pipeline statistics
   const calculateStats = useCallback((pipelineData) => {
     const pipelineArray = Object.values(pipelineData);
@@ -53,15 +96,16 @@ const usePipeline = (apiClient) => {
         const activePipelines = response?.pipelines || {};
         setPipelines(activePipelines);
         setStats(calculateStats(activePipelines));
+        monitorStageTransitions(activePipelines);
         lastRefreshRef.current = Date.now();
       }
     } catch (err) {
-      if (isMountedRef.current) setError(err.message || "Error fetching pipeline status");
+      if (isMountedRef.current) setError(err.message);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) setLoading(false);
     }
-  }, [apiClient, calculateStats]);
+  }, [apiClient, calculateStats, monitorStageTransitions]);
 
   // Dynamic refresh logic
   const managePipelineRefresh = useCallback(() => {
@@ -193,11 +237,13 @@ const usePipeline = (apiClient) => {
     loading,
     error,
     stats,
+    stageTransitions,
     startPipeline,
     stopPipeline,
     filterPipelines,
     refreshPipelines: fetchPipelineStatus,
     triggerPipelineMonitoring,
+    handleDecision: makePipelineDecision
   };
 };
 

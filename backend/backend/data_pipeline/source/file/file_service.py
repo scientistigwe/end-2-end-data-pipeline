@@ -11,21 +11,26 @@ logger = logging.getLogger(__name__)
 
 
 class FileService:
-    """
-    Service layer for managing file operations. Acts as a thin wrapper around FileManager
-    while providing error handling and logging.
+    """Service layer for managing file operations"""
+
+    def __init__(self, message_broker=None, orchestrator=None):
         """
+        Initialize FileService with dependency injection
 
-    def __init__(self):
-            # Create the message broker
-            self.message_broker = MessageBroker()
+        Args:
+            message_broker: MessageBroker instance
+            orchestrator: DataOrchestrator instance
+        """
+        # Allow injection of dependencies
+        self.message_broker = message_broker or MessageBroker()
 
-            # Initialize the DataOrchestrator first
-            self._initialize_data_orchestrator()
+        # Initialize the FileManager with the message broker
+        self.file_manager = FileManager(self.message_broker)
 
-            # Now create the FileManager
-            self.file_manager = FileManager(self.message_broker)
-            logger.info("FileService initialized with MessageBroker and DataOrchestrator")
+        # Store orchestrator reference if provided
+        self.orchestrator = orchestrator
+
+        logger.info("FileService initialized with MessageBroker")
 
     def _initialize_data_orchestrator(self):
         """

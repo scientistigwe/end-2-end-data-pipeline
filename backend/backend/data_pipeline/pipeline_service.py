@@ -120,21 +120,25 @@ class PipelineService:
         """Start a new pipeline with enhanced tracking"""
         pipeline_id = self._generate_pipeline_id()
 
+        # Create pipeline entry
         self._active_pipelines[pipeline_id] = {
             'id': pipeline_id,
             'config': config,
             'status': 'PROCESSING',
             'start_time': datetime.now().isoformat(),
             'progress': 0,
-            'stages_completed': []
+            'stages_completed': [],
+            'filename': config.get('filename', 'unknown'),
+            'source_type': config.get('source_type', 'unknown')
         }
 
         self._log_pipeline_event(
             pipeline_id,
             'START',
-            f"Pipeline started with configuration: {config}"
+            f"Pipeline started for {config.get('filename', 'unknown')}"
         )
 
+        logger.info(f"Started pipeline {pipeline_id} for {config.get('filename', 'unknown')}")
         return pipeline_id
 
     def get_pipeline_logs(self, pipeline_id: str) -> List[Dict[str, Any]]:

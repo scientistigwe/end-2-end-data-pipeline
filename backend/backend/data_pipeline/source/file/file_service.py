@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Any
 import logging
 from .file_manager import FileManager
@@ -14,22 +15,10 @@ class FileService:
     """Service layer for managing file operations"""
 
     def __init__(self, message_broker=None, orchestrator=None):
-        """
-        Initialize FileService with dependency injection
-
-        Args:
-            message_broker: MessageBroker instance
-            orchestrator: DataOrchestrator instance
-        """
-        # Allow injection of dependencies
+        """Initialize FileService with dependency injection"""
         self.message_broker = message_broker or MessageBroker()
-
-        # Initialize the FileManager with the message broker
         self.file_manager = FileManager(self.message_broker)
-
-        # Store orchestrator reference if provided
         self.orchestrator = orchestrator
-
         logger.info("FileService initialized with MessageBroker")
 
     def _initialize_data_orchestrator(self):
@@ -52,7 +41,44 @@ class FileService:
             logger.error(f"Failed to initialize DataOrchestrator: {str(e)}", exc_info=True)
             raise
 
-    logger.info("FileService initialized with MessageBroker")
+    def _get_orchestrator(self):
+        """Get or create orchestrator instance"""
+        if not self.orchestrator:
+            # Create necessary dependencies
+            data_conductor = DataConductor(self.message_broker)
+            staging_area = EnhancedStagingArea(self.message_broker)
+
+            # Create orchestrator
+            self.orchestrator = DataOrchestrator(
+                message_broker=self.message_broker,
+                data_conductor=data_conductor,
+                staging_area=staging_area
+            )
+            logger.info("Created new orchestrator instance")
+
+        return self.orchestrator
+
+    def _create_pipeline_entry(self, filename: str, upload_result: Dict) -> str:
+        """Create a pipeline entry for tracking"""
+        if not hasattr(self, 'pipeline_service'):
+            from backend.data_pipeline.pipeline_service import PipelineService
+            self.pipeline_service = PipelineService(
+                message_broker=self.message_broker,
+                orchestrator=self._get_orchestrator()  # Now this will work
+            )
+
+        # Create pipeline config
+        config = {
+            'filename': filename,
+            'source_type': 'file',
+            'metadata': upload_result.get('metadata', {}),
+            'start_time': datetime.now().isoformat()
+        }
+
+        # Start pipeline
+        pipeline_id = self.pipeline_service.start_pipeline(config)
+        logger.info(f"Created pipeline {pipeline_id} for file {filename}")
+        return pipeline_id
 
     def handle_file_upload(self, file_obj: Any) -> Dict[str, Any]:
         """
@@ -82,6 +108,13 @@ class FileService:
                 return obj
 
             result = replace_nan(result)
+
+            if result.get('status') == 'success':
+                # Create pipeline entry when file is successfully uploaded
+                pipeline_id = self._create_pipeline_entry(filename, result)
+
+                # Add pipeline_id to result
+                result['pipeline_id'] = pipeline_id
 
             # Log the result
             logger.info(f"File upload result for {filename}: {result.get('status')}")

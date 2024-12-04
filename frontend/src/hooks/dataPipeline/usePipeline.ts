@@ -1,250 +1,72 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+// src/hooks/usePipeline.ts
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation } from 'react-query';
+import { pipelineApi } from '../../services/api/pipelineAPI';
+import { handleApiError } from '../../utils/helpers/apiUtils';
+import { PipelineConfig, PipelineStatus } from '../../services/api/types';
 
-const REFRESH_INTERVAL = 30000; // 30 seconds
+interface UsePipelineProps {
+  pipelineId?: string;
+  onError?: (error: any) => void;
+  onSuccess?: (data: any) => void;
+}
 
-const usePipeline = (apiClient) => {
-  const [pipelines, setPipelines] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [stats, setStats] = useState({
-    total: 0,
-    completed: 0,
-    error: 0,
-    waiting: 0,
-    processing: 0,
-  });
-  const [shouldMonitorPipelines, setShouldMonitorPipelines] = useState(false);
+export const usePipeline = ({ pipelineId, onError, onSuccess }: UsePipelineProps) => {
+  const [status, setStatus] = useState<PipelineStatus>('idle');
 
-  const lastRefreshRef = useRef(Date.now());
-  const intervalRef = useRef(null);
-  const isMountedRef = useRef(true);
-  const fetchInProgressRef = useRef(false);
-
-  // Add stage transition tracking
-  const [stageTransitions, setStageTransitions] = useState({});
-
-  // Add the missing makePipelineDecision function
-  const makePipelineDecision = useCallback(async (pipelineId, decision) => {
-    try {
-      setLoading(true);
-      const response = await apiClient.makePipelineDecision(pipelineId, decision);
-
-      // Refresh pipeline status after decision
-      await fetchPipelineStatus();
-
-      return response;
-    } catch (err) {
-      setError(err.message || "Failed to make pipeline decision");
-      throw err;
-    } finally {
-      setLoading(false);
+  // Start pipeline mutation
+  const { mutate: startPipeline, isLoading: isStarting } = useMutation(
+    (config: PipelineConfig) => pipelineApi.start(config),
+    {
+      onSuccess: (response) => {
+        setStatus('running');
+        onSuccess?.(response.data);
+      },
+      onError: (error) => onError?.(handleApiError(error))
     }
-  }, [apiClient]);
-
-  // Enhanced status monitoring
-  const monitorStageTransitions = useCallback((currentPipelines) => {
-    Object.entries(currentPipelines).forEach(([id, pipeline]) => {
-      const previousStage = stageTransitions[id]?.currentStage;
-      const currentStage = pipeline.staging?.current_stage;
-
-      if (previousStage !== currentStage) {
-        setStageTransitions(prev => ({
-          ...prev,
-          [id]: {
-            currentStage,
-            previousStage,
-            transitionTime: new Date().toISOString()
-          }
-        }));
-
-        // Log stage transition
-        console.log(`Pipeline ${id} transitioned from ${previousStage} to ${currentStage}`);
-      }
-    });
-  }, [stageTransitions]);
-
-  // Calculate pipeline statistics
-  const calculateStats = useCallback((pipelineData) => {
-    const pipelineArray = Object.values(pipelineData);
-    return {
-      total: pipelineArray.length,
-      completed: pipelineArray.filter((p) => p.status === "COMPLETED").length,
-      error: pipelineArray.filter((p) => p.status === "ERROR").length,
-      waiting: pipelineArray.filter((p) => p.status === "WAITING").length,
-      processing: pipelineArray.filter((p) => p.status === "PROCESSING").length,
-    };
-  }, []);
-
-  // Check if any pipelines are in progress
-  const hasPipelinesInProgress = useCallback(() => {
-    return Object.values(pipelines).some(
-      (pipeline) =>
-        pipeline.status === "PROCESSING" || pipeline.status === "WAITING"
-    );
-  }, [pipelines]);
-
-  // Fetch pipeline status
-  const fetchPipelineStatus = useCallback(async () => {
-    if (fetchInProgressRef.current || !isMountedRef.current) return;
-
-    fetchInProgressRef.current = true;
-    try {
-      setLoading(true);
-      const response = await apiClient.getPipelineStatus();
-
-      if (isMountedRef.current) {
-        const activePipelines = response?.pipelines || {};
-        setPipelines(activePipelines);
-        setStats(calculateStats(activePipelines));
-        monitorStageTransitions(activePipelines);
-        lastRefreshRef.current = Date.now();
-      }
-    } catch (err) {
-      if (isMountedRef.current) setError(err.message);
-    } finally {
-      fetchInProgressRef.current = false;
-      if (isMountedRef.current) setLoading(false);
-    }
-  }, [apiClient, calculateStats, monitorStageTransitions]);
-
-  // Dynamic refresh logic
-  const managePipelineRefresh = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    // Check if we should monitor AND if there are pipelines in progress
-    if (shouldMonitorPipelines && hasPipelinesInProgress()) {
-      intervalRef.current = setInterval(() => {
-        const timeSinceLastRefresh = Date.now() - lastRefreshRef.current;
-
-        if (timeSinceLastRefresh >= REFRESH_INTERVAL) {
-          fetchPipelineStatus();
-        }
-      }, REFRESH_INTERVAL);
-    }
-
-    // Cleanup function to clear interval
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [fetchPipelineStatus, hasPipelinesInProgress, shouldMonitorPipelines]);
-
-  // Filter pipelines method
-  const filterPipelines = useCallback(
-    (filters = {}) => {
-      return Object.fromEntries(
-        Object.entries(pipelines).filter(([id, pipeline]) => {
-          const matchesStatus = !filters.status || pipeline.status === filters.status;
-          const matchesSearch =
-            !filters.search ||
-            id.toLowerCase().includes(filters.search.toLowerCase()) ||
-            pipeline.status.toLowerCase().includes(filters.search.toLowerCase()) ||
-            (pipeline.stages_completed || []).some((stage) =>
-              stage.toLowerCase().includes(filters.search.toLowerCase())
-            );
-          return matchesStatus && matchesSearch;
-        })
-      );
-    },
-    [pipelines]
   );
 
-  // Trigger monitoring after file upload
-  const triggerPipelineMonitoring = useCallback(() => {
-    console.log("Triggering pipeline monitoring");
-    setShouldMonitorPipelines(true);
-    fetchPipelineStatus();
-  }, [fetchPipelineStatus]);
-
-  // Start pipeline
-  const startPipeline = useCallback(
-    async (config) => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await apiClient.startPipeline(config);
-
-        // Immediately fetch status after starting
-        await fetchPipelineStatus();
-
-        // Set monitoring to true
-        setShouldMonitorPipelines(true);
-
-        return response;
-      } catch (err) {
-        setError(err.message || "Failed to start pipeline");
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [apiClient, fetchPipelineStatus]
-  );
-
-  // Stop pipeline
-  const stopPipeline = useCallback(
-    async (pipelineId) => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await apiClient.stopPipeline(pipelineId);
-
-        await fetchPipelineStatus();
-
-        // Disable monitoring if no pipelines in progress
-        if (!hasPipelinesInProgress()) {
-          setShouldMonitorPipelines(false);
-        }
-
-        return response;
-      } catch (err) {
-        setError(err.message || "Failed to stop pipeline");
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [apiClient, fetchPipelineStatus, hasPipelinesInProgress]
-  );
-
-  // Initial and dynamic refresh setup
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    // Only fetch if monitoring is enabled and there are pipelines in progress
-    if (shouldMonitorPipelines && hasPipelinesInProgress()) {
-      fetchPipelineStatus();
+  // Status polling
+  const { data: pipelineStatus, refetch: refreshStatus } = useQuery(
+    ['pipelineStatus', pipelineId],
+    () => pipelineApi.getStatus(pipelineId!),
+    {
+      enabled: !!pipelineId && status === 'running',
+      refetchInterval: 3000,
+      onError: (error) => onError?.(handleApiError(error))
     }
+  );
 
-    // Set up dynamic refresh
-    const cleanup = managePipelineRefresh();
+  // Stop pipeline mutation
+  const { mutate: stopPipeline } = useMutation(
+    () => pipelineApi.stop(pipelineId!),
+    {
+      onSuccess: () => {
+        setStatus('stopped');
+        onSuccess?.({ status: 'stopped' });
+      },
+      onError: (error) => onError?.(handleApiError(error))
+    }
+  );
 
-    // Cleanup function
-    return () => {
-      isMountedRef.current = false;
-      fetchInProgressRef.current = false;
-      cleanup();
-    };
-  }, [fetchPipelineStatus, managePipelineRefresh, hasPipelinesInProgress, shouldMonitorPipelines]);
+  // Get logs query
+  const { data: logs, refetch: refreshLogs } = useQuery(
+    ['pipelineLogs', pipelineId],
+    () => pipelineApi.getLogs(pipelineId!),
+    {
+      enabled: !!pipelineId,
+      refetchInterval: status === 'running' ? 5000 : false
+    }
+  );
 
   return {
-    pipelines,
-    loading,
-    error,
-    stats,
-    stageTransitions,
     startPipeline,
     stopPipeline,
-    filterPipelines,
-    refreshPipelines: fetchPipelineStatus,
-    triggerPipelineMonitoring,
-    handleDecision: makePipelineDecision
+    refreshStatus,
+    refreshLogs,
+    status,
+    pipelineStatus,
+    logs,
+    isStarting
   };
 };
-
-export default usePipeline;

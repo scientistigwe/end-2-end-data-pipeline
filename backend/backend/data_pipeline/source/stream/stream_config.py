@@ -1,28 +1,46 @@
-"""
-stream_config.py
+# stream_config.py
+from typing import Dict, Any
+from cryptography.fernet import Fernet
+import os
 
-Handles the configuration for stream sources, including user inputs from the UI.
-"""
-
-
-class StreamConfig:
-    def __init__(self, source_type, endpoint, credentials):
-        """
-        Initializes the configuration for a streaming source.
-
-        Args:
-            source_type (str): Type of the stream source (e.g., Kafka, Kinesis, HTTP).
-            endpoint (str): Endpoint URL or connection string for the stream.
-            credentials (dict): Credentials needed for secure access.
-        """
-        self.source_type = source_type
-        self.endpoint = endpoint
-        self.credentials = credentials
-
-    def get_config(self):
-        """Returns the configuration details as a dictionary."""
-        return {
-            'source_type': self.source_type,
-            'endpoint': self.endpoint,
-            'credentials': self.credentials
+class Config:
+    """Configuration for stream operations"""
+    
+    # Supported Stream Types
+    STREAM_TYPES = {
+        'kafka': {
+            'required_fields': ['bootstrap_servers', 'topics', 'group_id'],
+            'optional_fields': ['auto_offset_reset', 'enable_auto_commit']
+        },
+        'rabbitmq': {
+            'required_fields': ['host', 'queue', 'exchange'],
+            'optional_fields': ['port', 'virtual_host', 'routing_key']
         }
+    }
+    
+    # Default Settings
+    DEFAULT_BATCH_SIZE = 1000
+    CONSUMER_TIMEOUT_MS = 5000
+    MAX_POLL_RECORDS = 500
+    HEARTBEAT_INTERVAL_MS = 3000
+    
+    # Encryption for credentials
+    ENCRYPTION_KEY = os.getenv('STREAM_ENCRYPTION_KEY', Fernet.generate_key())
+    cipher_suite = Fernet(ENCRYPTION_KEY)
+    
+    @classmethod
+    def encrypt_credentials(cls, credentials: Dict[str, str]) -> Dict[str, bytes]:
+        """Encrypt stream credentials"""
+        return {
+            key: cls.cipher_suite.encrypt(str(value).encode())
+            for key, value in credentials.items()
+        }
+    
+    @classmethod
+    def decrypt_credentials(cls, encrypted_creds: Dict[str, bytes]) -> Dict[str, str]:
+        """Decrypt stream credentials"""
+        return {
+            key: cls.cipher_suite.decrypt(value).decode()
+            for key, value in encrypted_creds.items()
+        }
+

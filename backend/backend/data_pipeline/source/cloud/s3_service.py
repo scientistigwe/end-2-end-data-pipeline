@@ -1,112 +1,107 @@
-# s3_security.py
 
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import base64
-import os
-from typing import Any, Optional
-import json
-import pandas as pd
-from dataclasses import dataclass
-from enum import Enum
-from backend.data_pipeline.exceptions import DataEncodingError
+# s3_service.py
+from datetime import datetime
+from typing import Dict, Any, Optional
+import logging
+from .s3_manager import S3Manager
+from backend.core.messaging.broker import MessageBroker
+from backend.core.orchestration.conductor import DataConductor
+from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.orchestrator import DataOrchestrator
 
-
-@dataclass
-class EncryptionConfig:
-    key_env_var: str = "ENCRYPTION_KEY"
-    encoding: str = "utf-8"
-    chunk_size: int = 64 * 1024
-    salt: bytes = b"data_pipeline_salt"
-    iterations: int = 100000
+logger = logging.getLogger(__name__)
 
 
-class DataType(Enum):
-    STRING = "string"
-    BYTES = "bytes"
-    DATAFRAME = "dataframe"
-    JSON = "json"
-    S3_METADATA = "s3_metadata"
+class S3Service:
+    """Service layer for managing S3 operations"""
 
+    def __init__(self, message_broker=None, orchestrator=None):
+        """Initialize S3Service with dependency injection"""
+        self.message_broker = message_broker or MessageBroker()
+        self.s3_manager = S3Manager(self.message_broker)
+        self.orchestrator = orchestrator
+        logger.info("S3Service initialized with MessageBroker")
 
-class DataSecurityManager:
-    def __init__(self, config: Optional[EncryptionConfig] = None):
-        """Initialize security manager."""
-        self.config = config or EncryptionConfig()
-        self._fernet = self._initialize_encryption()
+    def _get_orchestrator(self):
+        """Get or create orchestrator instance"""
+        if not self.orchestrator:
+            data_conductor = DataConductor(self.message_broker)
+            staging_area = EnhancedStagingArea(self.message_broker)
 
-    def _initialize_encryption(self) -> Fernet:
-        """Initialize encryption with key derivation."""
-        key = os.environ.get(self.config.key_env_var)
-        if not key:
-            raise ValueError(f"Missing encryption key in {self.config.key_env_var}")
+            self.orchestrator = DataOrchestrator(
+                message_broker=self.message_broker,
+                data_conductor=data_conductor,
+                staging_area=staging_area
+            )
+            logger.info("Created new orchestrator instance")
 
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=self.config.salt,
-            iterations=self.config.iterations,
-        )
+        return self.orchestrator
 
-        derived_key = base64.urlsafe_b64encode(kdf.derive(key.encode()))
-        return Fernet(derived_key)
+    def _create_pipeline_entry(self, s3_path: str, process_result: Dict) -> str:
+        """Create a pipeline entry for tracking"""
+        if not hasattr(self, 'pipeline_service'):
+            from backend.data_pipeline.pipeline_service import PipelineService
+            self.pipeline_service = PipelineService(
+                message_broker=self.message_broker,
+                orchestrator=self._get_orchestrator()
+            )
 
-    def encrypt_data(self, data: Any) -> bytes:
-        """Encrypt data with type preservation."""
-        if data is None:
-            raise ValueError("Cannot process None data")
+        config = {
+            's3_path': s3_path,
+            'source_type': 's3',
+            'metadata': process_result.get('metadata', {}),
+            'start_time': datetime.now().isoformat()
+        }
 
-        data_type, prepared_data = self._prepare_data(data)
-        data_bytes = (prepared_data if isinstance(prepared_data, bytes)
-                      else str(prepared_data).encode(self.config.encoding))
+        pipeline_id = self.pipeline_service.start_pipeline(config)
+        logger.info(f"Created pipeline {pipeline_id} for S3 path {s3_path}")
+        return pipeline_id
 
-        metadata = f"{data_type.value}:".encode(self.config.encoding)
-        return metadata + self._fernet.encrypt(data_bytes)
-
-    def decrypt_data(self, encrypted_data: bytes) -> Any:
-        """Decrypt data with type restoration."""
-        if not encrypted_data:
-            raise ValueError("Cannot decrypt empty data")
-
+    def establish_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Establish S3 connection"""
         try:
-            separator = ":".encode(self.config.encoding)
-            metadata_end = encrypted_data.index(separator) + 1
-            data_type = DataType(encrypted_data[:metadata_end - 1].decode())
-
-            content = encrypted_data[metadata_end:]
-            decrypted = self._fernet.decrypt(content)
-            return self._restore_data(decrypted, data_type)
+            result = self.s3_manager.initialize_connection(config)
+            return result
         except Exception as e:
-            raise DataEncodingError(f"Decryption failed: {e}")
+            logger.error(f"S3 connection error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Failed to establish S3 connection: {str(e)}"
+            }
 
-    def _prepare_data(self, data: Any) -> tuple[DataType, Any]:
-        """Prepare data for encryption."""
-        if isinstance(data, str):
-            return DataType.STRING, data
-        elif isinstance(data, bytes):
-            return DataType.BYTES, data
-        elif isinstance(data, pd.DataFrame):
-            return DataType.DATAFRAME, data.to_json()
-        elif isinstance(data, dict):
-            if all(key in data for key in ('ContentType', 'Metadata')):
-                return DataType.S3_METADATA, json.dumps(data)
-            return DataType.JSON, json.dumps(data)
+    def process_object(self, connection_id: str, bucket: str, key: str) -> Dict[str, Any]:
+        """Process S3 object"""
         try:
-            return DataType.JSON, json.dumps(data)
-        except:
-            raise TypeError(f"Unsupported type: {type(data)}")
+            s3_path = f"s3://{bucket}/{key}"
+            result = self.s3_manager.process_s3_object(connection_id, bucket, key)
 
-    def _restore_data(self, decrypted: bytes, data_type: DataType) -> Any:
-        """Restore decrypted data to original type."""
-        decoded = decrypted.decode(self.config.encoding)
+            if result.get('status') == 'success':
+                pipeline_id = self._create_pipeline_entry(s3_path, result)
+                result['pipeline_id'] = pipeline_id
 
-        if data_type == DataType.STRING:
-            return decoded
-        elif data_type == DataType.BYTES:
-            return decrypted
-        elif data_type == DataType.DATAFRAME:
-            return pd.read_json(decoded)
-        elif data_type in (DataType.JSON, DataType.S3_METADATA):
-            return json.loads(decoded)
-        raise ValueError(f"Unknown type: {data_type}")
+            logger.info(f"S3 processing result: {result.get('status')}")
+            return result
+
+        except Exception as e:
+            logger.error(f"S3 processing error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"S3 processing failed: {str(e)}",
+                'connection_id': connection_id,
+                's3_path': f"s3://{bucket}/{key}"
+            }
+
+    def close_connection(self, connection_id: str) -> Dict[str, Any]:
+        """Close S3 connection"""
+        try:
+            self.s3_manager.close_connection(connection_id)
+            return {
+                'status': 'success',
+                'message': 'S3 connection closed successfully'
+            }
+        except Exception as e:
+            logger.error(f"S3 connection closure error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Failed to close S3 connection: {str(e)}"
+            }

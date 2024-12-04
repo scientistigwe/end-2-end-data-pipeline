@@ -18,9 +18,8 @@ import psutil
 import humanize
 from colorama import init, Fore, Back, Style
 from typing import Dict, Any, Optional
-import pandas as pd
-from datetime import datetime
 import logging
+
 
 init(autoreset=True)  # Initialize colorama
 
@@ -34,6 +33,7 @@ class MissingValuePattern(Enum):
     TEMPORAL = "temporal_missing"  # Missing values follow a time-based pattern
     RANDOM = "random_missing"  # Missing values appear randomly
     PARTIAL = "partial_missing"  # Some values are missing without clear pattern
+    UNKNOWN = "unknown_missing"  # Pattern cannot be determined
 
 
 class MissingMechanism(Enum):
@@ -94,8 +94,9 @@ class AnalysisResult:
 class MissingValueAnalyzer:
     """Core analyzer class for missing value patterns."""
 
-    def __init__(self, chunk_size: int = 100_000):
+    def __init__(self, chunk_size: int = 100_000, min_pattern_strength: float = 0.15):
         self.chunk_size = chunk_size
+        self.min_pattern_strength = min_pattern_strength
 
     def analyze(self, data: pd.DataFrame) -> Dict[str, AnalysisResult]:
         """Analyze missing values in all columns of a dataset."""
@@ -295,178 +296,353 @@ class MissingValueAnalyzer:
         else:  # MCAR
             return 0.2 + base_risk * 0.2
 
-    def _detect_mechanism(self, data: pd.DataFrame, column: str, stats: MissingValueStats) -> MissingMechanism:
-        """Detect the missing data mechanism with improved checks."""
+    def _detect_pattern(self, data: pd.DataFrame, column: str) -> Tuple[MissingValuePattern, float]:
+        """
+        Detect missing value patterns with enhanced sensitivity.
+
+        Returns:
+        - Tuple[MissingValuePattern, float]: Detected pattern and confidence score
+        """
         missing_mask = data[column].isna()
 
-        # Check for MNAR (value dependency)
-        if data[column].dtype in ['int64', 'float64']:
-            non_missing_values = data[column].dropna()
+        # Calculate pattern scores with adjusted thresholds
+        pattern_scores = {
+            'complete': self._score_complete_pattern(missing_mask),
+            'structural': self._score_structural_pattern(data, column, missing_mask),
+            'temporal': self._score_temporal_pattern(data, missing_mask),
+            'random': self._score_random_pattern(missing_mask),
+            'partial': self._score_partial_pattern(missing_mask)
+        }
+
+        # Adjusted thresholds for better pattern sensitivity
+        thresholds = {
+            'complete': 0.95,  # 95% missing values
+            'structural': 0.15,  # Lowered from original
+            'temporal': 0.20,  # Lowered from original
+            'random': 0.50,  # Increased threshold for randomness
+            'partial': 0.25  # Moderate threshold for partial patterns
+        }
+
+        # Score normalization and pattern selection
+        normalized_scores = {}
+        for pattern, score in pattern_scores.items():
+            if score >= thresholds[pattern]:
+                normalized_scores[pattern] = score / thresholds[pattern]
+
+        if not normalized_scores:
+            return MissingValuePattern.PARTIAL, 0.5
+
+        # Select pattern with highest normalized score
+        best_pattern, best_score = max(normalized_scores.items(), key=lambda x: x[1])
+
+        pattern_map = {
+            'complete': MissingValuePattern.COMPLETE,
+            'structural': MissingValuePattern.STRUCTURAL,
+            'temporal': MissingValuePattern.TEMPORAL,
+            'random': MissingValuePattern.RANDOM,
+            'partial': MissingValuePattern.PARTIAL
+        }
+
+        return pattern_map[best_pattern], best_score
+
+    def _score_random_pattern(self, missing_mask: pd.Series) -> float:
+        """Enhanced random pattern detection with stricter criteria."""
+        if len(missing_mask) < 2:
+            return 0.0
+
+        # Calculate runs test
+        runs = len(missing_mask.ne(missing_mask.shift()).dropna())
+        n1 = missing_mask.sum()
+        n2 = len(missing_mask) - n1
+
+        # Expected runs for truly random sequence
+        expected_runs = (2 * n1 * n2) / len(missing_mask) + 1
+
+        # Calculate run length distribution
+        run_lengths = self._get_run_lengths(missing_mask)
+
+        # Multiple criteria for randomness
+        criteria_scores = []
+
+        # 1. Runs test score
+        if expected_runs > 0:
+            runs_score = 1 - abs(runs - expected_runs) / expected_runs
+            criteria_scores.append(runs_score)
+
+        # 2. Run length distribution score
+        if run_lengths:
+            length_variance = np.var(run_lengths)
+            length_score = 1 / (1 + length_variance)
+            criteria_scores.append(length_score)
+
+        # 3. Autocorrelation score
+        acf_score = 1 - abs(missing_mask.autocorr(1)) if len(missing_mask) > 1 else 0
+        if not np.isnan(acf_score):
+            criteria_scores.append(acf_score)
+
+        return np.mean(criteria_scores) if criteria_scores else 0.0
+
+    def _get_run_lengths(self, series: pd.Series) -> List[int]:
+        """Calculate lengths of consecutive True/False runs."""
+        if len(series) == 0:
+            return []
+
+        runs = []
+        current_run = 1
+
+        for i in range(1, len(series)):
+            if series.iloc[i] == series.iloc[i - 1]:
+                current_run += 1
+            else:
+                runs.append(current_run)
+                current_run = 1
+
+        runs.append(current_run)
+        return runs
+
+    def _get_random_score(self, missing_mask: pd.Series) -> float:
+            """Calculate randomness score without using kstest."""
             try:
-                # Check if higher/lower values are more likely to be missing
-                quantiles = non_missing_values.quantile([0.25, 0.75])
-                high_missing = missing_mask[data[column] > quantiles[0.75]].mean()
-                low_missing = missing_mask[data[column] < quantiles[0.25]].mean()
+                missing_indices = np.where(missing_mask)[0]
+                if len(missing_indices) < 2:
+                    return 0.0
 
-                if abs(high_missing - low_missing) > 0.1:  # Significant difference
-                    return MissingMechanism.MNAR
-            except:
-                pass
+                # Calculate gaps between missing values
+                gaps = np.diff(missing_indices)
 
-        # Check for MAR (relationship with other variables)
-        for other_col in data.columns:
-            if other_col != column and data[other_col].dtype in ['int64', 'float64']:
+                # Calculate gap statistics
+                mean_gap = np.mean(gaps)
+                std_gap = np.std(gaps)
+                cv = std_gap / mean_gap if mean_gap > 0 else float('inf')
+
+                # Calculate frequency of most common gap
+                gap_frequencies = np.bincount(gaps)
+                max_freq = np.max(gap_frequencies) / len(gaps)
+
+                # Calculate run score
+                run_score = self._get_runs_test_score(missing_mask)
+
+                # Calculate uniformity score without kstest
+                # Using coefficient of variation and gap distribution
+                scores = {
+                    'gap_variation': min(cv / 2, 1.0),  # Higher variation is more random
+                    'gap_uniformity': 1.0 - max_freq,  # Lower max frequency is more random
+                    'runs': run_score  # Run test score
+                }
+
+                weights = {
+                    'gap_variation': 0.4,
+                    'gap_uniformity': 0.4,
+                    'runs': 0.2
+                }
+
+                final_score = sum(score * weights[metric] for metric, score in scores.items())
+                return final_score
+
+            except Exception as e:
+                logger.error(f"Error in random score calculation: {str(e)}")
+                return 0.0
+
+    def _get_random_recommendation(self, data: pd.DataFrame, stats: MissingValueStats) -> Dict[str, Any]:
+            """Enhanced recommendation for randomly missing values"""
+            if stats.data_type in ('int64', 'float64'):
                 try:
-                    corr = data[other_col].corr(missing_mask)
-                    if abs(corr) > 0.3:  # Strong correlation with missingness
-                        return MissingMechanism.MAR
+                    series = data[stats.field_name].dropna()
+                    skewness = abs(series.skew())
+                    std = series.std()
+                    mean = series.mean()
+                    cv = std / mean if mean != 0 else float('inf')
+
+                    if cv > 1.5 or skewness > 2.0:  # High variation or strong skew
+                        return {
+                            'action': 'robust_imputation',
+                            'description': f"Fill missing values using robust statistical methods",
+                            'reason': "The data shows high variability or skewness. Using robust methods will handle outliers better"
+                        }
+                    elif skewness > 1.0:  # Moderate skew
+                        return {
+                            'action': 'impute_median',
+                            'description': f"Fill missing values with the median",
+                            'reason': "The data shows moderate skewness. Using median will be more robust than mean"
+                        }
+                    else:  # Well-behaved data
+                        return {
+                            'action': 'impute_mean',  # Changed from mean_imputation to match mapping
+                            'description': f"Fill missing values with the mean",
+                            'reason': "The data follows a balanced distribution. Using mean is appropriate"
+                        }
                 except:
-                    continue
+                    pass
 
-        return MissingMechanism.MCAR
+            # For categorical or fallback
+            return {
+                'action': 'impute_mode',
+                'description': f"Fill missing values with the most common value",
+                'reason': "For this type of data, using the most frequent value is most appropriate"
+            }
 
-    def _detect_pattern(self, data: pd.DataFrame, column: str, stats: MissingValueStats) -> MissingValuePattern:
-        """
-        Enhanced pattern detection with improved exclusions for strict categorization.
-        """
+    def _detect_mechanism(self, data: pd.DataFrame, field_name: str, stats: MissingValueStats) -> MissingMechanism:
+        """Detect the missing data mechanism with improved checks."""
         try:
-            missing_mask = data[column].isna()
-            total_rows = len(data)
-            missing_count = missing_mask.sum()
-            missing_ratio = missing_count / total_rows
+            missing_mask = data[field_name].isna()
 
-            # 1. Complete Missing Check
-            if missing_ratio >= 0.95:
-                return MissingValuePattern.COMPLETE
+            # Check for MNAR (value dependency)
+            if data[field_name].dtype in ['int64', 'float64']:
+                non_missing_values = data[field_name].dropna()
+                try:
+                    # Check if higher/lower values are more likely to be missing
+                    quantiles = non_missing_values.quantile([0.25, 0.75])
+                    high_missing = missing_mask[data[field_name] > quantiles[0.75]].mean()
+                    low_missing = missing_mask[data[field_name] < quantiles[0.25]].mean()
 
-            # 2. Random Pattern Check
-            if self._check_random_pattern(missing_mask):
-                return MissingValuePattern.RANDOM
+                    if abs(high_missing - low_missing) > 0.1:  # Significant difference
+                        return MissingMechanism.MNAR
+                except:
+                    pass
 
-            # 3. Partial Pattern Check
-            if self._check_partial_pattern(missing_mask):
-                return MissingValuePattern.PARTIAL
+            # Check for MAR (relationship with other variables)
+            for other_col in data.columns:
+                if other_col != field_name and data[other_col].dtype in ['int64', 'float64']:
+                    try:
+                        corr = data[other_col].corr(missing_mask)
+                        if abs(corr) > 0.3:  # Strong correlation with missingness
+                            return MissingMechanism.MAR
+                    except:
+                        continue
 
-            # 4. Structural Pattern Check
-            if self._check_structural_pattern(data, column, missing_mask):
-                return MissingValuePattern.STRUCTURAL
-
-            # 5. Temporal Pattern Check
-            if 'timestamp' in data.columns and self._check_temporal_pattern(data, missing_mask):
-                return MissingValuePattern.TEMPORAL
-
-            return MissingValuePattern.UNKNOWN  # Default to UNKNOWN if no patterns match
+            return MissingMechanism.MCAR
 
         except Exception as e:
-            logger.error(f"Error in pattern detection for column {column}: {str(e)}")
-            return MissingValuePattern.UNKNOWN  # Safe default if detection fails
+            logger.error(f"Error in mechanism detection: {str(e)}")
+            return MissingMechanism.MCAR
 
-    def _check_random_pattern(self, missing_mask: pd.Series) -> bool:
-        """Detect random pattern in missing values with strict criteria."""
+    def _get_runs_test_score(self, series: pd.Series) -> float:
+        """Calculate score based on runs test."""
         try:
-            missing_indices = np.where(missing_mask)[0]
-            if len(missing_indices) < 2:
-                return False
+            series = series.astype(bool)
+            runs = len(pd.Series(series).ne(series.shift()).dropna())
+            n1 = sum(series)
+            n2 = len(series) - n1
 
-            gaps = np.diff(missing_indices)
-            mean_gap = np.mean(gaps)
-            std_gap = np.std(gaps)
-            cv = std_gap / mean_gap if mean_gap > 0 else float('inf')
+            # Expected number of runs for random sequence
+            expected_runs = ((2 * n1 * n2) / len(series)) + 1
 
-            # Strict randomness criteria
-            is_random = (
-                    cv > 0.7 and
-                    not np.any(np.bincount(gaps) > len(gaps) * 0.1) and  # No dominant period
-                    all(run <= len(missing_mask) * 0.05  # No large continuous blocks
-                        for run in self._get_runs_of_true(missing_mask))
-            )
+            # Calculate deviation from expected
+            deviation = abs(runs - expected_runs) / expected_runs if expected_runs > 0 else 1
 
-            # Uniform gap distribution
-            _, p_value = stats.kstest(gaps, 'uniform', args=(min(gaps), max(gaps)))
-
-            return is_random and p_value > 0.1  # Uniformity test with relaxed p-value
+            # Convert to score (0 to 1, where 1 is most random)
+            return max(0, 1 - deviation)
 
         except Exception as e:
-            logger.error(f"Error in random pattern check: {str(e)}")
-            return False
+            logger.error(f"Error in runs test score: {str(e)}")
+            return 0.0
 
-    def _check_partial_pattern(self, missing_mask: pd.Series) -> bool:
-        """Detect partial/block missing patterns with strict criteria."""
+    def _get_temporal_score(self, data: pd.DataFrame, missing_mask: pd.Series) -> float:
+        """Calculate temporal pattern score based on time intervals."""
         try:
-            runs = self._get_runs_of_true(missing_mask)
-            if not runs:
-                return False
-
-            n = len(missing_mask)
-            max_run = max(runs)
-            total_missing = missing_mask.sum()
-
-            # Strict partial criteria
-            is_partial = (
-                    max_run > n * 0.2 and  # Long continuous blocks
-                    total_missing / n > 0.1 and  # Significant proportion of missing values
-                    all(run > 2 for run in runs)  # Avoid random single gaps
-            )
-
-            return is_partial
-
-        except Exception as e:
-            logger.error(f"Error in partial pattern check: {str(e)}")
-            return False
-
-    def _check_temporal_pattern(self, data: pd.DataFrame, missing_mask: pd.Series) -> bool:
-        """Detect temporal patterns with strict criteria."""
-        try:
-            if self._check_random_pattern(missing_mask) or self._check_partial_pattern(missing_mask):
-                return False  # Exclude random or partial patterns
+            if 'timestamp' not in data.columns:
+                return 0.0
 
             timestamps = pd.to_datetime(data['timestamp'])
             missing_indices = np.where(missing_mask)[0]
 
             if len(missing_indices) < 2:
-                return False
+                return 0.0
 
             time_diffs = np.diff(timestamps[missing_indices])
             hours_diff = time_diffs.astype('timedelta64[h]').astype(float)
 
-            return (
-                    self._has_daily_pattern(hours_diff) or
-                    self._has_weekly_pattern(hours_diff) or
-                    self._has_monthly_pattern(hours_diff) or
-                    self._has_regular_interval(hours_diff)
-            )
+            # Calculate regularity
+            cv = np.std(hours_diff) / np.mean(hours_diff) if np.mean(hours_diff) > 0 else float('inf')
+            regularity_score = max(0, 1 - min(cv, 1.0))
+
+            # Check for specific patterns
+            pattern_scores = [
+                1.0 if self._has_daily_pattern(hours_diff) else 0.0,
+                1.0 if self._has_weekly_pattern(hours_diff) else 0.0,
+                1.0 if self._has_monthly_pattern(hours_diff) else 0.0
+            ]
+
+            pattern_score = max(pattern_scores)
+
+            # Combine scores (70% regularity, 30% pattern)
+            return regularity_score * 0.7 + pattern_score * 0.3
 
         except Exception as e:
-            logger.error(f"Error in temporal pattern check: {str(e)}")
-            return False
+            logger.error(f"Error in temporal score calculation: {str(e)}")
+            return 0.0
 
-    def _check_structural_pattern(self, data: pd.DataFrame, column: str, missing_mask: pd.Series) -> bool:
-        """Detect structural dependencies in missing values with strict criteria."""
+    def _get_structural_score(self, data: pd.DataFrame, missing_mask: pd.Series, column: str) -> float:
+        """Calculate structural pattern score based on value dependencies."""
         try:
-            if self._check_random_pattern(missing_mask) or self._check_partial_pattern(missing_mask):
-                return False
+            scores = []
 
+            # Check value dependency
             if pd.api.types.is_numeric_dtype(data[column]):
                 values = data[column].dropna()
                 if len(values) > 0:
                     median = values.median()
                     high_missing_rate = missing_mask[data[column] > median].mean()
                     low_missing_rate = missing_mask[data[column] <= median].mean()
-                    if abs(high_missing_rate - low_missing_rate) > 0.2:
-                        return True
+                    value_dep_score = abs(high_missing_rate - low_missing_rate)
+                    scores.append(value_dep_score)
 
+            # Check correlations with other columns
+            correlations = []
             for other_col in data.columns:
                 if other_col != column and other_col != 'timestamp':
                     if pd.api.types.is_numeric_dtype(data[other_col]):
                         corr = self._safe_correlation(missing_mask, data[other_col])
-                        if corr is not None and abs(corr) > 0.3:
-                            return True
+                        if corr is not None:
+                            correlations.append(abs(corr))
 
-            return False
+            if correlations:
+                scores.append(max(correlations))
+
+            return max(scores) if scores else 0.0
 
         except Exception as e:
-            logger.error(f"Error in structural pattern check: {str(e)}")
-            return False
+            logger.error(f"Error in structural score calculation: {str(e)}")
+            return 0.0
+
+    def _get_complete_score(self, missing_mask: pd.Series) -> float:
+        """Calculate completeness score based on missing ratio."""
+        try:
+            missing_ratio = missing_mask.mean()
+            return 1.0 if missing_ratio >= 0.95 else 0.0
+
+        except Exception as e:
+            logger.error(f"Error in complete score calculation: {str(e)}")
+            return 0.0
+
+    def _get_partial_score(self, missing_mask: pd.Series) -> float:
+        """Calculate partial pattern score based on run lengths."""
+        try:
+            runs = self._get_runs_of_true(missing_mask)
+            if not runs:
+                return 0.0
+
+            n = len(missing_mask)
+            max_run = max(runs)
+            avg_run = np.mean(runs)
+            run_count = len(runs)
+
+            # Calculate component scores
+            max_run_score = max_run / n  # Longest run relative to series length
+            avg_run_score = avg_run / n  # Average run length relative to series length
+            run_count_score = 1 - min(run_count / n, 1)  # Fewer runs is better for partial pattern
+
+            # Combine scores with weights
+            weights = (0.5, 0.3, 0.2)  # max_run, avg_run, run_count
+            score = (max_run_score * weights[0] +
+                     avg_run_score * weights[1] +
+                     run_count_score * weights[2])
+
+            return score
+
+        except Exception as e:
+            logger.error(f"Error in partial score calculation: {str(e)}")
+            return 0.0
 
     def _get_runs_of_true(self, bool_series: pd.Series) -> List[int]:
         """Get lengths of consecutive True runs in a boolean series."""
@@ -646,44 +822,6 @@ class MissingValueAnalyzer:
             recommendation = self._get_partial_recommendation(data, stats)
             recommendation['confidence'] = confidence
             return recommendation
-
-    def _get_random_recommendation(self, data: pd.DataFrame, stats: MissingValueStats) -> Dict[str, Any]:
-        """Enhanced recommendation for randomly missing values"""
-        if stats.data_type in ('int64', 'float64'):
-            try:
-                series = data[stats.field_name].dropna()
-                skewness = abs(series.skew())
-                std = series.std()
-                mean = series.mean()
-                cv = std / mean if mean != 0 else float('inf')
-
-                if cv > 1.5 or skewness > 2.0:  # High variation or strong skew
-                    return {
-                        'action': 'robust_imputation',
-                        'description': f"Fill missing values using robust statistical methods",
-                        'reason': "The data shows high variability or skewness. Using robust methods will handle outliers better"
-                    }
-                elif skewness > 1.0:  # Moderate skew
-                    return {
-                        'action': 'impute_median',
-                        'description': f"Fill missing values with the median",
-                        'reason': "The data shows moderate skewness. Using median will be more robust than mean"
-                    }
-                else:  # Well-behaved data
-                    return {
-                        'action': 'impute_mean',
-                        'description': f"Fill missing values with the mean",
-                        'reason': "The data follows a balanced distribution. Using mean is appropriate"
-                    }
-            except:
-                pass
-
-        # For categorical or fallback
-        return {
-            'action': 'impute_mode',
-            'description': f"Fill missing values with the most common value",
-            'reason': "For this type of data, using the most frequent value is most appropriate"
-        }
 
     def _get_structural_recommendation(self, data: pd.DataFrame, stats: MissingValueStats) -> Dict[str, Any]:
         """Enhanced recommendation for structurally missing values"""
@@ -876,3 +1014,4 @@ class MissingValueAnalyzer:
                 'description': "Use the most common category to fill missing values",
                 'reason': "While we had some issues analyzing your categories in detail, using the most common value is generally a safe approach"
             }
+

@@ -1,48 +1,70 @@
+# s3_validator.py
+import boto3
+from typing import Tuple, Dict, Any
 import logging
-from typing import Tuple, Optional
-from backend.data_pipeline.exceptions import CloudConnectionError
+from botocore.exceptions import ClientError
+from .s3_config import Config
 
 logger = logging.getLogger(__name__)
 
 
 class S3Validator:
-    def __init__(self, s3_connector):
-        """
-        Initialize the S3 validator with an S3Connector instance.
+    """S3 validation utilities"""
 
-        Args:
-            s3_connector: An initialized S3Connector instance
-        """
-        self.s3_connector = s3_connector
-        self._validated = False  # Flag to prevent multiple calls
-
-    def validate_connection(self) -> Tuple[bool, Optional[str]]:
-        """
-        Validate S3 connection by checking if buckets can be listed.
-
-        Returns:
-            Tuple[bool, Optional[str]]: A tuple containing:
-                - Boolean indicating if validation was successful
-                - Error message string if validation failed, None otherwise
-        """
-        if self._validated:
-            logger.info("S3 connection already validated.")
-            return True, None  # Early exit if already validated
-
+    @staticmethod
+    def validate_credentials(credentials: Dict[str, Any], region: str) -> Tuple[bool, str]:
+        """Validate AWS credentials"""
         try:
-            response = self.s3_connector.s3_client.list_buckets()
-            buckets = response.get('Buckets', [])
+            session = boto3.Session(
+                aws_access_key_id=credentials['aws_access_key_id'],
+                aws_secret_access_key=credentials['aws_secret_access_key'],
+                region_name=region
+            )
 
-            if not buckets:
-                logger.warning("No buckets found during validation.")
+            # Test with a simple operation
+            s3 = session.client('s3')
+            s3.list_buckets()
 
-            logger.info("S3 connection validated successfully.")
-            self._validated = True  # Mark as validated
-            return True, None
-
-        except CloudConnectionError as e:
-            logger.error(f"S3 connection validation failed: {str(e)}")
-            return False, str(e)
+            return True, "AWS credentials validated successfully"
+        except ClientError as e:
+            return False, f"AWS credential validation failed: {str(e)}"
         except Exception as e:
-            logger.error(f"S3 validation error: {str(e)}")
-            return False, str(e)
+            return False, f"Validation error: {str(e)}"
+
+    @staticmethod
+    def validate_bucket_access(s3_client, bucket: str) -> Tuple[bool, str]:
+        """Validate bucket access permissions"""
+        try:
+            s3_client.head_bucket(Bucket=bucket)
+            return True, "Bucket access verified"
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == '404':
+                return False, f"Bucket {bucket} not found"
+            elif error_code == '403':
+                return False, f"Access denied to bucket {bucket}"
+            return False, f"Bucket access error: {str(e)}"
+
+    @staticmethod
+    def validate_object_format(key: str) -> Tuple[bool, str]:
+        """Validate S3 object format"""
+        ext = key.split('.')[-1].lower() if '.' in key else None
+        if not ext:
+            return False, "No file extension found"
+        if ext not in Config.SUPPORTED_FORMATS:
+            return False, f"Unsupported format: {ext}. Supported formats: {', '.join(Config.SUPPORTED_FORMATS)}"
+        return True, "File format is supported"
+
+    @staticmethod
+    def validate_object_size(s3_client, bucket: str, key: str) -> Tuple[bool, str]:
+        """Validate S3 object size"""
+        try:
+            response = s3_client.head_object(Bucket=bucket, Key=key)
+            size = response['ContentLength']
+            if size > Config.MAX_FILE_SIZE:
+                return False, f"File size {size} bytes exceeds maximum allowed size of {Config.MAX_FILE_SIZE} bytes"
+            return True, "File size is within limits"
+        except ClientError as e:
+            return False, f"Size validation error: {str(e)}"
+
+

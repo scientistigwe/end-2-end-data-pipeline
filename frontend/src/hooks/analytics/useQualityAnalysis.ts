@@ -1,185 +1,134 @@
-```typescript
-// src/hooks/useDataSource.ts
-import { useState, useCallback, useEffect } from 'react';
+// src/hooks/analysis/useQualityAnalysis.ts
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from 'react-query';
-import { dataSourceApi } from '../services/dataSourceApi';
-import { handleApiError } from '../utils/apiUtils';
-import {
-  SourceType,
-  SourceConfig,
-  ConnectionStatus
-} from '../types/dataSources';
+import { analysisApi, QualityConfig } from '../../services/api/analysisAPI';
+import { handleApiError } from '../../utils/helpers/apiUtils';
 
-interface UseDataSourceProps {
-  sourceType: SourceType;
-  onError?: (error: any) => void;
-  onSuccess?: (data: any) => void;
-}
 
-export const useDataSource = ({ sourceType, onError, onSuccess }: UseDataSourceProps) => {
-  const [connectionId, setConnectionId] = useState<string | null>(null);
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
-
-  // Connection mutation
-  const { mutate: connect, isLoading: isConnecting } = useMutation(
-    async (config: SourceConfig) => {
-      switch (sourceType) {
-        case 'file':
-          return dataSourceApi.uploadFile(config.files);
-        case 'api':
-          return dataSourceApi.connectApi(config);
-        case 'database':
-          return dataSourceApi.connectDatabase(config);
-        case 's3':
-          return dataSourceApi.connectS3(config);
-        case 'stream':
-          return dataSourceApi.connectStream(config);
-        default:
-          throw new Error(`Unsupported source type: ${sourceType}`);
-      }
-    },
-    {
-      onSuccess: (response) => {
-        setConnectionId(response.data.connectionId);
-        setStatus('connected');
-        onSuccess?.(response.data);
-      },
-      onError: (error) => {
-        setStatus('error');
-        onError?.(handleApiError(error));
-      }
-    }
-  );
-
-  // Status polling
-  const { data: connectionStatus } = useQuery(
-    ['sourceStatus', connectionId],
-    () => dataSourceApi.getStatus(connectionId!),
-    {
-      enabled: !!connectionId && status === 'connected',
-      refetchInterval: 5000,
-      onError: (error) => {
-        setStatus('error');
-        onError?.(handleApiError(error));
-      }
-    }
-  );
-
-  // Disconnect mutation
-  const { mutate: disconnect } = useMutation(
-    async () => {
-      if (connectionId) {
-        return dataSourceApi.disconnect(connectionId);
-      }
-    },
-    {
-      onSuccess: () => {
-        setConnectionId(null);
-        setStatus('disconnected');
-      },
-      onError: (error) => onError?.(handleApiError(error))
-    }
-  );
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (connectionId) {
-        disconnect();
-      }
-    };
-  }, [connectionId]);
-
-  return {
-    connect,
-    disconnect,
-    connectionId,
-    status,
-    connectionStatus,
-    isConnecting
+interface QualityReport {
+  summary: {
+    totalIssues: number;
+    criticalIssues: number;
+    warningIssues: number;
   };
-};
-
-
-// src/hooks/useAnalysis.ts
-import { useState } from 'react';
-import { useQuery, useMutation } from 'react-query';
-import { analysisApi } from '../services/analysisApi';
-import { handleApiError } from '../utils/apiUtils';
-import { AnalysisConfig, AnalysisType } from '../types/analysis';
-
-interface UseAnalysisProps {
-  analysisId?: string;
-  type: AnalysisType;
-  onError?: (error: any) => void;
-  onSuccess?: (data: any) => void;
+  issues: Array<{
+    id: string;
+    type: string;
+    severity: 'critical' | 'warning' | 'info';
+    description: string;
+    affectedColumns: string[];
+    possibleFixes?: Array<{
+      id: string;
+      description: string;
+      impact: 'high' | 'medium' | 'low';
+    }>;
+  }>;
+  recommendations: Array<{
+    id: string;
+    type: string;
+    description: string;
+    impact: 'high' | 'medium' | 'low';
+  }>;
 }
 
-export const useAnalysis = ({ analysisId, type, onError, onSuccess }: UseAnalysisProps) => {
-  const [status, setStatus] = useState<string>('idle');
+interface QualityIssuesSummary {
+  byType: Record<string, number>;
+  bySeverity: Record<string, number>;
+  byColumn: Record<string, number>;
+  trend: {
+    lastRun: number;
+    change: number;
+  };
+}
 
-  // Start analysis mutation
+interface FixPayload {
+  issueId: string;
+  fix: {
+    type: string;
+    parameters?: Record<string, any>;
+  };
+}
+
+export const useQualityAnalysis = (pipelineId: string) => {
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+
+  // Start Quality Analysis
   const { mutate: startAnalysis, isLoading: isStarting } = useMutation(
-    (config: AnalysisConfig) => {
-      return type === 'quality'
-        ? analysisApi.startQualityAnalysis(config)
-        : analysisApi.startInsightAnalysis(config);
+    async (config: Omit<QualityConfig, 'type' | 'pipelineId'>) => {
+      const response = await analysisApi.startQualityAnalysis({
+        type: 'quality',
+        pipelineId,
+        ...config
+      });
+      setAnalysisId(response.data.analysisId);
+      return response;
     },
     {
-      onSuccess: (response) => {
-        setStatus('running');
-        onSuccess?.(response.data);
-      },
-      onError: (error) => onError?.(handleApiError(error))
+      onError: handleApiError
     }
   );
 
-  // Status polling
-  const { data: analysisStatus } = useQuery(
-    ['analysisStatus', analysisId, type],
-    () => {
-      return type === 'quality'
-        ? analysisApi.getQualityStatus(analysisId!)
-        : analysisApi.getInsightStatus(analysisId!);
-    },
+  // Get Analysis Status
+  const { data: status, refetch: refreshStatus } = useQuery(
+    ['qualityStatus', analysisId],
+    () => analysisApi.getQualityStatus(analysisId!),
     {
-      enabled: !!analysisId && status === 'running',
+      enabled: !!analysisId,
       refetchInterval: 3000
     }
   );
 
-  // Get report query
-  const { data: report, refetch: refreshReport } = useQuery(
-    ['analysisReport', analysisId, type],
-    () => {
-      return type === 'quality'
-        ? analysisApi.getQualityReport(analysisId!)
-        : analysisApi.getInsightReport(analysisId!);
-    },
+  // Get Quality Report
+  const { data: report, refetch: refreshReport } = useQuery<QualityReport>(
+    ['qualityReport', analysisId],
+    () => analysisApi.getQualityReport(analysisId!),
     {
-      enabled: !!analysisId && status === 'completed'
+      enabled: !!analysisId && status?.status === 'completed'
     }
   );
 
-  // Cancel analysis mutation
-  const { mutate: cancelAnalysis } = useMutation(
-    () => analysisApi.cancelAnalysis(analysisId!, type),
+  // Cancel Analysis
+  const cancelAnalysis = useCallback(async () => {
+    if (analysisId) {
+      await analysisApi.cancelQualityAnalysis(analysisId);
+      setAnalysisId(null);
+    }
+  }, [analysisId]);
+
+  // Get Issues Summary
+  const { data: issuesSummary } = useQuery<QualityIssuesSummary>(
+    ['qualityIssues', analysisId],
+    () => analysisApi.getQualityIssuesSummary(analysisId!),
     {
+      enabled: !!analysisId && status?.status === 'completed'
+    }
+  );
+
+  // Apply Fix
+  const { mutate: applyFix } = useMutation(
+    ({ issueId, fix }: FixPayload) => 
+      analysisApi.applyQualityFix(analysisId!, issueId, fix),
+    {
+      onError: handleApiError,
       onSuccess: () => {
-        setStatus('cancelled');
-        onSuccess?.({ status: 'cancelled' });
-      },
-      onError: (error) => onError?.(handleApiError(error))
+        // Refetch report and summary after applying fix
+        refreshReport();
+        refreshStatus();
+      }
     }
   );
 
   return {
     startAnalysis,
     cancelAnalysis,
+    refreshStatus,
     refreshReport,
+    applyFix,
+    analysisId,
     status,
-    analysisStatus,
     report,
+    issuesSummary,
     isStarting
   };
 };
+

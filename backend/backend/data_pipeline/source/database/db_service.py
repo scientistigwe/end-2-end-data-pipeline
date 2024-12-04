@@ -1,79 +1,104 @@
+# db_service.py
 from datetime import datetime
-from typing import List, Dict, Any
-from cryptography.fernet import Fernet
-from backend.data_pipeline.exceptions import DatabaseError
-from backend.data_pipeline.source.database.db_types import DatabaseType
-import os
+from typing import Dict, Any, Optional
+import logging
+from .db_manager import DBManager
+from backend.core.messaging.broker import MessageBroker
+from backend.core.orchestration.conductor import DataConductor
+from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.orchestrator import DataOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
-class DataSecurityManager:
-    """Data encryption and decryption operations"""
+class DBService:
+    """Service layer for managing database operations"""
 
-    def __init__(self):
-        self._fernet = None
-        self.setup_encryption()
+    def __init__(self, message_broker=None, orchestrator=None):
+        """Initialize DBService with dependency injection"""
+        self.message_broker = message_broker or MessageBroker()
+        self.db_manager = DBManager(self.message_broker)
+        self.orchestrator = orchestrator
+        logger.info("DBService initialized with MessageBroker")
 
-    def setup_encryption(self) -> None:
-        """Set up encryption using environment key"""
-        try:
-            key = os.environ.get('DB_ENCRYPTION_KEY')
-            if not key:
-                key = Fernet.generate_key()
-                os.environ['DB_ENCRYPTION_KEY'] = key.decode()
-            self._fernet = Fernet(key if isinstance(key, bytes) else key.encode())
+    def _get_orchestrator(self):
+        """Get or create orchestrator instance"""
+        if not self.orchestrator:
+            data_conductor = DataConductor(self.message_broker)
+            staging_area = EnhancedStagingArea(self.message_broker)
 
-        except Exception as e:
-            raise DatabaseError(f"Encryption setup failed: {str(e)}")
+            self.orchestrator = DataOrchestrator(
+                message_broker=self.message_broker,
+                data_conductor=data_conductor,
+                staging_area=staging_area
+            )
+            logger.info("Created new orchestrator instance")
 
-    def _format_datetime(self, dt: Any) -> str:
-        """Ensure datetime is formatted correctly"""
-        # If it's a string, we don't need to format it, return as is
-        if isinstance(dt, str):
-            return dt
-        # If it's a datetime object, convert to string using isoformat
-        elif isinstance(dt, datetime):
-            return dt.isoformat()
-        else:
-            raise ValueError("Invalid type for datetime")
+        return self.orchestrator
 
-    def encrypt(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Encrypt data"""
-        return [
-            {
-                'id': self._fernet.encrypt(str(item['id']).encode()).decode(),
-                'table_name': self._fernet.encrypt(item['table_name'].encode()).decode(),
-                'data_type': self._fernet.encrypt(item['data_type'].encode()).decode(),
-                'last_updated': self._fernet.encrypt(
-                    self._format_datetime(item['last_updated']).encode()).decode()
-        # Use _format_datetime here
+    def _create_pipeline_entry(self, connection_id: str, query_result: Dict) -> str:
+        """Create a pipeline entry for tracking"""
+        if not hasattr(self, 'pipeline_service'):
+            from backend.data_pipeline.pipeline_service import PipelineService
+            self.pipeline_service = PipelineService(
+                message_broker=self.message_broker,
+                orchestrator=self._get_orchestrator()
+            )
+
+        config = {
+            'connection_id': connection_id,
+            'source_type': 'database',
+            'metadata': query_result.get('metadata', {}),
+            'start_time': datetime.now().isoformat()
         }
-            for item in data
-        ]
 
-    def decrypt(self, encrypted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Decrypt encrypted data"""
+        pipeline_id = self.pipeline_service.start_pipeline(config)
+        logger.info(f"Created pipeline {pipeline_id} for database connection {connection_id}")
+        return pipeline_id
+
+    def establish_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Establish database connection"""
         try:
-            decrypted_items = []
-            for item in encrypted_data:
-                decrypted_item = {
-                    'id': int(self._fernet.decrypt(item['id'].encode()).decode()),
-                    'table_name': self._fernet.decrypt(item['table_name'].encode()).decode(),
-                    'data_type': self._fernet.decrypt(item['data_type'].encode()).decode(),
-                    'last_updated': datetime.fromisoformat(
-                        self._fernet.decrypt(item['last_updated'].encode()).decode()
-                    )
-                }
-                decrypted_items.append(decrypted_item)
-            return decrypted_items
+            result = self.db_manager.initialize_connection(config)
+            return result
+        except Exception as e:
+            logger.error(f"Connection error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Failed to establish connection: {str(e)}"
+            }
+
+    def execute_query(self, connection_id: str, query: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Execute database query"""
+        try:
+            result = self.db_manager.process_query(connection_id, query, params)
+
+            if result.get('status') == 'success':
+                pipeline_id = self._create_pipeline_entry(connection_id, result)
+                result['pipeline_id'] = pipeline_id
+
+            logger.info(f"Query execution result: {result.get('status')}")
+            return result
 
         except Exception as e:
-            raise DatabaseError(f"Decryption failed: {str(e)}")
+            logger.error(f"Query execution error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Query execution failed: {str(e)}",
+                'connection_id': connection_id
+            }
 
-    def _parse_datetime(self, dt_str: str) -> datetime:
-        """Parse datetime string, handling both formats with and without microseconds"""
+    def close_connection(self, connection_id: str) -> Dict[str, Any]:
+        """Close database connection"""
         try:
-            # Try parsing with microseconds using isoformat style
-            return datetime.fromisoformat(dt_str)
-        except ValueError:
-            # If it fails, parse without microseconds
-            return datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
+            self.db_manager.close_connection(connection_id)
+            return {
+                'status': 'success',
+                'message': 'Connection closed successfully'
+            }
+        except Exception as e:
+            logger.error(f"Connection closure error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Failed to close connection: {str(e)}"
+            }

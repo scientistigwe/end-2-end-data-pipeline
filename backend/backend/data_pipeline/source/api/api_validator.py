@@ -1,37 +1,61 @@
-# api/validator.py
-from urllib.parse import urlparse
-from typing import Dict, Optional, Tuple
-import re
+# api_validator.py
+import requests
+import json
+from typing import Tuple, Dict, Any
 import logging
+from .api_config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class APIValidator:
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
+    """Comprehensive API validation utilities."""
 
-    def validate_url(self, url: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate if the provided URL is properly formatted
-        """
+    @staticmethod
+    def validate_endpoint(url: str) -> Tuple[bool, str]:
+        """Validate API endpoint URL format."""
         try:
-            result = urlparse(url)
-            if not all([result.scheme, result.netloc]):
-                return False, "Invalid URL format: Missing scheme or network location"
-            if result.scheme not in ['http', 'https']:
-                return False, "Invalid URL format: Scheme must be http or https"
-            return True, None
-        except Exception as e:
-            return False, f"Invalid URL format: {str(e)}"
+            response = requests.head(url, timeout=Config.REQUEST_TIMEOUT)
+            return True, f"Endpoint is accessible: {response.status_code}"
+        except requests.exceptions.RequestException as e:
+            return False, f"Endpoint validation failed: {str(e)}"
 
-    def validate_headers(self, headers: Dict) -> Tuple[bool, Optional[str]]:
-        """Validate request headers format"""
-        if not isinstance(headers, dict):
-            return False, "Headers must be a dictionary"
+    @staticmethod
+    def validate_credentials(credentials: Dict[str, Any], url: str) -> Tuple[bool, str]:
+        """Validate API credentials."""
+        try:
+            response = requests.get(
+                url,
+                headers=credentials.get('headers', {}),
+                auth=(
+                    credentials.get('username'),
+                    credentials.get('password')
+                ) if 'username' in credentials else None,
+                timeout=Config.REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            return True, "Credentials validated successfully"
+        except requests.exceptions.RequestException as e:
+            return False, f"Credential validation failed: {str(e)}"
 
-        # Basic header key format validation
-        header_pattern = re.compile(r'^[A-Za-z0-9-]+$')
-        for key in headers:
-            if not header_pattern.match(key):
-                return False, f"Invalid header key format: {key}"
+    @staticmethod
+    def validate_response_format(response: requests.Response) -> Tuple[bool, str]:
+        """Validate API response format."""
+        try:
+            if response.headers.get('content-type', '').startswith('application/json'):
+                json.loads(response.text)
+                return True, "Response format is valid JSON"
+            return False, "Response is not in JSON format"
+        except json.JSONDecodeError as e:
+            return False, f"Invalid JSON response: {str(e)}"
 
-        return True, None
+    @staticmethod
+    def validate_rate_limits(response: requests.Response) -> Dict[str, Any]:
+        """Check and validate API rate limits from response headers."""
+        rate_limit_info = {
+            'limit': response.headers.get('X-RateLimit-Limit'),
+            'remaining': response.headers.get('X-RateLimit-Remaining'),
+            'reset': response.headers.get('X-RateLimit-Reset')
+        }
+        return rate_limit_info
+

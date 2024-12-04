@@ -1,121 +1,241 @@
-# s3_data_manager.py
-
-import pandas as pd
-from io import BytesIO
-from datetime import datetime
-import ntplib
-from typing import Optional
-from botocore.config import Config
-from backend.data_pipeline.exceptions import (
-    CloudConnectionError, CloudQueryError, DataValidationError
-)
+# s3_manager.py
 import logging
-from backend.data_pipeline.source.cloud.s3_connector import S3Connector
+import uuid
+from datetime import datetime
+from typing import Dict, Any, Optional
+import pandas as pd
 
-# Set up logging for the script
-logging.basicConfig(level=logging.INFO)
+from backend.core.registry.component_registry import ComponentRegistry
+from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
+from .s3_validator import S3Validator
+from .s3_fetcher import S3Fetcher
+
 logger = logging.getLogger(__name__)
 
-class TimeSync:
-    """Handles time synchronization with NTP servers."""
 
-    def __init__(self):
-        self.ntp_client = ntplib.NTPClient()
+class S3Manager:
+    """Enhanced S3 management system with messaging integration"""
 
-    def get_ntp_time(self) -> datetime:
-        """Get current time from NTP server."""
+    def __init__(self, message_broker):
+        """Initialize S3Manager with component registration"""
+        self.message_broker = message_broker
+        self.registry = ComponentRegistry()
+        self.validator = S3Validator()
+
+        # Initialize with consistent UUID
+        component_uuid = self.registry.get_component_uuid("S3Manager")
+        self.module_id = ModuleIdentifier("S3Manager", "process_s3", component_uuid)
+
+        # Track active connections and operations
+        self.active_connections: Dict[str, S3Fetcher] = {}
+        self.pending_operations: Dict[str, Dict[str, Any]] = {}
+
+        # Register and subscribe
+        self._initialize_messaging()
+        logger.info(f"S3Manager initialized with ID: {self.module_id.get_tag()}")
+
+    def _initialize_messaging(self) -> None:
+        """Set up message broker registration and subscriptions"""
         try:
-            response = self.ntp_client.request('pool.ntp.org', timeout=5)
-            return datetime.fromtimestamp(response.tx_time)
+            # Register with message broker
+            self.message_broker.register_module(self.module_id)
+
+            # Get orchestrator ID with consistent UUID
+            orchestrator_id = ModuleIdentifier(
+                "DataOrchestrator",
+                "manage_pipeline",
+                self.registry.get_component_uuid("DataOrchestrator")
+            )
+
+            # Subscribe to orchestrator responses
+            self.message_broker.subscribe_to_module(
+                orchestrator_id.get_tag(),
+                self._handle_orchestrator_response
+            )
+            logger.info("S3Manager messaging initialized successfully")
         except Exception as e:
-            logger.warning(f"NTP time sync failed: {e}")
-            return datetime.utcnow()
+            logger.error(f"Error initializing messaging: {str(e)}")
+            raise
 
-
-class S3DataManager:
-    def __init__(self, aws_access_key: str, aws_secret_key: str, region_name: str):
-        """Initialize S3 data manager with time synchronization."""
-        self.time_sync = TimeSync()
-
-        # Configure with time synchronization
-        config = Config(
-            signature_version='s3v4',
-            retries={'max_attempts': 3},
-            connect_timeout=5,
-            read_timeout=5
-        )
-
-        self.s3_connector = S3Connector(
-            aws_access_key,
-            aws_secret_key,
-            region_name,
-            config=config
-        )
-
-    def validate_and_load(self, bucket_name: str, key: str, data_format: str = 'csv') -> pd.DataFrame:
-        """Load and validate data from S3."""
+    def initialize_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Initialize S3 connection"""
         try:
-            # Sync time before S3 operations
-            _ = self.time_sync.get_ntp_time()
+            connection_id = str(uuid.uuid4())
 
-            raw_data = self.s3_connector.download_file(bucket_name, key)
-            data = self._parse_data(raw_data, data_format)
-            self._validate_data(data)
-            return data
-        except ValueError as e:
+            # Create and validate connection
+            s3_fetcher = S3Fetcher(config)
+            is_valid, message = self.validator.validate_credentials(
+                config['credentials'],
+                config.get('region')
+            )
+
+            if not is_valid:
+                raise ValueError(message)
+
+            # Store connection
+            self.active_connections[connection_id] = s3_fetcher
+
+            return {
+                'status': 'success',
+                'connection_id': connection_id,
+                'message': 'S3 connection established'
+            }
+
+        except Exception as e:
+            logger.error(f"S3 connection error: {str(e)}")
+            raise
+
+    def process_s3_object(self, connection_id: str, bucket: str, key: str) -> Dict[str, Any]:
+        """Main entry point for S3 object processing"""
+        try:
+            if connection_id not in self.active_connections:
+                raise ValueError("Invalid connection ID")
+
+            operation_id = str(uuid.uuid4())
+            s3_fetcher = self.active_connections[connection_id]
+
+            # Store operation info
+            self.pending_operations[operation_id] = {
+                'connection_id': connection_id,
+                'bucket': bucket,
+                'key': key,
+                'status': 'pending',
+                'created_at': datetime.now().isoformat()
+            }
+
+            logger.info(f"Starting S3 object processing: {bucket}/{key}")
+
+            # Step 1: Validate S3 object
+            self._validate_s3_object(s3_fetcher, bucket, key)
+
+            # Step 2: Process S3 data
+            processed_data = self._process_s3_data(s3_fetcher, bucket, key)
+
+            # Step 3: Update operation status
+            self.pending_operations[operation_id]['status'] = 'processed'
+            self.pending_operations[operation_id]['processed_data'] = processed_data
+
+            # Step 4: Send processed data to orchestrator
+            self._send_to_orchestrator(operation_id, processed_data)
+
+            return processed_data
+
+        except Exception as e:
+            logger.error(f"S3 processing error: {str(e)}")
+            raise
+
+    def _validate_s3_object(self, s3_fetcher: S3Fetcher, bucket: str, key: str) -> None:
+        """Validate S3 object before processing"""
+        try:
+            # Validate bucket access
+            bucket_valid, bucket_msg = self.validator.validate_bucket_access(
+                s3_fetcher.s3_client, bucket
+            )
+            if not bucket_valid:
+                raise ValueError(bucket_msg)
+
+            # Validate object format
+            format_valid, format_msg = self.validator.validate_object_format(key)
+            if not format_valid:
+                raise ValueError(format_msg)
+
+            # Validate object size
+            size_valid, size_msg = self.validator.validate_object_size(
+                s3_fetcher.s3_client, bucket, key
+            )
+            if not size_valid:
+                raise ValueError(size_msg)
+
+            logger.info("S3 object validation successful")
+
+        except Exception as e:
+            logger.error(f"S3 validation error: {str(e)}")
+            raise
+
+    def _process_s3_data(self, s3_fetcher: S3Fetcher, bucket: str, key: str) -> Dict[str, Any]:
+        """Process S3 object data"""
+        try:
+            # Fetch and process object
+            result = s3_fetcher.fetch_object(bucket, key)
+
+            return {
+                "status": "success",
+                "source": f"s3://{bucket}/{key}",
+                "data": result['data'].to_dict(orient="records"),
+                "metadata": {
+                    **result['metadata'],
+                    "bucket": bucket,
+                    "key": key,
+                    "processed_at": datetime.now().isoformat()
+                }
+            }
+        except Exception as e:
             raise ValueError(str(e))
-        except DataValidationError as e:
-            raise DataValidationError(str(e))
-        except Exception as e:
-            logger.error(f"Data load failed: {e}")
-            raise CloudQueryError(str(e))
 
-    def upload_dataframe(self, bucket_name: str, key: str, data: pd.DataFrame,
-                         data_format: str = 'csv') -> None:
-        """Upload DataFrame to S3."""
-        if data_format not in ['csv', 'json']:
-            raise ValueError(f"Unsupported format: {data_format}")
-
+    def _send_to_orchestrator(self, operation_id: str, processed_data: Dict[str, Any]) -> None:
+        """Send processed data to orchestrator"""
         try:
-            # Sync time before S3 operations
-            _ = self.time_sync.get_ntp_time()
+            orchestrator_id = ModuleIdentifier(
+                "DataOrchestrator",
+                "manage_pipeline",
+                self.registry.get_component_uuid("DataOrchestrator")
+            )
 
-            buffer = BytesIO()
-            if data_format == 'csv':
-                data.to_csv(buffer, index=False)
-            else:  # data_format == 'json'
-                data.to_json(buffer)
+            message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=orchestrator_id,
+                message_type=MessageType.ACTION,
+                content={
+                    'operation_id': operation_id,
+                    'action': 'process_s3_data',
+                    'data': processed_data['data'],
+                    'metadata': processed_data['metadata'],
+                    'source_type': 's3',
+                    'source': processed_data['source']
+                }
+            )
 
-            buffer.seek(0)
-            self.s3_connector.upload_file(bucket_name, key, buffer.getvalue())
+            logger.info(f"Sending data to orchestrator: {orchestrator_id.get_tag()}")
+            self.message_broker.publish(message)
+
         except Exception as e:
-            logger.error(f"Upload failed: {e}")
-            raise CloudQueryError(str(e))
+            logger.error(f"Error sending to orchestrator: {str(e)}")
+            raise
 
-    def _parse_data(self, raw_data: bytes, data_format: str) -> pd.DataFrame:
-        """Parse raw data into DataFrame."""
-        if data_format not in ['csv', 'json']:
-            raise ValueError(f"Unsupported format: {data_format}")
-
-        buffer = BytesIO(raw_data)
+    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
+        """Handle responses from orchestrator"""
         try:
-            if data_format == 'csv':
-                df = pd.read_csv(buffer)
-            else:  # data_format == 'json'
-                df = pd.read_json(buffer)
+            operation_id = message.content.get('operation_id')
+            if not operation_id or operation_id not in self.pending_operations:
+                logger.warning(f"Received response for unknown operation ID: {operation_id}")
+                return
 
-            if df.empty:
-                raise DataValidationError("Empty DataFrame received")
-            return df
-        except pd.errors.EmptyDataError:
-            raise DataValidationError("Empty DataFrame received")
+            operation_data = self.pending_operations[operation_id]
 
-    def _validate_data(self, data: pd.DataFrame) -> None:
-        """Validate loaded data."""
-        if data.empty:
-            raise DataValidationError("Empty DataFrame received")
+            if message.message_type == MessageType.ACTION:
+                logger.info(f"S3 operation {operation_id} processed successfully")
+                self._cleanup_pending_operation(operation_id)
+            elif message.message_type == MessageType.ERROR:
+                logger.error(f"Error processing S3 operation {operation_id}")
+                self._handle_orchestrator_error(operation_id, message.content.get('error'))
 
-    def __del__(self):
-        """Cleanup resources."""
-        if hasattr(self, 's3_connector'):
-            self.s3_connector.close()
+        except Exception as e:
+            logger.error(f"Error handling orchestrator response: {str(e)}")
+
+    def _cleanup_pending_operation(self, operation_id: str) -> None:
+        """Clean up processed operation data"""
+        if operation_id in self.pending_operations:
+            del self.pending_operations[operation_id]
+            logger.info(f"Cleaned up pending operation: {operation_id}")
+
+    def close_connection(self, connection_id: str) -> None:
+        """Close S3 connection and cleanup"""
+        try:
+            if connection_id in self.active_connections:
+                self.active_connections[connection_id].close()
+                del self.active_connections[connection_id]
+                logger.info(f"Closed S3 connection: {connection_id}")
+        except Exception as e:
+            logger.error(f"Error closing S3 connection: {str(e)}")
+            raise
+

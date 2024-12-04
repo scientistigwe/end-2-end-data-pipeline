@@ -1,129 +1,81 @@
-# api/models.py
-from dataclasses import dataclass
+
+# api_service.py
 from datetime import datetime
-from typing import Any, Optional, Dict, List
+from typing import Dict, Any
+import logging
+from .api_manager import APIManager
+from backend.core.messaging.broker import MessageBroker
+from backend.core.orchestration.conductor import DataConductor
+from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.orchestrator import DataOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class APIResponse:
-    """
-    Standardized response format for API requests.
-    """
-    success: bool
-    data: Any
-    timestamp: str = str(datetime.now())
-    error: Optional[str] = None
-    metadata: Optional[Dict] = None
+class APIService:
+    """Service layer for managing API operations"""
 
-    def to_dict(self) -> Dict:
-        """Convert the response to a dictionary format."""
-        return {
-            "success": self.success,
-            "data": self.data,
-            "timestamp": self.timestamp,
-            "error": self.error,
-            "metadata": self.metadata
+    def __init__(self, message_broker=None, orchestrator=None):
+        """Initialize APIService with dependency injection"""
+        self.message_broker = message_broker or MessageBroker()
+        self.api_manager = APIManager(self.message_broker)
+        self.orchestrator = orchestrator
+        logger.info("APIService initialized with MessageBroker")
+
+    def _get_orchestrator(self):
+        """Get or create orchestrator instance"""
+        if not self.orchestrator:
+            data_conductor = DataConductor(self.message_broker)
+            staging_area = EnhancedStagingArea(self.message_broker)
+
+            self.orchestrator = DataOrchestrator(
+                message_broker=self.message_broker,
+                data_conductor=data_conductor,
+                staging_area=staging_area
+            )
+            logger.info("Created new orchestrator instance")
+
+        return self.orchestrator
+
+    def _create_pipeline_entry(self, endpoint: str, request_result: Dict) -> str:
+        """Create a pipeline entry for tracking"""
+        if not hasattr(self, 'pipeline_service'):
+            from backend.data_pipeline.pipeline_service import PipelineService
+            self.pipeline_service = PipelineService(
+                message_broker=self.message_broker,
+                orchestrator=self._get_orchestrator()
+            )
+
+        config = {
+            'endpoint': endpoint,
+            'source_type': 'api',
+            'metadata': request_result.get('metadata', {}),
+            'start_time': datetime.now().isoformat()
         }
 
+        pipeline_id = self.pipeline_service.start_pipeline(config)
+        logger.info(f"Created pipeline {pipeline_id} for API endpoint {endpoint}")
+        return pipeline_id
 
-@dataclass
-class APIConfig:
-    """
-    Configuration parameters for API requests.
-    """
-    url: str
-    headers: Optional[Dict] = None
-    params: Optional[Dict] = None
-    timeout: int = 30
-    verify_ssl: bool = True
-    max_retries: int = 3
-    retry_delay: int = 1
-
-    def __post_init__(self):
-        """Validate and process the configuration after initialization."""
-        # Ensure URL is properly formatted
-        if not self.url.startswith(('http://', 'https://')):
-            raise ValueError("URL must start with http:// or https://")
-
-        # Initialize headers if None
-        if self.headers is None:
-            self.headers = {}
-
-        # Merge with default headers, preserving any user-provided values
-        default_headers = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        self.headers = {**default_headers, **self.headers}
-
-        # Ensure timeout is positive
-        if self.timeout <= 0:
-            raise ValueError("Timeout must be positive")
-
-        # Ensure retry values are non-negative
-        if self.max_retries < 0:
-            raise ValueError("max_retries must be non-negative")
-        if self.retry_delay < 0:
-            raise ValueError("retry_delay must be non-negative")
-
-
-@dataclass
-class DataFormat:
-    """
-    Specification for expected data format from the API.
-    """
-    type: str = 'json'
-    schema: Optional[Dict] = None
-    required_fields: Optional[List[str]] = None
-
-    def validate_response(self, response_data: Any) -> tuple[bool, Optional[str]]:
-        """
-        Validate that the response data matches the expected format.
-        Handles nested data structures under a 'data' key.
-        """
-        if not self.required_fields:
-            return True, None
+    def process_api_request(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle API request processing"""
+        endpoint = config.get('endpoint', 'unknown')
+        logger.info(f"Processing API request for endpoint: {endpoint}")
 
         try:
-            # Handle nested data structure
-            if isinstance(response_data, dict) and 'data' in response_data:
-                data_to_validate = response_data['data']
-            else:
-                data_to_validate = response_data
+            result = self.api_manager.process_api_request(config)
 
-            # Validate list of items
-            if isinstance(data_to_validate, list):
-                all_missing_fields = set()
-                for item in data_to_validate:
-                    if isinstance(item, dict):
-                        missing_fields = {
-                            field for field in self.required_fields
-                            if field not in item
-                        }
-                        all_missing_fields.update(missing_fields)
-                if all_missing_fields:
-                    return False, f"Missing required fields: {sorted(list(all_missing_fields))}"
+            if result.get('status') == 'success':
+                pipeline_id = self._create_pipeline_entry(endpoint, result)
+                result['pipeline_id'] = pipeline_id
 
-            # Validate single item
-            elif isinstance(data_to_validate, dict):
-                missing_fields = [
-                    field for field in self.required_fields
-                    if field not in data_to_validate
-                ]
-                if missing_fields:
-                    return False, f"Missing required fields: {missing_fields}"
-            else:
-                return False, "Data must be a dictionary or list of dictionaries"
-
-            return True, None
+            logger.info(f"API request result for {endpoint}: {result.get('status')}")
+            return result
 
         except Exception as e:
-            return False, f"Validation error: {str(e)}"
-
-    def transform_data(self, data: Any) -> Any:
-        """
-        Transform the response data into the expected format.
-        """
-        # Add data transformation logic here if needed
-        return data
-
+            logger.error(f"Unexpected error during API request for {endpoint}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"API request failed: {str(e)}",
+                'endpoint': endpoint
+            }

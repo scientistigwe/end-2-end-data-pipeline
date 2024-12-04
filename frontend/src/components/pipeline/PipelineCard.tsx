@@ -1,6 +1,6 @@
 // src/components/pipeline/PipelineCard.tsx
-import React from 'react';
-import { usePipeline } from '../../hooks/usePipeline';
+import React from "react";
+import { usePipeline } from "../../hooks/dataPipeline/usePipeline";
 
 interface PipelineCardProps {
   pipelineId: string;
@@ -13,9 +13,13 @@ export const PipelineCard: React.FC<PipelineCardProps> = ({ pipelineId }) => {
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium">Pipeline {pipelineId}</h3>
-        <span className={`px-2 py-1 rounded-full text-sm ${
-          status === 'running' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-        }`}>
+        <span
+          className={`px-2 py-1 rounded-full text-sm ${
+            status === "running"
+              ? "bg-blue-100 text-blue-800"
+              : "bg-gray-100 text-gray-800"
+          }`}
+        >
           {status}
         </span>
       </div>
@@ -39,4 +43,3 @@ export const PipelineCard: React.FC<PipelineCardProps> = ({ pipelineId }) => {
     </div>
   );
 };
-AnalysisCard.tsx

@@ -1,0 +1,14 @@
+# app/schemas/auth.py
+from marshmallow import Schema, fields, validate
+
+
+class LoginRequestSchema(Schema):
+    username = fields.String(required=True)
+    password = fields.String(required=True)
+
+
+class TokenResponseSchema(Schema):
+    access_token = fields.String(required=True)
+    refresh_token = fields.String(required=True)
+    token_type = fields.String(required=True)
+

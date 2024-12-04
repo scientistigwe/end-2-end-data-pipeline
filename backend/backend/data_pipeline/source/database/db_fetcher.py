@@ -1,54 +1,92 @@
-from typing import Union, Dict, Any
+# db_fetcher.py
 import pandas as pd
-from backend.data_pipeline.exceptions import DatabaseQueryError
-from .db_connector import DatabaseConnector
-from .db_types import DatabaseType
+from typing import Dict, Any, Generator, Optional
+import logging
+from sqlalchemy import create_engine, text
+from .db_config import Config
+
+logger = logging.getLogger(__name__)
 
 
-class DatabaseLoader:
-    """Database data loading operations"""
+class DBFetcher:
+    """Handle database data fetching operations"""
 
-    def __init__(self, connector: DatabaseConnector):
-        self.connector = connector
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize database connection"""
+        self.config = config
+        self.engine = self._create_engine()
 
-    def load_data(
-            self,
-            query: Union[str, Dict[str, Any]],
-            params: Dict[str, Any] = None
-    ) -> pd.DataFrame:
-        """Load data from database into DataFrame"""
+    def _create_engine(self):
+        """Create SQLAlchemy engine with configuration"""
+        connection_string = Config.build_connection_string(self.config)
+        return create_engine(
+            connection_string,
+            pool_size=Config.MAX_POOL_SIZE,
+            max_overflow=Config.MAX_OVERFLOW,
+            pool_timeout=Config.POOL_TIMEOUT,
+            pool_recycle=Config.POOL_RECYCLE
+        )
+
+    def fetch_data(self, query: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Execute query and fetch data"""
         try:
-            with self.connector.get_connection() as conn:
-                if self.connector.config.db_type in (
-                        DatabaseType.POSTGRESQL,
-                        DatabaseType.MYSQL
-                ):
-                    return self._load_sql_data(query, params, conn)
-                elif self.connector.config.db_type == DatabaseType.MONGODB:
-                    return self._load_mongo_data(query, conn)
+            with self.engine.connect() as conn:
+                df = pd.read_sql(
+                    text(query),
+                    conn,
+                    params=params
+                )
+
+            return {
+                'data': df,
+                'row_count': len(df),
+                'columns': list(df.columns)
+            }
         except Exception as e:
-            raise DatabaseQueryError(f"Failed to load data: {str(e)}", e)
+            logger.error(f"Database fetch error: {str(e)}")
+            raise
 
-    def _load_sql_data(
-            self,
-            query: str,
-            params: Dict[str, Any],
-            connection: Any
-    ) -> pd.DataFrame:
-        """Load data from SQL database"""
-        # Always pass params to read_sql_query, even if None
-        return pd.read_sql_query(query, connection, params=params)
+    def fetch_in_chunks(self, query: str, params: Optional[Dict] = None) -> Generator[pd.DataFrame, None, None]:
+        """Fetch large datasets in chunks"""
+        try:
+            with self.engine.connect() as conn:
+                for chunk in pd.read_sql(
+                        text(query),
+                        conn,
+                        params=params,
+                        chunksize=Config.CHUNK_SIZE
+                ):
+                    yield chunk
+        except Exception as e:
+            logger.error(f"Chunk fetch error: {str(e)}")
+            raise
 
-    def _load_mongo_data(
-            self,
-            query: Dict[str, Any],
-            connection: Any
-    ) -> pd.DataFrame:
-        """Load data from MongoDB"""
-        collection = query.get('collection', 'default')
-        filter_dict = query.get('filter', {})
-        projection = query.get('projection', None)
+    def get_schema_info(self, schema: str) -> Dict[str, Any]:
+        """Get schema metadata"""
+        try:
+            with self.engine.connect() as conn:
+                tables = pd.read_sql(text(
+                    """
+                    SELECT table_name, column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_schema = :schema
+                    ORDER BY table_name, ordinal_position
+                    """
+                ), conn, params={"schema": schema})
 
-        db = connection[self.connector.config.database]
-        cursor = db[collection].find(filter_dict, projection)
-        return pd.DataFrame(list(cursor))
+            return {
+                'schema': schema,
+                'tables': tables.to_dict(orient='records'),
+                'table_count': len(tables['table_name'].unique())
+            }
+        except Exception as e:
+            logger.error(f"Schema info error: {str(e)}")
+            raise
+
+    def close(self):
+        """Close database connection"""
+        try:
+            self.engine.dispose()
+        except Exception as e:
+            logger.error(f"Connection close error: {str(e)}")
+            raise

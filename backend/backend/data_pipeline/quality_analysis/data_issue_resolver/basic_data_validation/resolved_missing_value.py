@@ -101,7 +101,7 @@ class MissingValueResolver:
         """Build registry mapping analyzer recommendations to resolution strategies"""
         return {
             # Basic imputation strategies
-            "impute_mean": ResolutionStrategy(
+            'impute_mean': ResolutionStrategy(
                 method=ResolutionMethod.MEAN.value,
                 params={"strategy": "mean"},
                 confidence=0.8,
@@ -254,50 +254,51 @@ class MissingValueResolver:
         }
 
     def _map_recommendation_to_strategy(self, recommendation_action: str) -> str:
-            """Exact 1:1 mapping between analyzer recommendations and resolver implementations"""
-            strategy_map = {
-                # Basic imputation
-                'impute_mean': 'mean_imputation',
-                'impute_median': 'median_imputation',
-                'impute_mode': 'mode_imputation',
+        """Exact 1:1 mapping between analyzer recommendations and resolver implementations"""
+        strategy_map = {
+            # Basic imputation
+            'impute_mean': 'mean_imputation',
+            'mean': 'mean_imputation',  # Add this mapping
+            'impute_median': 'median_imputation',
+            'impute_mode': 'mode_imputation',
 
-                # Robust methods
-                'robust_imputation': 'robust_imputation',
-                'robust_mean': 'robust_imputation',  # Maps to same robust implementation
+            # Robust methods
+            'robust_imputation': 'robust_imputation',
+            'robust_mean': 'robust_imputation',
 
-                # Temporal methods
-                'time_interpolation': 'time_interpolation',
-                'simple_interpolation': 'interpolation',
-                'moving_average': 'moving_average',
+            # Temporal methods
+            'time_interpolation': 'time_interpolation',
+            'simple_interpolation': 'interpolation',
+            'moving_average': 'moving_average',
 
-                # Structural methods
-                'conditional_imputation': 'conditional_imputation',
-                'investigate_relationships': 'knn_imputation',  # Maps to conditional
+            # Structural methods
+            'conditional_imputation': 'conditional_imputation',
+            'investigate_relationships': 'knn_imputation',
 
-                # Advanced methods
-                'advanced_imputation': 'advanced_imputation',
-                'hybrid_approach': 'hybrid_imputation',
+            # Advanced methods
+            'advanced_imputation': 'advanced_imputation',
+            'hybrid_approach': 'hybrid_imputation',
 
-                # Categorical methods
-                'reduce_categories': 'group_rare',
-                'missing_category': 'create_missing_category',
-                'group_rare': 'group_rare',
+            # Categorical methods
+            'reduce_categories': 'group_rare',
+            'missing_category': 'create_missing_category',
+            'group_rare': 'group_rare',
 
-                # Investigation/Pattern
-                'investigate_temporal': 'time_interpolation',  # Maps to time-based
-                'investigate_pattern': 'hybrid_imputation',  # Maps to hybrid
+            # Investigation/Pattern
+            'investigate_temporal': 'time_interpolation',
+            'investigate_pattern': 'hybrid_imputation',
 
-                # Complete missing
-                'complete_missingness': 'complete_missingness',
-                'evaluate_importance': 'complete_missingness'  # Maps to drop
-            }
+            # Complete missing
+            'complete_missingness': 'complete_missingness',
+            'evaluate_importance': 'complete_missingness'
+        }
 
-            mapped_strategy = strategy_map.get(recommendation_action)
-            if not mapped_strategy:
-                logger.warning(f"No mapping found for recommendation: {recommendation_action}")
-                return recommendation_action
+        mapped_strategy = strategy_map.get(recommendation_action)
+        if not mapped_strategy:
+            logger.warning(f"No mapping found for recommendation: {recommendation_action}")
+            return 'mean_imputation'  # Safe default
 
-            return mapped_strategy
+        return mapped_strategy
 
     def _setup_resolution_methods(self):
             """Setup corresponding implementation methods for each strategy"""

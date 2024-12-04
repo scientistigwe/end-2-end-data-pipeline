@@ -1,66 +1,52 @@
-# DatabaseValidator.py
-from typing import Any
-from backend.data_pipeline.source.database.db_connector import DatabaseConnector
-from backend.data_pipeline.source.database.db_security import DataSecurityManager
-from backend.data_pipeline.source.database.db_types import DatabaseType
-from backend.data_pipeline.exceptions import DatabaseConnectionError, DatabaseError
-import sqlparse
+# db_validator.py
+from typing import Tuple, Dict, Any
+import logging
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from .db_config import Config
 
-class DatabaseValidator:
-    def __init__(self, connector: DatabaseConnector, security_manager: DataSecurityManager):
-        self.connector = connector
-        self.security_manager = security_manager
+logger = logging.getLogger(__name__)
 
-    def validate_connection(self) -> None:
+
+class DBValidator:
+    """Database validation utilities"""
+
+    @staticmethod
+    def validate_connection(engine: Engine) -> Tuple[bool, str]:
+        """Validate database connection"""
         try:
-            with self.connector.get_connection() as conn:
-                self._validate_db_type(conn)
-                self._validate_query_structure(conn)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return True, "Database connection successful"
         except Exception as e:
-            raise DatabaseConnectionError(f"Database connection validation failed: {str(e)}") from e
+            return False, f"Database connection failed: {str(e)}"
 
-    def _validate_db_type(self, connection: Any) -> None:
-        db_type = self.connector.config.db_type
-        if db_type == DatabaseType.POSTGRESQL:
-            self._validate_postgresql(connection)
-        elif db_type == DatabaseType.MYSQL:
-            self._validate_mysql(connection)
-        elif db_type == DatabaseType.MONGODB:
-            self._validate_mongodb(connection)
-        else:
-            raise DatabaseError(f"Unsupported database type: {db_type.name}")
-
-    def _validate_connection_params(self, connection: Any) -> None:
-        params = self.connector.config.get_connection_params()
-        required_params = ['host', 'port', 'database', 'username']
-        if not all(param in params for param in required_params):
-            raise DatabaseError("Database connection parameter validation failed: Missing required parameters")
-
-        if self.connector.config.db_type != DatabaseType.MONGODB and ('port' not in params or not isinstance(params['port'], int)):
-            raise DatabaseError("Database connection parameter validation failed: Invalid port value")
-
-    def _validate_postgresql(self, connection: Any) -> None:
-        self._validate_connection_params(connection)
-
-    def _validate_mysql(self, connection: Any) -> None:
-        self._validate_connection_params(connection)
-
-    def _validate_mongodb(self, connection: Any) -> None:
-        self._validate_connection_params(connection)
-
-    def _validate_query_structure(self, connection: Any) -> None:
+    @staticmethod
+    def validate_query(engine: Engine, query: str) -> Tuple[bool, str]:
+        """Validate SQL query"""
         try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                result = cursor.fetchone()
-                if result != (1,):
-                    raise DatabaseError("Database query structure validation failed: Failed to execute test query")
+            # Check if query is SELECT
+            if not query.strip().upper().startswith('SELECT'):
+                return False, "Only SELECT queries are allowed"
 
-                sql = cursor.connection.query
-                formatted_sql = sqlparse.format(sql, reindent=True, keyword_case='upper')
-                if "UNION" in formatted_sql.upper():
-                    raise DatabaseError("Database query structure validation failed: SQL injection detected")
-        except DatabaseError as de:
-            raise de
+            # Validate query execution
+            with engine.connect() as conn:
+                conn.execute(text(query))
+            return True, "Query validation successful"
         except Exception as e:
-            raise DatabaseError(f"Database query structure validation failed: {str(e)}") from e
+            return False, f"Query validation failed: {str(e)}"
+
+    @staticmethod
+    def validate_schema_access(engine: Engine, schema: str) -> Tuple[bool, str]:
+        """Validate schema access permissions"""
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(text(
+                    "SELECT schema_name FROM information_schema.schemata WHERE schema_name = :schema"
+                ), {"schema": schema})
+                if result.scalar():
+                    return True, "Schema access validated"
+                return False, f"Schema {schema} not found or not accessible"
+        except Exception as e:
+            return False, f"Schema validation failed: {str(e)}"
+

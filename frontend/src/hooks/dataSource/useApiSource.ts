@@ -1,75 +1,76 @@
 // src/hooks/sources/useApiSource.ts
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation } from 'react-query';
-import { dataSourceApi } from '../../services/dataSourceApi';
-import { handleApiError } from '../../utils/apiUtils';
+import { dataSourceApi } from '../../services/api/dataSourceAPI';
+import { handleApiError } from '../../utils/helpers/apiUtils';
+import type { ApiSourceConfig } from '../../hooks/dataSource/types';
+import type { 
+  SourceConnectionResponse,
+  ConnectionTestResponse,
+  SourceConnectionStatus 
+} from '../../types/source';
+import type { ApiResponse } from '../../types/api';
 
-interface ApiConfig {
-  url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  headers?: Record<string, string>;
-  auth?: {
-    type: 'basic' | 'bearer' | 'oauth2';
-    credentials: Record<string, string>;
-  };
-  params?: Record<string, any>;
-  body?: any;
-}
-
-export const useApiSource = () => {
+export function useApiSource() {
   const [connectionId, setConnectionId] = useState<string | null>(null);
 
-  // Connect to API
-  const { mutate: connect, isLoading: isConnecting } = useMutation(
-    async (config: ApiConfig) => {
-      const response = await dataSourceApi.connectApi(config);
-      if (response.data?.connectionId) {
-        setConnectionId(response.data.connectionId);
-      }
-      return response;
-    },
+  const { mutate: connect, isLoading: isConnecting } = useMutation<
+    ApiResponse<SourceConnectionResponse>,
+    Error,
+    ApiSourceConfig['config']
+  >(
+    (config) => dataSourceApi.connectApi(config),
     {
-      onError: (error) => handleApiError(error)
+      onError: handleApiError,
+      onSuccess: (response) => {
+        if (response.data?.connectionId) {
+          setConnectionId(response.data.connectionId);
+        }
+      }
     }
   );
 
-  // Test connection
-  const { mutate: testConnection } = useMutation(
-    (config: ApiConfig) => dataSourceApi.testApiConnection(config)
+  const { mutate: testConnection } = useMutation<
+    ApiResponse<ConnectionTestResponse>,
+    Error,
+    string
+  >(
+    (connId) => dataSourceApi.testApiConnection(connId),
+    {
+      onError: handleApiError
+    }
   );
 
-  // Get connection status
-  const { data: status, refetch: refreshStatus } = useQuery(
+  const { data: status, refetch: refreshStatus } = useQuery<
+    ApiResponse<{
+      status: SourceConnectionStatus;
+      lastChecked: string;
+      error?: string;
+    }>,
+    Error
+  >(
     ['apiStatus', connectionId],
-    () => dataSourceApi.getApiStatus(connectionId!),
+    () => dataSourceApi.getSourceStatus(connectionId!),
     {
       enabled: !!connectionId,
       refetchInterval: 5000
     }
   );
 
-  // Fetch data
-  const { mutate: fetchData } = useMutation(
-    (params: Record<string, any>) =>
-      dataSourceApi.fetchApiData(connectionId!, params)
-  );
-
-  // Disconnect
-  const disconnect = useCallback(async () => {
+  const disconnect = async () => {
     if (connectionId) {
-      await dataSourceApi.disconnectApi(connectionId);
+      await dataSourceApi.disconnectSource(connectionId);
       setConnectionId(null);
     }
-  }, [connectionId]);
+  };
 
   return {
     connect,
     testConnection,
     disconnect,
-    fetchData,
     refreshStatus,
     connectionId,
-    status,
+    status: status?.data?.status,
     isConnecting
-  };
-};
+  } as const;
+}

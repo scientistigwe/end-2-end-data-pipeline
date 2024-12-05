@@ -1,10 +1,10 @@
 // src/components/forms/APISourceForm.tsx
-import { useForm } from 'react-hook-form';
-import { useApiSource } from '../../hooks/sources/useApiSource';
+import { useForm } from "react-hook-form";
+import { useApiSource } from "../../hooks/dataSource/useApiSource";
 
 interface APISourceFormData {
   url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: "GET" | "POST" | "PUT" | "DELETE";
   headers?: Record<string, string>;
   body?: string;
 }

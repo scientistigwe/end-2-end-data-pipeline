@@ -1,84 +1,141 @@
 // src/services/api/analysisApi.ts
-import { api } from './client';
+import { BaseApiClient } from './client';
 import { API_CONFIG } from './config';
-import { AnalysisConfig, AnalysisType } from './types';
+import type { ApiResponse } from '../../types/api';
+import type {
+  QualityConfig,
+  InsightConfig,
+  AnalysisResult,
+  QualityReport,
+  InsightReport,
+  ExportOptions
+} from '../../types/analysis';
 
-export interface QualityConfig extends AnalysisConfig {
-  type: 'quality';
-  rules?: {
-    dataTypes?: boolean;
-    nullChecks?: boolean;
-    rangeValidation?: boolean;
-    customRules?: Record<string, any>;
-  };
-  thresholds?: {
-    errorThreshold?: number;
-    warningThreshold?: number;
-  };
-}
-
-export const analysisApi = {
+class AnalysisApi extends BaseApiClient {
   // Quality Analysis
-  startQualityAnalysis: async (config: AnalysisConfig) => {
-    return api.post(API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.START, config);
-  },
+  async startQualityAnalysis(
+    config: QualityConfig
+  ): Promise<ApiResponse<AnalysisResult>> {
+    return this.request(
+      'post',
+      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.START,
+      {},
+      config
+    );
+  }
 
-  getQualityStatus: async (analysisId: string) => {
-    return api.get(API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.STATUS, { id: analysisId });
-  },
+  async getQualityStatus(
+    analysisId: string
+  ): Promise<ApiResponse<AnalysisResult>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.STATUS, {
+      routeParams: { id: analysisId }
+    });
+  }
 
-  getQualityReport: async (analysisId: string) => {
-    return api.get(API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.REPORT, { id: analysisId });
-  },
+  async getQualityReport(
+    analysisId: string
+  ): Promise<ApiResponse<QualityReport>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.REPORT, {
+      routeParams: { id: analysisId }
+    });
+  }
+
+  async exportQualityReport(
+    analysisId: string,
+    options: ExportOptions
+  ): Promise<ApiResponse<{ downloadUrl: string }>> {
+    return this.request(
+      'post',
+      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.EXPORT,
+      {
+        routeParams: { id: analysisId }
+      },
+      options
+    );
+  }
 
   // Insight Analysis
-  startInsightAnalysis: async (config: AnalysisConfig) => {
-    return api.post(API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.START, config);
-  },
-
-  getInsightStatus: async (analysisId: string) => {
-    return api.get(API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.STATUS, { id: analysisId });
-  },
-
-  getInsightReport: async (analysisId: string) => {
-    return api.get(API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.REPORT, { id: analysisId });
-  },
-
-  getInsightTrends: async (analysisId: string) => {
-    return api.get(`${API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.TRENDS}/${analysisId}`);
-  },
-
-  getInsightPatternDetails: async (analysisId: string, patternId: string) => {
-    return api.get(
-      `${API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.PATTERN_DETAILS}/${analysisId}/${patternId}`
+  async startInsightAnalysis(
+    config: InsightConfig
+  ): Promise<ApiResponse<AnalysisResult>> {
+    return this.request(
+      'post',
+      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.START,
+      {},
+      config
     );
-  },
+  }
 
-  exportInsights: async (analysisId: string, format: 'pdf' | 'csv' | 'json') => {
-    return api.post(`${API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.EXPORT}/${analysisId}`, {
-      format
-    })
-  },
+  async getInsightStatus(
+    analysisId: string
+  ): Promise<ApiResponse<AnalysisResult>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.STATUS, {
+      routeParams: { id: analysisId }
+    });
+  }
 
-  // Generic Analysis Operations
-  cancelAnalysis: async (analysisId: string, type: AnalysisType) => {
-    return api.post(`/analysis/${type}/${analysisId}/cancel`);
-  },
+  async getInsightReport(
+    analysisId: string
+  ): Promise<ApiResponse<InsightReport>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.REPORT, {
+      routeParams: { id: analysisId }
+    });
+  }
 
-  retryAnalysis: async (analysisId: string, type: AnalysisType) => {
-    return api.post(`/analysis/${type}/${analysisId}/retry`);
-  },
-  getQualityIssuesSummary: async (analysisId: string) => {
-    return api.get(`${API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.BASE}/${analysisId}/issues/summary`);
-  },
+  async getCorrelations(
+    analysisId: string
+  ): Promise<ApiResponse<InsightReport['correlations']>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.CORRELATIONS, {
+      routeParams: { id: analysisId }
+    });
+  }
 
-  applyQualityFix: async (analysisId: string, issueId: string, fix: any) => {
-    return api.post(
-      `${API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.BASE}/${analysisId}/issues/${issueId}/fix`,
-      { fix }
-    )
-  },
-  cancelQualityAnalysis: async (analysisId: string) => {
-    return api.post(`${API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.BASE}/${analysisId}/cancel`);
-  },
-};
+  async getAnomalies(
+    analysisId: string
+  ): Promise<ApiResponse<InsightReport['anomalies']>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.ANOMALIES, {
+      routeParams: { id: analysisId }
+    });
+  }
+
+  async getTrends(
+    analysisId: string
+  ): Promise<ApiResponse<Array<{
+    trend: string;
+    significance: number;
+    description: string;
+  }>>> {
+    return this.request('get', API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.TRENDS, {
+      routeParams: { id: analysisId }
+    });
+  }
+
+  async getPatternDetails(
+    analysisId: string,
+    patternId: string
+  ): Promise<ApiResponse<InsightReport['patterns'][0]>> {
+    return this.request(
+      'get',
+      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.PATTERN_DETAILS,
+      {
+        routeParams: { id: analysisId, patternId }
+      }
+    );
+  }
+
+  async exportInsightReport(
+    analysisId: string,
+    options: ExportOptions
+  ): Promise<ApiResponse<{ downloadUrl: string }>> {
+    return this.request(
+      'post',
+      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.EXPORT,
+      {
+        routeParams: { id: analysisId }
+      },
+      options
+    );
+  }
+}
+
+export const analysisApi = new AnalysisApi();

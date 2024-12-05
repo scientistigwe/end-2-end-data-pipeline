@@ -1,93 +1,76 @@
 // src/hooks/sources/useDBSource.ts
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation } from 'react-query';
-import { dataSourceApi } from '../../services/dataSourceApi';
-import { handleApiError } from '../../utils/apiUtils';
+import { dataSourceApi } from '../../services/api/dataSourceAPI';
+import { handleApiError } from '../../utils/helpers/apiUtils';
+import type { DBSourceConfig } from '../../hooks/dataSource/types';
+import type { 
+  SourceConnectionResponse,
+  ConnectionTestResponse,
+  SourceConnectionStatus 
+} from '../../types/source';
+import type { ApiResponse } from '../../types/api';
 
-interface DBConfig {
-  type: 'postgresql' | 'mysql' | 'mssql' | 'oracle';
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-  ssl?: boolean;
-  options?: Record<string, any>;
-}
-
-interface QueryConfig {
-  query: string;
-  params?: any[];
-  timeout?: number;
-}
-
-export const useDBSource = () => {
+export function useDBSource() {
   const [connectionId, setConnectionId] = useState<string | null>(null);
-  const [lastQueryId, setLastQueryId] = useState<string | null>(null);
 
-  // Connect to database
-  const { mutate: connect, isLoading: isConnecting } = useMutation(
-    async (config: DBConfig) => {
-      const response = await dataSourceApi.connectDatabase(config);
-      if (response.data?.connectionId) {
-        setConnectionId(response.data.connectionId);
-      }
-      return response;
-    },
+  const { mutate: connect, isLoading: isConnecting } = useMutation<
+    ApiResponse<SourceConnectionResponse>,
+    Error,
+    DBSourceConfig['config']
+  >(
+    (config) => dataSourceApi.connectDatabase(config),
     {
-      onError: (error) => handleApiError(error)
-    }
-  );
-
-  // Execute query
-  const { mutate: executeQuery, isLoading: isQuerying } = useMutation(
-    async (config: QueryConfig) => {
-      const response = await dataSourceApi.executeQuery(connectionId!, config);
-      if (response.data?.queryId) {
-        setLastQueryId(response.data.queryId);
+      onError: handleApiError,
+      onSuccess: (response) => {
+        if (response.data?.connectionId) {
+          setConnectionId(response.data.connectionId);
+        }
       }
-      return response;
     }
   );
 
-  // Get query results
-  const { data: queryResults, refetch: refreshResults } = useQuery(
-    ['queryResults', lastQueryId],
-    () => dataSourceApi.getQueryResults(lastQueryId!),
+  const { mutate: testConnection } = useMutation<
+    ApiResponse<ConnectionTestResponse>,
+    Error,
+    string
+  >(
+    (connId) => dataSourceApi.testDatabaseConnection(connId),
     {
-      enabled: !!lastQueryId
+      onError: handleApiError
     }
   );
 
-  // Get connection status
-  const { data: status, refetch: refreshStatus } = useQuery(
+  const { data: status, refetch: refreshStatus } = useQuery<
+    ApiResponse<{
+      status: SourceConnectionStatus;
+      lastChecked: string;
+      error?: string;
+    }>,
+    Error
+  >(
     ['dbStatus', connectionId],
-    () => dataSourceApi.getDatabaseStatus(connectionId!),
+    () => dataSourceApi.getSourceStatus(connectionId!),
     {
       enabled: !!connectionId,
       refetchInterval: 5000
     }
   );
 
-  // Disconnect
-  const disconnect = useCallback(async () => {
+  const disconnect = async () => {
     if (connectionId) {
-      await dataSourceApi.disconnectDatabase(connectionId);
+      await dataSourceApi.disconnectSource(connectionId);
       setConnectionId(null);
-      setLastQueryId(null);
     }
-  }, [connectionId]);
+  };
 
   return {
     connect,
     disconnect,
-    executeQuery,
-    refreshResults,
+    testConnection,
     refreshStatus,
     connectionId,
-    status,
-    queryResults,
-    isConnecting,
-    isQuerying
-  };
-};
+    status: status?.data?.status,
+    isConnecting
+  } as const;
+}

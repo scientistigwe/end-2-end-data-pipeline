@@ -1,6 +1,6 @@
 // src/components/layout/NotificationsPanel.tsx
-import { useSelector } from 'react-redux';
-import { selectNotifications } from '../../store/selectors/uiSelectors';
+import { useSelector } from "react-redux";
+import { selectNotifications } from "../../store/analysis/selectors";
 
 export const NotificationsPanel: React.FC = () => {
   const notifications = useSelector(selectNotifications);

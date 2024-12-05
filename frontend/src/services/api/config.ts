@@ -1,4 +1,6 @@
 // src/services/api/config.ts
+
+// In your API_CONFIG
 export const API_CONFIG = {
   BASE_URL: process.env.REACT_APP_API_URL || '/api/v1',
   TIMEOUT: 30000,
@@ -6,8 +8,9 @@ export const API_CONFIG = {
   DEFAULT_HEADERS: {
     'Content-Type': 'application/json'
   },
+  
   ENDPOINTS: {
-    // Auth endpoints
+    // Auth Endpoints
     AUTH: {
       LOGIN: '/auth/login',
       REGISTER: '/auth/register',
@@ -28,29 +31,44 @@ export const API_CONFIG = {
       DELETE: '/sources/:id',
       TEST: '/sources/:id/test',
       SYNC: '/sources/:id/sync',
-      
-      FILE: {
-        UPLOAD: '/sources/file/upload',
-        METADATA: '/sources/file/metadata'
-      },
+      VALIDATE: '/sources/:id/validate',
+      PREVIEW: '/sources/:id/preview',
+      DISCONNECT: '/sources/:id/disconnect',
+      STATUS: '/sources/:id/status',
       API: {
         CONNECT: '/sources/api/connect',
-        STATUS: '/sources/api/status'
+        STATUS: '/sources/api/status',
+        METADATA: '/sources/api/metadata',
+        TEST: '/sources/api/:id/test',
+
       },
       DATABASE: {
+        QUERY: '/sources/database/query',
+        METADATA: '/sources/database/metadata',
         CONNECT: '/sources/database/connect',
-        QUERY: '/sources/database/query'
+        TEST: '/sources/database/:id/test',
+        STATUS: '/sources/database/:id/status'
       },
       S3: {
+        METADATA: '/sources/s3/metadata',
         CONNECT: '/sources/s3/connect',
-        LIST: '/sources/s3/list'
+        LIST: '/sources/s3/:id/list',
+        STATUS: '/sources/s3/:id/status'
+
       },
       STREAM: {
+        START: '/sources/stream/start',
+        STOP: '/sources/stream/stop',
+        METADATA: '/sources/stream/metadata',
         CONNECT: '/sources/stream/connect',
-        STATUS: '/sources/stream/status'
+        STATUS: '/sources/stream/:id/status'
+      },      
+      FILE: {
+        UPLOAD: '/sources/file/upload',
+        METADATA: '/sources/file/:id/metadata'
       }
     },
-
+    
     // Pipeline endpoints
     PIPELINES: {
       LIST: '/pipelines',
@@ -68,13 +86,13 @@ export const API_CONFIG = {
     ANALYSIS: {
       QUALITY: {
         START: '/analysis/quality/start',
-        STATUS: '/analysis/quality/:id/status',
+        STATUS: '/analysis/quality/:id',  // Base path for quality analysis
         REPORT: '/analysis/quality/:id/report',
         EXPORT: '/analysis/quality/:id/export'
       },
       INSIGHT: {
         START: '/analysis/insight/start',
-        STATUS: '/analysis/insight/:id/status',
+        STATUS: '/analysis/insight/:id',  // Base path for insight analysis
         REPORT: '/analysis/insight/:id/report',
         TRENDS: '/analysis/insight/:id/trends',
         PATTERN_DETAILS: '/analysis/insight/:id/pattern/:patternId',
@@ -83,31 +101,52 @@ export const API_CONFIG = {
         ANOMALIES: '/analysis/insight/:id/anomalies'
       }
     },
-
+    
     // Monitoring endpoints
     MONITORING: {
-      METRICS: '/monitoring/metrics',
-      ALERTS: '/monitoring/alerts',
-      HEALTH: '/monitoring/health'
+      START: '/monitoring/:id/start',
+      METRICS: '/monitoring/:id/metrics',
+      HEALTH: '/monitoring/:id/health',
+      PERFORMANCE: '/monitoring/:id/performance',
+      ALERTS_CONFIG: '/monitoring/:id/alerts/config',
+      ALERTS_HISTORY: '/monitoring/:id/alerts/history',
+      RESOURCES: '/monitoring/:id/resources',
+      TIME_SERIES: '/monitoring/:id/time-series',
+      AGGREGATED: '/monitoring/:id/metrics/aggregated'
     },
-
+    
     // Reports endpoints
     REPORTS: {
       LIST: '/reports',
       CREATE: '/reports',
       GET: '/reports/:id',
+      STATUS: '/reports/:id/status',
       DELETE: '/reports/:id',
-      EXPORT: '/reports/:id/export'
+      EXPORT: '/reports/:id/export',
+      SCHEDULE: '/reports/schedule'
     },
-
+    
     // Recommendations endpoints
     RECOMMENDATIONS: {
-      LIST: '/recommendations/:pipelineId',
-      APPLY: '/recommendations/apply',
-      STATUS: '/recommendations/:id/status'
-    }
+      LIST: '/recommendations/pipeline/:id',
+      DETAILS: '/recommendations/:id',
+      APPLY: '/recommendations/:id/apply',
+      STATUS: '/recommendations/:id/status',
+      DISMISS: '/recommendations/:id/dismiss',
+      HISTORY: '/recommendations/pipeline/:id/history'
+    },
+    
+    // Decisions endpoints
+    DECISIONS: {
+      LIST: '/decisions/pipeline/:id',
+      DETAILS: '/decisions/:id',
+      MAKE: '/decisions/:id/make',
+      DEFER: '/decisions/:id/defer',
+      HISTORY: '/decisions/pipeline/:id/history',
+      ANALYZE_IMPACT: '/decisions/:id/options/:optionId/impact'
+    },
   }
-};
+} as const;
 
 export const formatEndpoint = (endpoint: string, params: Record<string, string>): string => {
   let formattedEndpoint = endpoint;
@@ -119,6 +158,3 @@ export const formatEndpoint = (endpoint: string, params: Record<string, string>)
 
 // Helper type for endpoint parameters
 export type EndpointParams = Record<string, string>;
-
-// Example usage:
-// const endpoint = formatEndpoint(API_CONFIG.ENDPOINTS.PIPELINES.GET, { id: '123' });

@@ -1,134 +1,123 @@
 // src/hooks/analysis/useQualityAnalysis.ts
+// src/hooks/analysis/useQualityAnalysis.ts
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from 'react-query';
-import { analysisApi, QualityConfig } from '../../services/api/analysisAPI';
+import { analysisApi } from '../../services/api/analysisAPI';
 import { handleApiError } from '../../utils/helpers/apiUtils';
+import type { 
+  ApiResponse,
+  AnalysisResult,
+  QualityConfig,
+  QualityReport,
+  QualityIssuesSummary,
+} from '../../services/api/types';
+import { QualityAnalysisHookResult, FixMutationPayload } from './types';
 
-
-interface QualityReport {
-  summary: {
-    totalIssues: number;
-    criticalIssues: number;
-    warningIssues: number;
-  };
-  issues: Array<{
-    id: string;
-    type: string;
-    severity: 'critical' | 'warning' | 'info';
-    description: string;
-    affectedColumns: string[];
-    possibleFixes?: Array<{
-      id: string;
-      description: string;
-      impact: 'high' | 'medium' | 'low';
-    }>;
-  }>;
-  recommendations: Array<{
-    id: string;
-    type: string;
-    description: string;
-    impact: 'high' | 'medium' | 'low';
-  }>;
-}
-
-interface QualityIssuesSummary {
-  byType: Record<string, number>;
-  bySeverity: Record<string, number>;
-  byColumn: Record<string, number>;
-  trend: {
-    lastRun: number;
-    change: number;
-  };
-}
-
-interface FixPayload {
-  issueId: string;
-  fix: {
-    type: string;
-    parameters?: Record<string, any>;
-  };
-}
-
-export const useQualityAnalysis = (pipelineId: string) => {
+export const useQualityAnalysis = (pipelineId: string): QualityAnalysisHookResult => {
   const [analysisId, setAnalysisId] = useState<string | null>(null);
 
-  // Start Quality Analysis
-  const { mutate: startAnalysis, isLoading: isStarting } = useMutation(
-    async (config: Omit<QualityConfig, 'type' | 'pipelineId'>) => {
-      const response = await analysisApi.startQualityAnalysis({
+  const startAnalysisMutation = useMutation<
+    ApiResponse<{ analysisId: string }>,
+    Error,
+    Omit<QualityConfig, 'type' | 'pipelineId'>
+  >(
+    (config = {}) => {
+      return analysisApi.startQualityAnalysis({
         type: 'quality',
         pipelineId,
         ...config
       });
-      setAnalysisId(response.data.analysisId);
-      return response;
     },
     {
+      onSuccess: (response) => {
+        if (response.data?.analysisId) {
+          setAnalysisId(response.data.analysisId);
+        }
+      },
       onError: handleApiError
     }
   );
 
-  // Get Analysis Status
-  const { data: status, refetch: refreshStatus } = useQuery(
+  const statusQuery = useQuery<AnalysisResult | null, Error>(
     ['qualityStatus', analysisId],
-    () => analysisApi.getQualityStatus(analysisId!),
+    async () => {
+      if (!analysisId) return null;
+      const response = await analysisApi.getQualityStatus(analysisId);
+      return response.data ?? null;
+    },
     {
       enabled: !!analysisId,
       refetchInterval: 3000
     }
   );
 
-  // Get Quality Report
-  const { data: report, refetch: refreshReport } = useQuery<QualityReport>(
+  const reportQuery = useQuery<QualityReport | null, Error>(
     ['qualityReport', analysisId],
-    () => analysisApi.getQualityReport(analysisId!),
+    async () => {
+      if (!analysisId) return null;
+      const response = await analysisApi.getQualityReport(analysisId);
+      return response.data ?? null;
+    },
     {
-      enabled: !!analysisId && status?.status === 'completed'
+      enabled: !!analysisId && statusQuery.data?.status === 'completed'
     }
   );
 
-  // Cancel Analysis
-  const cancelAnalysis = useCallback(async () => {
-    if (analysisId) {
-      await analysisApi.cancelQualityAnalysis(analysisId);
-      setAnalysisId(null);
-    }
-  }, [analysisId]);
-
-  // Get Issues Summary
-  const { data: issuesSummary } = useQuery<QualityIssuesSummary>(
+  const issuesSummaryQuery = useQuery<QualityIssuesSummary | null, Error>(
     ['qualityIssues', analysisId],
-    () => analysisApi.getQualityIssuesSummary(analysisId!),
+    async () => {
+      if (!analysisId) return null;
+      const response = await analysisApi.getQualityIssuesSummary(analysisId);
+      return response.data ?? null;
+    },
     {
-      enabled: !!analysisId && status?.status === 'completed'
+      enabled: !!analysisId && statusQuery.data?.status === 'completed'
     }
   );
 
-  // Apply Fix
-  const { mutate: applyFix } = useMutation(
-    ({ issueId, fix }: FixPayload) => 
-      analysisApi.applyQualityFix(analysisId!, issueId, fix),
+  const applyFixMutation = useMutation<
+    ApiResponse<void>,
+    Error,
+    FixMutationPayload
+  >(
+    ({ issueId, fix }) => analysisApi.applyQualityFix(analysisId!, issueId, fix),
     {
       onError: handleApiError,
       onSuccess: () => {
-        // Refetch report and summary after applying fix
-        refreshReport();
-        refreshStatus();
+        reportQuery.refetch();
+        issuesSummaryQuery.refetch();
       }
     }
   );
 
+  const cancelAnalysis = useCallback(async () => {
+    if (!analysisId) return;
+    
+    try {
+      await analysisApi.cancelQualityAnalysis(analysisId);
+      setAnalysisId(null);
+    } catch (error) {
+      handleApiError(error);
+    }
+  }, [analysisId]);
+
   return {
-    startAnalysis,
+    // Actions
+    startAnalysis: startAnalysisMutation.mutate,
     cancelAnalysis,
-    refreshStatus,
-    refreshReport,
-    applyFix,
+    refreshStatus: statusQuery.refetch,
+    refreshReport: reportQuery.refetch,
+    applyFix: applyFixMutation.mutate,
+    
+    // State
     analysisId,
-    status,
-    report,
-    issuesSummary,
-    isStarting
+    status: statusQuery.data,
+    report: reportQuery.data,
+    issuesSummary: issuesSummaryQuery.data,
+    
+    // Status
+    isStarting: startAnalysisMutation.isLoading,
+    isLoading: statusQuery.isLoading || reportQuery.isLoading || issuesSummaryQuery.isLoading,
+    error: statusQuery.error ?? reportQuery.error ?? issuesSummaryQuery.error ?? applyFixMutation.error ?? null
   };
 };
-

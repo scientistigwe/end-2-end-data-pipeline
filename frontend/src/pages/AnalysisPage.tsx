@@ -1,14 +1,61 @@
 // src/pages/AnalysisPage.tsx
 import React, { useState } from "react";
 import { useQualityAnalysis } from "../hooks/analytics/useQualityAnalysis";
-import { useInsightAnalysis } from "../hooks/analytics/useQualityAnalysis";
+import { useInsightAnalysis } from "../hooks/analytics/useAnalysis";
+import {
+  QualityAnalysisHookResult,
+  InsightAnalysisHookResult,
+} from "../hooks/analytics/types";
 
 export const AnalysisPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"quality" | "insight">("quality");
-  const { startAnalysis: startQuality, report: qualityReport } =
-    useQualityAnalysis("quality");
-  const { startAnalysis: startInsight, report: insightReport } =
-    useInsightAnalysis("insight");
+
+  const {
+    startAnalysis: startQuality,
+    report: qualityReport,
+    isStarting: isQualityStarting,
+  } = useQualityAnalysis("pipeline-123") as QualityAnalysisHookResult;
+
+  const {
+    startAnalysis: startInsight,
+    report: insightReport,
+    isStarting: isInsightStarting,
+  } = useInsightAnalysis("pipeline-123") as InsightAnalysisHookResult;
+
+  const handleStartQuality = () => {
+    startQuality({
+      rules: {
+        dataTypes: true, // Updated to match the type definition
+        nullChecks: true,
+        rangeValidation: true,
+        customRules: {
+          accuracy: true,
+          completeness: true,
+        },
+      },
+      thresholds: {
+        errorThreshold: 0.1,
+        warningThreshold: 0.2,
+      },
+    });
+  };
+
+  const handleStartInsight = () => {
+    startInsight({
+      analysisTypes: {
+        patterns: true,
+        correlations: true,
+        anomalies: true,
+      },
+      dataScope: {
+        columns: ["column1", "column2"],
+        timeRange: {
+          start: "2024-01-01",
+          end: "2024-12-31",
+        },
+      },
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -58,16 +105,32 @@ export const AnalysisPage: React.FC = () => {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Data Quality Analysis</h2>
                 <button
-                  onClick={() => startQuality()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  onClick={handleStartQuality}
+                  disabled={isQualityStarting}
+                  className={`px-4 py-2 ${
+                    isQualityStarting
+                      ? "bg-gray-400"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  } text-white rounded-md`}
                 >
-                  Start Analysis
+                  {isQualityStarting ? "Starting..." : "Start Analysis"}
                 </button>
               </div>
 
               {qualityReport && (
                 <div className="bg-white shadow rounded-lg p-6">
-                  {/* Quality report content */}
+                  <h3 className="text-lg font-medium mb-4">Quality Report</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <p>Total Issues: {qualityReport.summary.totalIssues}</p>
+                      <p>
+                        Critical Issues: {qualityReport.summary.criticalIssues}
+                      </p>
+                      <p>
+                        Warning Issues: {qualityReport.summary.warningIssues}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -76,16 +139,36 @@ export const AnalysisPage: React.FC = () => {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Data Insight Analysis</h2>
                 <button
-                  onClick={() => startInsight()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  onClick={handleStartInsight}
+                  disabled={isInsightStarting}
+                  className={`px-4 py-2 ${
+                    isInsightStarting
+                      ? "bg-gray-400"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  } text-white rounded-md`}
                 >
-                  Start Analysis
+                  {isInsightStarting ? "Starting..." : "Start Analysis"}
                 </button>
               </div>
 
               {insightReport && (
                 <div className="bg-white shadow rounded-lg p-6">
-                  {/* Insight report content */}
+                  <h3 className="text-lg font-medium mb-4">Insight Report</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <p>
+                        Patterns Found: {insightReport.summary.patternsFound}
+                      </p>
+                      <p>
+                        Anomalies Detected:{" "}
+                        {insightReport.summary.anomaliesDetected}
+                      </p>
+                      <p>
+                        Correlations:{" "}
+                        {insightReport.summary.correlationsIdentified}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

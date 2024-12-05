@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./context/AuthContext";
-import { MainLayout } from "./components/layout/mainLayout";
+import { MainLayout } from "./components/layout/MainLayout";
 import { AppRoutes } from "./routes";
 import { store } from "./store";
 

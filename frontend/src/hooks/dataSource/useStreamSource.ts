@@ -1,46 +1,45 @@
 // src/hooks/sources/useStreamSource.ts
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'react-query';
-import { dataSourceApi } from '../../services/api/analysisAPI';
+import { dataSourceApi } from '../../services/api/dataSourceAPI';
 import { handleApiError } from '../../utils/helpers/apiUtils';
 import { WebSocketClient } from '../../utils/helpers/websocketUtil';
+import type { StreamSourceConfig } from '../../hooks/dataSource/types';
+import type { 
+  SourceConnectionResponse,
+  SourceConnectionStatus,
+  StreamMetrics 
+} from '../../types/source';
+import type { ApiResponse } from '../../types/api';
 
-interface StreamConfig {
-  type: 'kafka' | 'rabbitmq';
-  connection: {
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-    ssl?: boolean;
-  };
-  topic?: string;
-  queue?: string;
-  groupId?: string;
-  options?: Record<string, any>;
-}
-
-export const useStreamSource = () => {
+export function useStreamSource() {
   const [connectionId, setConnectionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<unknown[]>([]);
   const [wsClient, setWsClient] = useState<WebSocketClient | null>(null);
 
-  // Connect to stream
-  const { mutate: connect, isLoading: isConnecting } = useMutation(
-    async (config: StreamConfig) => {
-      const response = await dataSourceApi.connectStream(config);
-      if (response.data?.connectionId) {
-        setConnectionId(response.data.connectionId);
-      }
-      return response;
-    },
+  const { mutate: connect, isLoading: isConnecting } = useMutation<
+    ApiResponse<SourceConnectionResponse>,
+    Error,
+    StreamSourceConfig['config']
+  >(
+    (config) => dataSourceApi.connectStream(config),
     {
-      onError: (error) => handleApiError(error)
+      onError: handleApiError,
+      onSuccess: (response) => {
+        if (response.data?.connectionId) {
+          setConnectionId(response.data.connectionId);
+        }
+      }
     }
   );
 
-  // Get connection status
-  const { data: status, refetch: refreshStatus } = useQuery(
+  const { data: status, refetch: refreshStatus } = useQuery<
+    ApiResponse<{
+      status: SourceConnectionStatus;
+      metrics: StreamMetrics;
+    }>,
+    Error
+  >(
     ['streamStatus', connectionId],
     () => dataSourceApi.getStreamStatus(connectionId!),
     {
@@ -49,14 +48,13 @@ export const useStreamSource = () => {
     }
   );
 
-  // WebSocket connection for real-time messages
   useEffect(() => {
     if (connectionId) {
       const client = new WebSocketClient(
         `ws://your-api/stream/${connectionId}`
       );
 
-      const handleMessage = (message: any) => {
+      const handleMessage = (message: unknown) => {
         setMessages(prev => [...prev, message].slice(-1000)); // Keep last 1000 messages
       };
 
@@ -72,38 +70,23 @@ export const useStreamSource = () => {
     }
   }, [connectionId]);
 
-  // Disconnect
-  const disconnect = useCallback(async () => {
+  const disconnect = async () => {
     if (connectionId) {
       wsClient?.disconnect();
-      await dataSourceApi.disconnectStream(connectionId);
+      await dataSourceApi.disconnectSource(connectionId);
       setConnectionId(null);
       setMessages([]);
     }
-  }, [connectionId, wsClient]);
-
-  // Pause/Resume streaming
-  const pauseStream = useCallback(async () => {
-    if (connectionId) {
-      await dataSourceApi.pauseStream(connectionId);
-    }
-  }, [connectionId]);
-
-  const resumeStream = useCallback(async () => {
-    if (connectionId) {
-      await dataSourceApi.resumeStream(connectionId);
-    }
-  }, [connectionId]);
+  };
 
   return {
     connect,
     disconnect,
-    pauseStream,
-    resumeStream,
     refreshStatus,
     connectionId,
-    status,
+    status: status?.data?.status,
+    metrics: status?.data?.metrics,
     messages,
     isConnecting
-  };
-};
+  } as const;
+}

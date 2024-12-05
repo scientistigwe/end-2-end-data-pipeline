@@ -1,10 +1,10 @@
 // src/components/forms/DatabaseSourceForm.tsx
-import React from 'react';
-import { useForm } from 'react-hook-form';
-import { useDBSource } from '../../hooks/sources/useDBSource';
+import React from "react";
+import { useForm } from "react-hook-form";
+import { useDBSource } from "../../hooks/dataSource/useDBSource";
 
 interface DatabaseFormData {
-  type: 'postgresql' | 'mysql' | 'mssql' | 'oracle';
+  type: "postgresql" | "mysql" | "mssql" | "oracle";
   host: string;
   port: number;
   database: string;
@@ -13,9 +13,13 @@ interface DatabaseFormData {
   ssl: boolean;
 }
 
-export const DatabaseSourceForm: React.FC = () => {
+export const DBSourceForm: React.FC = () => {
   const { connect, isConnecting } = useDBSource();
-  const { register, handleSubmit, formState: { errors } } = useForm<DatabaseFormData>();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<DatabaseFormData>();
 
   const onSubmit = (data: DatabaseFormData) => {
     connect(data);
@@ -28,7 +32,7 @@ export const DatabaseSourceForm: React.FC = () => {
           Database Type
         </label>
         <select
-          {...register('type', { required: 'Database type is required' })}
+          {...register("type", { required: "Database type is required" })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         >
           <option value="postgresql">PostgreSQL</option>
@@ -48,7 +52,7 @@ export const DatabaseSourceForm: React.FC = () => {
           </label>
           <input
             type="text"
-            {...register('host', { required: 'Host is required' })}
+            {...register("host", { required: "Host is required" })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           />
           {errors.host && (
@@ -62,7 +66,7 @@ export const DatabaseSourceForm: React.FC = () => {
           </label>
           <input
             type="number"
-            {...register('port', { required: 'Port is required' })}
+            {...register("port", { required: "Port is required" })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           />
           {errors.port && (
@@ -77,7 +81,7 @@ export const DatabaseSourceForm: React.FC = () => {
         </label>
         <input
           type="text"
-          {...register('database', { required: 'Database name is required' })}
+          {...register("database", { required: "Database name is required" })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
         {errors.database && (
@@ -92,11 +96,13 @@ export const DatabaseSourceForm: React.FC = () => {
           </label>
           <input
             type="text"
-            {...register('username', { required: 'Username is required' })}
+            {...register("username", { required: "Username is required" })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           />
           {errors.username && (
-            <p className="mt-1 text-sm text-red-600">{errors.username.message}</p>
+            <p className="mt-1 text-sm text-red-600">
+              {errors.username.message}
+            </p>
           )}
         </div>
 
@@ -106,11 +112,13 @@ export const DatabaseSourceForm: React.FC = () => {
           </label>
           <input
             type="password"
-            {...register('password', { required: 'Password is required' })}
+            {...register("password", { required: "Password is required" })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           />
           {errors.password && (
-            <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
+            <p className="mt-1 text-sm text-red-600">
+              {errors.password.message}
+            </p>
           )}
         </div>
       </div>
@@ -118,7 +126,7 @@ export const DatabaseSourceForm: React.FC = () => {
       <div className="flex items-center">
         <input
           type="checkbox"
-          {...register('ssl')}
+          {...register("ssl")}
           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
         />
         <label className="ml-2 block text-sm text-gray-900">
@@ -131,7 +139,7 @@ export const DatabaseSourceForm: React.FC = () => {
         disabled={isConnecting}
         className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
       >
-        {isConnecting ? 'Connecting...' : 'Connect Database'}
+        {isConnecting ? "Connecting..." : "Connect Database"}
       </button>
     </form>
   );

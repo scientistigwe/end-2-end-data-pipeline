@@ -1,33 +1,39 @@
 // src/components/monitoring/MetricsCard.tsx
 import React from "react";
-import { useMonitoring } from "../../hooks/reportAndMonitoring/useMonitoring";
-import { LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import type { MetricsData } from "../../types/monitoring";
 
 interface MetricsCardProps {
-  pipelineId: string;
-  metricKey: string;
+  metrics: MetricsData;
+  title: string;
+  className?: string;
 }
 
 export const MetricsCard: React.FC<MetricsCardProps> = ({
-  pipelineId,
-  metricKey,
+  metrics,
+  title,
+  className = "",
 }) => {
-  const { metrics, realtimeData } = useMonitoring({
-    pipelineId,
-    enableRealtime: true,
-  });
-
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-medium mb-4">{metricKey}</h3>
-      <div className="h-64">
-        <LineChart width={500} height={200} data={realtimeData}>
-          <XAxis dataKey="timestamp" />
-          <YAxis />
-          <Tooltip />
-          <Line type="monotone" dataKey="value" stroke="#8884d8" />
-        </LineChart>
-      </div>
-    </div>
+    <Card className={`${className}`}>
+      <CardHeader>
+        <h3 className="text-lg font-medium">{title}</h3>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {Object.entries(metrics.values).map(([key, value]) => (
+            <div key={key} className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">{key}</span>
+              <span className="font-medium">{value}</span>
+            </div>
+          ))}
+          <div className="mt-4 pt-4 border-t">
+            <span className="text-sm text-gray-500">
+              Last updated: {new Date(metrics.timestamp).toLocaleString()}
+            </span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };

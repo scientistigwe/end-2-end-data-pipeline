@@ -1,36 +1,37 @@
 // src/routes/index.tsx
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useSelector } from "react-redux";
 import { MainLayout } from "../components/layout/MainLayout";
-import { AuthLayout } from "../components/auth/AuthLayout";
-import { ProtectedRoute } from "../routes/ProtectedRoute";
-import { selectIsAuthenticated } from "../store/slices/authSlice";
+import { AuthLayout } from "../auth/components/AuthLayout";
+import {
+  RequireAuth,
+  RequirePermission,
+  RequireRole,
+} from "../auth/components/middleware/AuthMiddleware";
 
 // Auth Pages
-import { LoginForm } from "../components/auth/LoginForm";
-import { RegisterForm } from "../components/auth/RegisterForm";
-import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
+import { LoginForm } from "../auth/components/LoginForm";
+import { RegisterForm } from "../auth/components/RegisterForm";
+import { ForgotPasswordPage } from "../auth/pages/ForgotPasswordPage";
 
 // Main Pages
-import { DashboardPage } from "../pages/DashboardPage";
-import { DataSourcesPage } from "../pages/DataSourcesPage";
-import { PipelinesPage } from "../pages/PipelinesPage";
-import { AnalysisPage } from "../pages/AnalysisPage";
-import { MonitoringPage } from "../pages/MonitoringPage";
-import { ReportsPage } from "../pages/ReportsPage";
-import { SettingsPage } from "../pages/SettingsPage";
+import { DashboardPage } from "../analysis/pages/DashboardPage";
+import { DataSourcesPage } from "../dataSource/pages/DataSourcesPage";
+import { PipelinesPage } from "../pipeline/PipelinesPage";
+import { AnalysisPage } from "../analysis/pages/AnalysisPage";
+import { MonitoringPage } from "../monitoring/pages/MonitoringPage";
+import { ReportsPage } from "../reports/pages/ReportsPage";
+import { SettingsPage } from "../settings/pages/SettingsPage";
 
 // Error Pages
-import { NotFound } from "./../components/errors/NotFound";
-import { ServerError } from "./../components/errors/ServerError";
+import { NotFound } from "../common/components/errors/NotFound";
+import { ServerError } from "../common/components/errors/ServerError";
 
 export const AppRoutes: React.FC = () => {
   const location = useLocation();
-  const isAuthenticated = useSelector(selectIsAuthenticated);
 
   // Auth routes - using a layout specifically for auth pages
-  if (!isAuthenticated && !location.pathname.startsWith("/auth")) {
+  if (location.pathname.startsWith("/auth")) {
     return (
       <AuthLayout>
         <Routes>
@@ -58,63 +59,63 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute>
+            <RequireAuth>
               <DashboardPage />
-            </ProtectedRoute>
+            </RequireAuth>
           }
         />
 
         <Route
           path="/sources/*"
           element={
-            <ProtectedRoute>
+            <RequireAuth>
               <DataSourcesPage />
-            </ProtectedRoute>
+            </RequireAuth>
           }
         />
 
         <Route
           path="/pipelines/*"
           element={
-            <ProtectedRoute>
+            <RequireAuth>
               <PipelinesPage />
-            </ProtectedRoute>
+            </RequireAuth>
           }
         />
 
         <Route
           path="/analysis/*"
           element={
-            <ProtectedRoute>
+            <RequirePermission permission="view_analytics">
               <AnalysisPage />
-            </ProtectedRoute>
+            </RequirePermission>
           }
         />
 
         <Route
           path="/monitoring/*"
           element={
-            <ProtectedRoute>
+            <RequireAuth>
               <MonitoringPage />
-            </ProtectedRoute>
+            </RequireAuth>
           }
         />
 
         <Route
           path="/reports/*"
           element={
-            <ProtectedRoute>
+            <RequireAuth>
               <ReportsPage />
-            </ProtectedRoute>
+            </RequireAuth>
           }
         />
 
         <Route
           path="/settings/*"
           element={
-            <ProtectedRoute>
+            <RequireRole role="admin">
               <SettingsPage />
-            </ProtectedRoute>
+            </RequireRole>
           }
         />
 

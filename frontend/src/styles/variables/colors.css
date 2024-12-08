@@ -1,0 +1,21 @@
+:root {
+  --background: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  
+  --primary-50: #f0f9ff;
+  --primary-100: #e0f2fe;
+  --primary-500: #0ea5e9;
+  --primary-600: #0284c7;
+  --primary-700: #0369a1;
+  
+  /* Add more color variables */
+}
+
+[data-theme="dark"] {
+  --background: #111827;
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  
+  /* Add dark theme overrides */
+}

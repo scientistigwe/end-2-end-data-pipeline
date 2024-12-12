@@ -1,3 +1,3 @@
 // src/common/api/index.ts
-export * from './axiosClient';
+export * from './baseClient';
 export * from './interceptors';

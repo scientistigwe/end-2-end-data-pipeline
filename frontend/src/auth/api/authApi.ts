@@ -1,9 +1,9 @@
-// src/services/api/authApi.ts
-import { BaseApiClient } from './client';
-import { API_CONFIG } from './config';
-import type { ApiResponse } from '../common/types/api';
+// auth/api/authApi.ts
+import { AuthClient } from './authClient';
+import { AUTH_API_CONFIG } from './config';
+import type { ApiResponse } from '@/common/types/api';
+import type { StorageUtils } from '@/common/api/utils/storage';
 import type {
-  User,
   AuthTokens,
   LoginCredentials,
   RegisterData,
@@ -11,88 +11,59 @@ import type {
   ChangePasswordData,
   VerifyEmailData
 } from '../types/auth';
+import type { User } from '@/common/types/user';
 
-class AuthApi extends BaseApiClient {
+const AUTH_STORAGE_KEY = 'auth_tokens';
+
+class AuthApi extends AuthClient {
   async login(credentials: LoginCredentials): Promise<ApiResponse<AuthTokens & { user: User }>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.LOGIN,
-      {},
+    const response = await this.post<AuthTokens & { user: User }>(
+      AUTH_API_CONFIG.endpoints.LOGIN,
       credentials
     );
+    
+    if (response.data?.accessToken) {
+      StorageUtils.setItem(AUTH_STORAGE_KEY, response.data);
+    }
+    
+    return response;
   }
 
   async register(data: RegisterData): Promise<ApiResponse<{ user: User }>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.REGISTER,
-      {},
-      data
-    );
-  }
-
-  async refreshToken(token: string): Promise<ApiResponse<AuthTokens>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.REFRESH,
-      {},
-      { token }
-    );
+    return this.post(AUTH_API_CONFIG.endpoints.REGISTER, data);
   }
 
   async logout(): Promise<ApiResponse<void>> {
-    return this.request('post', API_CONFIG.ENDPOINTS.AUTH.LOGOUT);
+    const response = await this.post<void>(AUTH_API_CONFIG.endpoints.LOGOUT);
+    StorageUtils.removeItem(AUTH_STORAGE_KEY);
+    return response;
   }
 
   async verifyEmail(data: VerifyEmailData): Promise<ApiResponse<void>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL,
-      {},
-      data
-    );
+    return this.post(AUTH_API_CONFIG.endpoints.VERIFY_EMAIL, data);
   }
 
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD,
-      {},
-      { email }
-    );
+    return this.post(AUTH_API_CONFIG.endpoints.FORGOT_PASSWORD, { email });
   }
 
   async resetPassword(data: ResetPasswordData): Promise<ApiResponse<void>> {
-    return this.request(
-      'post',
-      API_CONFIG.ENDPOINTS.AUTH.RESET_PASSWORD,
-      {},
-      data
-    );
+    return this.post(AUTH_API_CONFIG.endpoints.RESET_PASSWORD, data);
   }
 
   async changePassword(data: ChangePasswordData): Promise<ApiResponse<void>> {
-    return this.request(
-      'post',
-      `${API_CONFIG.ENDPOINTS.AUTH.PROFILE}/change-password`,
-      {},
-      data
-    );
+    return this.post(AUTH_API_CONFIG.endpoints.CHANGE_PASSWORD, data);
   }
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
-    return this.request('get', `${API_CONFIG.ENDPOINTS.AUTH.PROFILE}`);
+    return this.get<User>(AUTH_API_CONFIG.endpoints.PROFILE);
   }
 
   async updateProfile(data: Partial<User>): Promise<ApiResponse<User>> {
-    return this.request(
-      'put',
-      `${API_CONFIG.ENDPOINTS.AUTH.PROFILE}`,
-      {},
-      data
-    );
+    return this.put<User>(AUTH_API_CONFIG.endpoints.PROFILE, data);
   }
 }
 
+// Create singleton instance
 export const authApi = new AuthApi();
 

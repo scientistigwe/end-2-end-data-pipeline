@@ -3,7 +3,7 @@
   import { API_CONFIG } from './config';
   
   export class ApiClient {
-    private client: AxiosInstance;
+    protected client: AxiosInstance;
   
     constructor() {
       this.client = axios.create({

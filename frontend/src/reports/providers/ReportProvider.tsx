@@ -1,4 +1,3 @@
-
 // src/report/providers/ReportProvider.tsx
 import React, { useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -38,7 +37,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   }, [dispatch]);
 
   // Report Operations
-  const createReport = useCallback(async (config: ReportConfig) => {
+  const createReport = useCallback((config: ReportConfig) => {
     setIsLoading(true);
     setErrorState(null);
     try {
@@ -47,7 +46,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
         throw new Error(validationResult.errors.join(', '));
       }
 
-      const report = await reportsApi.createReport(config);
+      const report = reportsApi.createReport(config);
       dispatch(addReport(report));
       return report;
     } catch (err) {
@@ -63,7 +62,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   const updateReport = useCallback(async (id: string, updates: Partial<ReportConfig>) => {
     setIsLoading(true);
     try {
-      const report = await reportsApi.updateReport(id, updates);
+      const report = await ReportsApi.updateReport(id, updates);
       dispatch(updateReportState(report));
       return report;
     } catch (err) {
@@ -78,7 +77,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   const deleteReport = useCallback(async (id: string) => {
     setIsLoading(true);
     try {
-      await reportsApi.deleteReport(id);
+      await ReportsApi.deleteReport(id);
       dispatch(removeReport(id));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete report';
@@ -93,7 +92,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   const generateReport = useCallback(async (id: string) => {
     setIsLoading(true);
     try {
-      await reportsApi.generateReport(id);
+      await ReportsApi.generateReport(id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to generate report';
       setErrorState(message);
@@ -105,7 +104,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
 
   const cancelGeneration = useCallback(async (id: string) => {
     try {
-      await reportsApi.cancelGeneration(id);
+      await ReportsApi.cancelGeneration(id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to cancel generation';
       setErrorState(message);
@@ -115,7 +114,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
 
   const getReportStatus = useCallback(async (id: string) => {
     try {
-      const status = await reportsApi.getReportStatus(id);
+      const status = await ReportsApi.getReportStatus(id);
       return status;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get report status';
@@ -127,7 +126,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   // Report Export
   const exportReport = useCallback(async (id: string, options: ExportOptions) => {
     try {
-      const { downloadUrl } = await reportsApi.exportReport(id, options);
+      const { downloadUrl } = await ReportsApi.exportReport(id, options);
       return downloadUrl;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to export report';
@@ -145,7 +144,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
         throw new Error(validationResult.errors.join(', '));
       }
 
-      await reportsApi.scheduleReport(config);
+      await ReportsApi.scheduleReport(config);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to schedule report';
       setErrorState(message);
@@ -157,7 +156,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
 
   const updateSchedule = useCallback(async (id: string, updates: Partial<ScheduleConfig>) => {
     try {
-      await reportsApi.updateSchedule(id, updates);
+      await ReportsApi.updateSchedule(id, updates);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update schedule';
       setErrorState(message);
@@ -168,7 +167,7 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   // Report Metadata
   const getReportMetadata = useCallback(async (id: string): Promise<ReportMetadata> => {
     try {
-      const metadata = await reportsApi.getReportMetadata(id);
+      const metadata = await ReportsApi.getReportMetadata(id);
       return metadata;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get report metadata';
@@ -200,4 +199,3 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
     </ReportContext.Provider>
   );
 };
-

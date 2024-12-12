@@ -1,5 +1,5 @@
 // src/auth/index.ts
-export * from './api/client';
+export * from './api/authClient';
 export * from './hooks/useAuth';
 export * from './hooks/useSession';
 export * from './store/authSlice';

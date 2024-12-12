@@ -10,7 +10,7 @@ import {
 import { Input } from "@/common/components/ui/inputs/input";
 import { Button } from "@/common/components/ui/button";
 import { Select } from "@/common/components/ui/inputs/select";
-import { DateTimePicker } from "@/common/components/ui/DateTimePicker";
+import { DateTimePicker } from "@/common/components/ui/dateTimePicker";
 import { REPORT_CONSTANTS } from "../constants";
 import type { ReportConfig } from "../types/report";
 
@@ -34,7 +34,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({
       type: "quality",
       format: "pdf",
       ...initialData,
-    }
+    },
   });
 
   const handleFormSubmit = (data: ReportConfig) => {
@@ -99,46 +99,47 @@ export const ReportForm: React.FC<ReportFormProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-  <div className="space-y-2">
-    <label className="text-sm font-medium">Start Date</label>
-    <Controller
-      name="timeRange.start"
-      control={control}
-      rules={{ required: "Start date is required" }}
-      render={({ field }) => (
-        <DateTimePicker
-          value={field.value}
-          onChange={field.onChange}
-          error={errors.timeRange?.start?.message}
-          id="start-date"
-          name={field.name}
-        />
-      )}
-    />
-  </div>
-  <div className="space-y-2">
-    <label className="text-sm font-medium">End Date</label>
-    <Controller
-      name="timeRange.end"
-      control={control}
-      rules={{ 
-        required: "End date is required",
-        validate: (value, formValues) => 
-          !formValues.timeRange?.start || formValues.timeRange.start <= value || 
-          "End date must be after start date"
-      }}
-      render={({ field }) => (
-        <DateTimePicker
-          value={field.value}
-          onChange={field.onChange}
-          error={errors.timeRange?.end?.message}
-          id="end-date"
-          name={field.name}
-        />
-      )}
-    />
-  </div>
-</div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <Controller
+                name="timeRange.start"
+                control={control}
+                rules={{ required: "Start date is required" }}
+                render={({ field }) => (
+                  <DateTimePicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.timeRange?.start?.message}
+                    id="start-date"
+                    name={field.name}
+                  />
+                )}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">End Date</label>
+              <Controller
+                name="timeRange.end"
+                control={control}
+                rules={{
+                  required: "End date is required",
+                  validate: (value, formValues) =>
+                    !formValues.timeRange?.start ||
+                    formValues.timeRange.start <= value ||
+                    "End date must be after start date",
+                }}
+                render={({ field }) => (
+                  <DateTimePicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.timeRange?.end?.message}
+                    id="end-date"
+                    name={field.name}
+                  />
+                )}
+              />
+            </div>
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Format</label>
             <Controller

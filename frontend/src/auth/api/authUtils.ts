@@ -1,28 +1,22 @@
-// src/services/api/authUtils.ts
-import type { AuthTokens } from '../types/auth';
+// auth/api/authUtils.ts
+import { StorageUtils } from '@/common/api/utils/storage';
+import { tokenUtils } from '@/common/api/utils/token';
+import type { AuthTokens } from '../types';
 
-const TOKEN_KEY = 'auth_tokens';
+const AUTH_STORAGE_KEY = 'auth_tokens';
 
 export const authUtils = {
   setTokens(tokens: AuthTokens): void {
-    localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+    StorageUtils.setItem(AUTH_STORAGE_KEY, tokens);
   },
 
   getTokens(): AuthTokens | null {
-    const tokens = localStorage.getItem(TOKEN_KEY);
-    return tokens ? JSON.parse(tokens) : null;
+    return StorageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
   },
 
   clearTokens(): void {
-    localStorage.removeItem(TOKEN_KEY);
+    StorageUtils.removeItem(AUTH_STORAGE_KEY);
   },
 
-  isTokenExpired(token: string): boolean {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return Date.now() >= payload.exp * 1000;
-    } catch {
-      return true;
-    }
-  }
+  isTokenExpired: tokenUtils.isExpired
 };

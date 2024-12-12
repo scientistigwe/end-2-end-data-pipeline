@@ -1,5 +1,5 @@
 // src/decisions/api/client.ts
-import { AxiosClient } from '../../common/api/client/axiosClient';
+import { AxiosClient } from '../../common/api/client/baseClient';
 import { API_CONFIG } from './config';
 import type { AxiosRequestConfig } from 'axios';
 import type { ApiRequestConfig } from '../../common/types/api';

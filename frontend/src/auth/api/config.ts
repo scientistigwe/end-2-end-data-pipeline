@@ -1,18 +1,16 @@
-// src/auth/api/config.ts
-export const AUTH_CONFIG = {
-  BASE_URL: process.env.REACT_APP_API_URL || '/api/v1',
-  TIMEOUT: 30000,
-  ENDPOINTS: {
-    LOGIN: '/auth/login',
-    REGISTER: '/auth/register',
-    REFRESH: '/auth/refresh',
-    LOGOUT: '/auth/logout',
-    VERIFY: '/auth/verify',
-    FORGOT_PASSWORD: '/auth/forgot-password',
-    RESET_PASSWORD: '/auth/reset-password',
-    VERIFY_EMAIL: '/auth/verify-email',
-    PROFILE: '/auth/profile',
-    CHANGE_PASSWORD: '/auth/change-password'
+// auth/api/config.ts
+export const AUTH_API_CONFIG = {
+  baseURL: '/api/v1/auth',
+  timeout: 30000,
+  endpoints: {
+    LOGIN: '/login',
+    REGISTER: '/register',
+    LOGOUT: '/logout',
+    REFRESH: '/refresh',
+    VERIFY_EMAIL: '/verify-email',
+    FORGOT_PASSWORD: '/forgot-password',
+    RESET_PASSWORD: '/reset-password',
+    PROFILE: '/profile',
+    CHANGE_PASSWORD: '/profile/change-password'
   }
 } as const;
-

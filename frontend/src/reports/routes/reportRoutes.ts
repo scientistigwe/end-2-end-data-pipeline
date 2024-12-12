@@ -1,21 +1,51 @@
-// src/report/routes/reportRoutes.ts
+// src/reports/routes/reportRoutes.ts
 import { RouteObject } from 'react-router-dom';
-import { lazy } from 'react';
-import { ReportsGuard } from '../components/ReportsGuard';
 
-// Simple route paths object
-export const REPORT_PATHS = {
-  LIST: '/reports',
-  DETAILS: '/reports/:id',
-  GENERATE: '/reports/generate',
-  SCHEDULED: '/reports/scheduled',
+// Type definitions for route paths and keys
+export type ReportRouteType = typeof REPORT_ROUTES[keyof typeof REPORT_ROUTES];
+export type ReportRouteKey = keyof typeof REPORT_ROUTES;
+
+// Route path constants
+export const REPORT_ROUTES = {
+  LIST: '/reports' as '/reports',
+  DETAILS: '/reports/:id' as '/reports/:id',
+  GENERATE: '/reports/generate' as '/reports/generate',
+  SCHEDULED: '/reports/scheduled' as '/reports/scheduled',
 } as const;
 
-// Basic route configuration
+// Navigation parameter types
+export interface ReportNavigationParams {
+  DETAILS: { id: string };
+  LIST: never;
+  GENERATE: never;
+  SCHEDULED: never;
+}
+
+// Type-safe path generation helper
+export const getReportPath = <T extends ReportRouteKey>(
+  path: T,
+  params?: Record<string, string>
+): string => {
+  let routePath = REPORT_ROUTES[path];
+
+  if (!params) {
+    return routePath;
+  }
+
+  return Object.entries(params).reduce(
+    (acc: string, [key, value]) => acc.replace(`:${key}`, value),
+    routePath
+  );
+};
+
+// Route configuration
 const routes: RouteObject[] = [
   {
     path: 'reports',
-    element: <ReportsGuard />,
+    async lazy() {
+      const { ReportsGuard } = await import('../components/ReportsGuard');
+      return { Component: ReportsGuard };
+    },
     children: [
       {
         path: '',
@@ -48,21 +78,5 @@ const routes: RouteObject[] = [
     ],
   },
 ];
-
-// Simple navigation helper
-export const getReportPath = (
-  path: keyof typeof REPORT_PATHS,
-  params?: Record<string, string>
-): string => {
-  let routePath = REPORT_PATHS[path];
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      routePath = routePath.replace(`:${key}`, value);
-    });
-  }
-  
-  return routePath;
-};
 
 export default routes;

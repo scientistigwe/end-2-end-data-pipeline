@@ -13,4 +13,7 @@ export interface User {
   lastLogin?: string;
   createdAt: string;
   preferences?: Record<string, unknown>;
+  username?: string;
+  status: 'active' | 'inactive' | 'suspended';
+  updatedAt: string;
   }

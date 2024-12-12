@@ -1,4 +1,4 @@
-import { AxiosClient } from '../../common/api/client/axiosClient';
+import { AxiosClient } from '../../common/api/client/baseClient';
 import { API_CONFIG } from './config';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
 import type { AxiosProgressEvent, AxiosRequestConfig } from 'axios';

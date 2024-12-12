@@ -1,4 +1,4 @@
-// src/common/api/client/axiosClient.ts
+// common/api/client/baseClient.ts
 import axios, { 
   AxiosInstance, 
   AxiosRequestConfig, 
@@ -11,8 +11,8 @@ import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
 import { handleApiError } from '../utils/errorHandlers';
 import { formatEndpoint } from '../utils/formatters';
 
-export class AxiosClient {
-  private client: AxiosInstance;
+export class BaseClient {
+  protected client: AxiosInstance;
 
   constructor(config?: CreateAxiosDefaults) {
     this.client = axios.create({
@@ -27,12 +27,9 @@ export class AxiosClient {
     this.setupInterceptors();
   }
 
-  private setupInterceptors() {
+  protected setupInterceptors() {
     this.client.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
-        // Token handling should be done by auth module
-        return config;
-      },
+      (config: InternalAxiosRequestConfig) => config,
       (error) => Promise.reject(error)
     );
 
@@ -45,16 +42,16 @@ export class AxiosClient {
   protected async request<T>(
     method: 'get' | 'post' | 'put' | 'delete',
     url: string,
-    config?: Omit<ApiRequestConfig, 'method'>,
+    config?: ApiRequestConfig,
     data?: unknown
   ): Promise<ApiResponse<T>> {
-    const finalUrl = config?.routeParams ? 
-      formatEndpoint(url, config.routeParams) : 
-      url;
-    
-    const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
-
     try {
+      const finalUrl = config?.routeParams ? 
+        formatEndpoint(url, config.routeParams) : 
+        url;
+
+      const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
+
       const requestConfig: AxiosRequestConfig = {
         method,
         url: finalUrl,
@@ -69,7 +66,23 @@ export class AxiosClient {
       throw handleApiError(error);
     }
   }
+
+  // Convenience methods
+  protected async get<T>(url: string, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
+    return this.request<T>('get', url, config);
+  }
+
+  protected async post<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
+    return this.request<T>('post', url, config, data);
+  }
+
+  protected async put<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
+    return this.request<T>('put', url, config, data);
+  }
+
+  protected async delete<T>(url: string, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
+    return this.request<T>('delete', url, config);
+  }
 }
 
-export const axiosClient = new AxiosClient();
-
+export const baseAxiosClient = new BaseClient();

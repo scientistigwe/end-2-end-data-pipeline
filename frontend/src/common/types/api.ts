@@ -7,6 +7,12 @@ export interface ApiRequestConfig extends Omit<AxiosRequestConfig, 'onUploadProg
   onUploadProgress?: (progress: number) => void;
 }
 
+export interface BaseApiConfig {
+  baseURL: string;
+  timeout: number;
+  endpoints: Record<string, string>;
+}
+
 export interface ApiResponse<T = unknown> {
   data: T;
   message?: string;

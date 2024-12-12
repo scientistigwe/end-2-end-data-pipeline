@@ -1,140 +1,99 @@
-import React from "react";
-import { Card } from "../../../../components/ui/card";
-import { Badge } from "../../../../components/ui/badge";
-import { Button } from "../../../../components/ui/button";
-import { Power } from "lucide-react";
-import { formatBytes } from "../../../utils/format";
-import { useStreamSource } from "../../hooks/useStreamSource";
-import type { StreamSourceConfig } from "../../types/dataSources";
-
-interface StreamMetrics {
-  messagesPerSecond: number;
-  bytesPerSecond: number;
-  totalMessages: number;
-  lastMessage?: string;
-  errors?: {
-    count: number;
-    lastError?: string;
-  };
-}
+// src/dataSource/components/cards/StreamSourceCard.tsx
+import React from 'react';
+import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
+import { Badge } from '../../../common/components/ui/badge';
+import { Activity } from 'lucide-react';
+import type { StreamSourceConfig } from '../../types/dataSources';
 
 interface StreamSourceCardProps {
   source: StreamSourceConfig;
-  metrics?: StreamMetrics;
+  status?: string;
+  metrics?: {
+    messagesPerSecond: number;
+    bytesPerSecond: number;
+    lastMessage?: string;
+    errors?: {
+      count: number;
+      lastError?: string;
+    };
+  };
   className?: string;
 }
 
 export const StreamSourceCard: React.FC<StreamSourceCardProps> = ({
   source,
+  status = 'disconnected',
   metrics,
-  className,
+  className = ''
 }) => {
-  const { connect, disconnect, messages, isConnected, isConnecting } =
-    useStreamSource();
-
   return (
     <Card className={className}>
-      <div className="p-6">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <h3 className="text-lg font-medium">{source.name}</h3>
-            <Badge variant={isConnected ? "success" : "secondary"}>
-              {isConnected ? "Connected" : "Disconnected"}
-            </Badge>
-          </div>
-          <div className="flex space-x-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                isConnected ? disconnect() : connect(source.config)
-              }
-              className={isConnected ? "text-red-600 hover:text-red-700" : ""}
-              disabled={isConnecting}
-            >
-              <Power className="h-4 w-4 mr-1" />
-              {isConnecting
-                ? "Connecting..."
-                : isConnected
-                ? "Disconnect"
-                : "Connect"}
-            </Button>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div className="flex items-center space-x-2">
+          <Activity className="h-5 w-5" />
+          <div>
+            <Badge variant="outline">{source.config.protocol}</Badge>
+            <h3 className="text-lg font-medium mt-2">{source.name}</h3>
           </div>
         </div>
+        <Badge 
+          variant={status === 'connected' ? 'success' : 'secondary'}
+        >
+          {status}
+        </Badge>
+      </CardHeader>
 
-        <div className="mt-4 space-y-4">
-          <div className="text-sm text-gray-600 grid grid-cols-2 gap-x-8 gap-y-2">
-            <div>
-              <span className="font-medium">Protocol:</span>{" "}
-              {source.config.protocol}
-            </div>
-            <div>
-              <span className="font-medium">Hosts:</span>{" "}
-              {source.config.connection.hosts.join(", ")}
-            </div>
-            {source.config.topics && (
-              <div className="col-span-2">
-                <span className="font-medium">Topics:</span>{" "}
-                {source.config.topics.join(", ")}
-              </div>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p>Hosts: {source.config.connection.hosts.join(', ')}</p>
+            {source.config.topics?.length && (
+              <p>Topics: {source.config.topics.join(', ')}</p>
             )}
             {source.config.consumer?.groupId && (
-              <div>
-                <span className="font-medium">Consumer Group:</span>{" "}
-                {source.config.consumer.groupId}
-              </div>
+              <p>Consumer Group: {source.config.consumer.groupId}</p>
             )}
           </div>
 
           {metrics && (
-            <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-              <div>
-                <p className="text-sm text-gray-500">Throughput</p>
-                <div className="font-medium">
-                  <p>{metrics.messagesPerSecond.toFixed(1)} msg/s</p>
-                  <p>{formatBytes(metrics.bytesPerSecond)}</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Messages/sec</p>
+                  <p className="font-medium">{metrics.messagesPerSecond.toFixed(2)}</p>
+                </div>
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Bytes/sec</p>
+                  <p className="font-medium">{(metrics.bytesPerSecond / 1024).toFixed(2)} KB/s</p>
                 </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Messages</p>
-                <p className="font-medium">
-                  {metrics.totalMessages.toLocaleString()}
-                </p>
-              </div>
-              {metrics.errors && (
-                <div>
-                  <p className="text-sm text-gray-500">Errors</p>
-                  <p className="font-medium text-red-600">
-                    {metrics.errors.count.toLocaleString()}
+
+              {metrics.lastMessage && (
+                <div className="pt-2 border-t">
+                  <p className="text-sm text-muted-foreground">Last Message</p>
+                  <p className="text-sm font-medium truncate">
+                    {new Date(metrics.lastMessage).toLocaleString()}
                   </p>
+                </div>
+              )}
+
+              {metrics.errors && metrics.errors.count > 0 && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-red-500">Errors</p>
+                    <Badge variant="destructive">{metrics.errors.count}</Badge>
+                  </div>
+                  {metrics.errors.lastError && (
+                    <p className="text-sm text-red-500 mt-1 truncate">
+                      {metrics.errors.lastError}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           )}
-
-          {metrics?.lastMessage && (
-            <div className="pt-4 border-t">
-              <p className="text-sm text-gray-500">Last Message</p>
-              <p className="font-medium">
-                {new Date(metrics.lastMessage).toLocaleString()}
-              </p>
-            </div>
-          )}
-
-          {messages.length > 0 && (
-            <div className="pt-4 border-t">
-              <p className="text-sm text-gray-500 mb-2">Recent Messages</p>
-              <div className="bg-gray-50 rounded-md p-2 h-32 overflow-y-auto font-mono text-sm">
-                {messages.map((msg, index) => (
-                  <pre key={index} className="whitespace-pre-wrap break-all">
-                    {JSON.stringify(msg, null, 2)}
-                  </pre>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
-      </div>
+      </CardContent>
     </Card>
   );
 };

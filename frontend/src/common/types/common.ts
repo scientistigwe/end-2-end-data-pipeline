@@ -1,16 +1,18 @@
 // src/common/types/common.ts
+import { DataStatus } from './status';
 
 // Enums and Constants
 export const IMPACT_LEVELS = ['high', 'medium', 'low'] as const;
 export const PRIORITY_LEVELS = ['high', 'medium', 'low'] as const;
-export const STATUS_TYPES = ['active', 'inactive', 'pending', 'error'] as const;
 export const SORT_DIRECTIONS = ['asc', 'desc'] as const;
 
 // Basic Types
 export type ImpactLevel = typeof IMPACT_LEVELS[number];
-export type Status = typeof STATUS_TYPES[number];
 export type Priority = typeof PRIORITY_LEVELS[number];
 export type SortDirection = typeof SORT_DIRECTIONS[number];
+
+// Re-export DataStatus for convenience
+export type { DataStatus } from './status';
 
 // Interfaces
 export interface TimeRange {

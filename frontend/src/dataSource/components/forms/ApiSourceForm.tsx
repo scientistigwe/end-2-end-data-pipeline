@@ -1,75 +1,202 @@
 import React from "react";
-import { useForm } from "react-hook-form";
-import { Card, CardContent, CardFooter, CardHeader } from "../ui/card";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Select } from "../ui/select";
-import { Textarea } from "../ui/textarea";
-import { useApiSource } from "../../dataSource/hooks/useApiSource";
-import type { ApiSourceConfig } from "../../dataSource/types/dataSources";
+import { useForm, UseFormRegister, FieldErrors } from "react-hook-form";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+} from "../../../common/components/ui/card";
+import { Button } from "../../../common/components/ui/button";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "../../../common/components/ui/alert";
+import { Input } from "@/common/components//ui/inputs/input";
+import { Select } from "@/common/components/ui/inputs/select";
+import { useApiSource } from "../../hooks/useApiSource";
+import type { ApiSourceConfig } from "../../types/dataSources";
 
-type AuthType = "none" | "basic" | "bearer" | "oauth2";
-
-interface APISourceFormData {
-  url: string;
-  method: "GET" | "POST" | "PUT" | "DELETE";
-  headers?: string; // JSON string
-  params?: string; // JSON string
-  body?: string;
-  auth: {
-    type: AuthType;
-    credentials?: {
-      username?: string;
-      password?: string;
-      token?: string;
-      clientId?: string;
-      clientSecret?: string;
-      tokenUrl?: string;
+interface ApiSourceFormData {
+  config: {
+    url: string;
+    method: "GET" | "POST" | "PUT" | "DELETE";
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+    body?: unknown;
+    auth?: {
+      type: "basic" | "bearer" | "oauth2";
+      credentials: Record<string, string>;
     };
-  };
-  rateLimit?: {
-    requests: number;
-    period: number;
+    rateLimit?: {
+      requests: number;
+      period: number;
+    };
   };
 }
 
-export const APISourceForm: React.FC = () => {
-  const { connect, isConnecting } = useApiSource();
+interface ApiSourceFormProps {
+  onSubmit: (config: ApiSourceConfig) => Promise<void>;
+  onCancel: () => void;
+}
+
+const ApiSourceFields: React.FC<{
+  register: UseFormRegister<ApiSourceFormData>;
+  errors: FieldErrors<ApiSourceFormData>;
+}> = ({ register, errors }) => (
+  <div className="space-y-4">
+    <div>
+      <Input
+        {...register("config.url", { required: "URL is required" })}
+        placeholder="API URL"
+      />
+      {errors.config?.url && (
+        <span className="text-sm text-red-500">
+          {errors.config.url.message}
+        </span>
+      )}
+    </div>
+
+    <div>
+      <Select
+        {...register("config.method", { required: "Method is required" })}
+      >
+        <option value="">Select Method</option>
+        <option value="GET">GET</option>
+        <option value="POST">POST</option>
+        <option value="PUT">PUT</option>
+        <option value="DELETE">DELETE</option>
+      </Select>
+      {errors.config?.method && (
+        <span className="text-sm text-red-500">
+          {errors.config.method.message}
+        </span>
+      )}
+    </div>
+
+    {/* Optional headers */}
+    <div>
+      <Input
+        {...register("config.headers.0", {
+          required: "Header key is required",
+        })}
+        placeholder="Header Key"
+      />
+      <Input
+        {...register("config.headers.1", {
+          required: "Header value is required",
+        })}
+        placeholder="Header Value"
+      />
+      {errors.config?.headers && (
+        <span className="text-sm text-red-500">
+          {errors.config?.url?.message && (
+            <span className="text-sm text-red-500">
+              {errors.config.url.message}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+
+    {/* Optional params */}
+    <div>
+      <Input
+        {...register("config.params.0", { required: "Param key is required" })}
+        placeholder="Param Key"
+      />
+      <Input
+        {...register("config.params.1", {
+          required: "Param value is required",
+        })}
+        placeholder="Param Value"
+      />
+      {errors.config?.params && (
+        <span className="text-sm text-red-500">
+          {errors.config?.url?.message && (
+            <span className="text-sm text-red-500">
+              {errors.config.url.message}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+
+    {/* Optional authentication */}
+    <div>
+      <Select {...register("config.auth.type")}>
+        <option value="">Select Auth Type</option>
+        <option value="basic">Basic</option>
+        <option value="bearer">Bearer</option>
+        <option value="oauth2">OAuth2</option>
+      </Select>
+      <Input
+        {...register("config.auth.credentials.username")}
+        placeholder="Username"
+      />
+      <Input
+        {...register("config.auth.credentials.password")}
+        type="password"
+        placeholder="Password"
+      />
+      {errors.config?.auth && (
+        <span className="text-sm text-red-500">
+          {errors.config.auth.message}
+        </span>
+      )}
+    </div>
+
+    {/* Optional rateLimit */}
+    <div>
+      <Input
+        {...register("config.rateLimit.requests")}
+        type="number"
+        placeholder="Requests per period"
+      />
+      <Input
+        {...register("config.rateLimit.period")}
+        type="number"
+        placeholder="Period in seconds"
+      />
+      {errors.config?.rateLimit && (
+        <span className="text-sm text-red-500">
+          {errors.config.rateLimit.message}
+        </span>
+      )}
+    </div>
+  </div>
+);
+
+export const ApiSourceForm: React.FC<ApiSourceFormProps> = ({
+  onSubmit,
+  onCancel,
+}) => {
+  const { isConnecting } = useApiSource(); // Only keep `isConnecting` if relevant
+  const [error, setError] = React.useState<Error | null>(null);
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors },
-  } = useForm<APISourceFormData>({
-    defaultValues: {
-      method: "GET",
-      auth: {
-        type: "none" as AuthType,
-      },
-    },
-  });
+  } = useForm<ApiSourceFormData>();
 
-  const authType = watch("auth.type");
-  const method = watch("method");
-
-  const onSubmit = (data: APISourceFormData) => {
-    const config: ApiSourceConfig["config"] = {
-      url: data.url,
-      method: data.method,
-      headers: data.headers ? JSON.parse(data.headers) : undefined,
-      params: data.params ? JSON.parse(data.params) : undefined,
-      body: data.body ? JSON.parse(data.body) : undefined,
-      auth:
-        data.auth.type !== "none"
-          ? {
-              type: data.auth.type,
-              credentials: data.auth.credentials || {},
-            }
-          : undefined,
-      rateLimit: data.rateLimit,
-    };
-
-    connect(config);
+  const handleFormSubmit = async (data: ApiSourceFormData) => {
+    try {
+      const apiSourceConfig: ApiSourceConfig = {
+        type: "api",
+        id: "unique-id",
+        name: "API Source",
+        createdAt: new Date().toISOString(), // Add createdAt with current timestamp
+        updatedAt: new Date().toISOString(), // Add updatedAt with current timestamp
+        status: "active", // Assuming status is a string, adjust as necessary
+        config: {
+          ...data.config,
+        },
+      };
+      await onSubmit(apiSourceConfig); // Pass the config to the parent-provided `onSubmit`
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Submission failed"));
+    }
   };
 
   return (
@@ -77,235 +204,30 @@ export const APISourceForm: React.FC = () => {
       <CardHeader>
         <h3 className="text-lg font-medium">API Configuration</h3>
       </CardHeader>
-      <form onSubmit={handleSubmit(onSubmit)}>
+
+      <form onSubmit={handleSubmit(handleFormSubmit)}>
         <CardContent className="space-y-4">
-          {/* URL Input */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">URL</label>
-            <Input
-              {...register("url", {
-                required: "API URL is required",
-                pattern: {
-                  value: /^https?:\/\/.+/,
-                  message:
-                    "Must be a valid URL starting with http:// or https://",
-                },
-              })}
-              placeholder="https://api.example.com/v1"
-            />
-            {errors.url && (
-              <p className="text-sm text-red-500">{errors.url.message}</p>
-            )}
-          </div>
-
-          {/* Method Select */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Method</label>
-            <Select {...register("method", { required: true })}>
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-            </Select>
-          </div>
-
-          {/* Headers */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Headers (JSON)</label>
-            <Textarea
-              {...register("headers", {
-                validate: (value) => {
-                  if (!value) return true;
-                  try {
-                    JSON.parse(value);
-                    return true;
-                  } catch {
-                    return "Must be valid JSON";
-                  }
-                },
-              })}
-              placeholder='{"Content-Type": "application/json"}'
-              rows={3}
-            />
-            {errors.headers && (
-              <p className="text-sm text-red-500">{errors.headers.message}</p>
-            )}
-          </div>
-
-          {/* Query Parameters */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Query Parameters (JSON)
-            </label>
-            <Textarea
-              {...register("params", {
-                validate: (value) => {
-                  if (!value) return true;
-                  try {
-                    JSON.parse(value);
-                    return true;
-                  } catch {
-                    return "Must be valid JSON";
-                  }
-                },
-              })}
-              placeholder='{"key": "value"}'
-              rows={3}
-            />
-            {errors.params && (
-              <p className="text-sm text-red-500">{errors.params.message}</p>
-            )}
-          </div>
-
-          {/* Request Body */}
-          {(method === "POST" || method === "PUT") && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Request Body (JSON)</label>
-              <Textarea
-                {...register("body", {
-                  validate: (value) => {
-                    if (!value) return true;
-                    try {
-                      JSON.parse(value);
-                      return true;
-                    } catch {
-                      return "Must be valid JSON";
-                    }
-                  },
-                })}
-                placeholder='{"key": "value"}'
-                rows={4}
-              />
-              {errors.body && (
-                <p className="text-sm text-red-500">{errors.body.message}</p>
-              )}
-            </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
           )}
 
-          {/* Authentication */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Authentication</label>
-            <Select {...register("auth.type")}>
-              <option value="none">None</option>
-              <option value="basic">Basic Auth</option>
-              <option value="bearer">Bearer Token</option>
-              <option value="oauth2">OAuth 2.0</option>
-            </Select>
-          </div>
-
-          {/* Auth Type Specific Fields */}
-          {authType === "basic" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Username</label>
-                <Input
-                  {...register("auth.credentials.username", {
-                    required: "Username is required for Basic Auth",
-                  })}
-                />
-                {errors.auth?.credentials?.username && (
-                  <p className="text-sm text-red-500">
-                    {errors.auth.credentials.username.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Password</label>
-                <Input
-                  type="password"
-                  {...register("auth.credentials.password", {
-                    required: "Password is required for Basic Auth",
-                  })}
-                />
-                {errors.auth?.credentials?.password && (
-                  <p className="text-sm text-red-500">
-                    {errors.auth.credentials.password.message}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {authType === "bearer" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Token</label>
-              <Input
-                {...register("auth.credentials.token", {
-                  required: "Token is required for Bearer Auth",
-                })}
-                placeholder="Bearer token"
-              />
-              {errors.auth?.credentials?.token && (
-                <p className="text-sm text-red-500">
-                  {errors.auth.credentials.token.message}
-                </p>
-              )}
-            </div>
-          )}
-
-          {authType === "oauth2" && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Client ID</label>
-                <Input
-                  {...register("auth.credentials.clientId", {
-                    required: "Client ID is required for OAuth",
-                  })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Client Secret</label>
-                <Input
-                  type="password"
-                  {...register("auth.credentials.clientSecret", {
-                    required: "Client Secret is required for OAuth",
-                  })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Token URL</label>
-                <Input
-                  {...register("auth.credentials.tokenUrl", {
-                    required: "Token URL is required for OAuth",
-                  })}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Rate Limiting */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Rate Limiting</label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Requests</label>
-                <Input
-                  type="number"
-                  {...register("rateLimit.requests", {
-                    valueAsNumber: true,
-                    min: { value: 1, message: "Must be at least 1" },
-                  })}
-                  placeholder="Requests per period"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Period (seconds)</label>
-                <Input
-                  type="number"
-                  {...register("rateLimit.period", {
-                    valueAsNumber: true,
-                    min: { value: 1, message: "Must be at least 1" },
-                  })}
-                  placeholder="Time period in seconds"
-                />
-              </div>
-            </div>
-          </div>
+          <ApiSourceFields register={register} errors={errors} />
         </CardContent>
 
-        <CardFooter>
-          <Button type="submit" disabled={isConnecting}>
-            {isConnecting ? "Connecting..." : "Connect API"}
+        <CardFooter className="flex space-x-4">
+          <Button type="submit" disabled={isConnecting} className="w-full">
+            {isConnecting ? "Submitting..." : "Submit"}
+          </Button>
+          <Button
+            type="button"
+            onClick={onCancel}
+            variant="secondary"
+            className="w-full"
+          >
+            Cancel
           </Button>
         </CardFooter>
       </form>

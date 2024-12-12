@@ -1,8 +1,8 @@
 // src/components/datasource/types/S3SourceFields.tsx
 import React from "react";
 import { UseFormRegister, FieldErrors } from "react-hook-form";
-import { Input } from "../../../../../components/ui/input";
-import { Switch } from "../../../../../components/ui/switch";
+import { Input } from "@/common/components//ui/inputs/input";
+import { Switch } from "@/common/components/ui/switch";
 import type { S3SourceConfig } from "../../types/dataSources";
 
 interface S3SourceFieldsProps {

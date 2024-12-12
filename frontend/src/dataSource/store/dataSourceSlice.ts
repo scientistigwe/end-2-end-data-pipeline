@@ -1,38 +1,20 @@
-// src/store/datasource/dataSourceSlice.ts
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import type {
-  DataSourceConfig,
+  DataSourceState,
   DataSourceMetadata,
+  DataSourceConfig,
+  DataSourceFilters,
   ValidationResult,
-  PreviewData,
-  DataSourceFilters
+  PreviewData
 } from '../types/dataSources';
+import { dataSourceApi } from '../api';
 
-interface DataSourceState {
-  sources: Record<string, DataSourceMetadata>;
-  configs: Record<string, DataSourceConfig>;
-  validation: Record<string, ValidationResult>;
-  preview: Record<string, PreviewData>;
-  selectedSourceId: string | null;
-  filters: DataSourceFilters;
-  isLoading: boolean;
-  error: string | null;
-  activeSources: Record<string, {
-    id: string;
-    type: 'file' | 'api' | 'database' | 's3' | 'stream';
-    status: 'connecting' | 'connected' | 'error' | 'disconnected';
-    config: unknown;
-    metadata: unknown;
-    error?: string;
-  }>;
-  sourceConfigurations: Record<string, unknown>;
-  uploadProgress: Record<string, number>;
-  connectionHistory: Array<{
-    id: string;
-    type: string;
-    timestamp: string;
-    status: string;
-  }>;
+// Define error interface
+interface ApiError {
+  response?: {
+    data?: string;
+  };
+  message: string;
 }
 
 const initialState: DataSourceState = {
@@ -41,51 +23,86 @@ const initialState: DataSourceState = {
   validation: {},
   preview: {},
   selectedSourceId: null,
-  filters: {
-    types: [],
-    status: [],
-    tags: [],
-    search: ''
-  },
+  filters: {},
   isLoading: false,
   error: null
 };
 
+// Async Thunks
+export const fetchDataSources = createAsyncThunk(
+  'dataSources/fetchAll',
+  async () => {
+    const response = await dataSourceApi.listDataSources();
+    return response.data;
+  }
+);
+
+export const createDataSource = createAsyncThunk<
+  DataSourceMetadata,
+  DataSourceConfig,
+  {
+    rejectValue: string;
+  }
+>(
+  'dataSources/createDataSource',
+  async (config: DataSourceConfig, { rejectWithValue }) => {
+    try {
+      const response = await dataSourceApi.createDataSource(config);
+      return response.data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      return rejectWithValue(
+        apiError.response?.data || apiError.message || 'An error occurred'
+      );
+    }
+  }
+);
+
+export const deleteDataSource = createAsyncThunk(
+  'dataSources/delete',
+  async (sourceId: string, { rejectWithValue }) => {
+    try {
+      await dataSourceApi.deleteDataSource(sourceId);
+      return sourceId;
+    } catch (error) {
+      const apiError = error as ApiError;
+      return rejectWithValue(
+        apiError.response?.data || apiError.message || 'Failed to delete data source'
+      );
+    }
+  }
+);
+
+// Slice
 const dataSourceSlice = createSlice({
   name: 'dataSource',
   initialState,
   reducers: {
-    setSources(state, action: PayloadAction<DataSourceMetadata[]>) {
+    setDataSources(state, action: PayloadAction<DataSourceMetadata[]>) {
       state.sources = action.payload.reduce((acc, source) => {
         acc[source.id] = source;
         return acc;
       }, {} as Record<string, DataSourceMetadata>);
     },
-    updateSource(state, action: PayloadAction<DataSourceMetadata>) {
+    updateDataSource(state, action: PayloadAction<DataSourceMetadata>) {
       state.sources[action.payload.id] = action.payload;
     },
-    removeSource(state, action: PayloadAction<string>) {
+    removeDataSource(state, action: PayloadAction<string>) {
       delete state.sources[action.payload];
       delete state.configs[action.payload];
       delete state.validation[action.payload];
       delete state.preview[action.payload];
+      if (state.selectedSourceId === action.payload) {
+        state.selectedSourceId = null;
+      }
     },
-    setConfig(
-      state,
-      action: PayloadAction<{ id: string; config: DataSourceConfig }>
-    ) {
+    setConfig(state, action: PayloadAction<{ id: string; config: DataSourceConfig }>) {
       state.configs[action.payload.id] = action.payload.config;
     },
-    setValidation(
-      state,
-      action: PayloadAction<{ id: string; validation: ValidationResult }>
-    ) {
+    setValidation(state, action: PayloadAction<{ id: string; validation: ValidationResult }>) {
       state.validation[action.payload.id] = action.payload.validation;
     },
-    setPreview(
-      state,
-      action: PayloadAction<{ id: string; preview: PreviewData }>
-    ) {
+    setPreview(state, action: PayloadAction<{ id: string; preview: PreviewData }>) {
       state.preview[action.payload.id] = action.payload.preview;
     },
     setFilters(state, action: PayloadAction<DataSourceFilters>) {
@@ -99,22 +116,77 @@ const dataSourceSlice = createSlice({
     },
     setError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
+    },
+    clearState(state) {
+      Object.assign(state, initialState);
     }
-  }
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchDataSources.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchDataSources.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.sources = action.payload.reduce((acc, source) => {
+          acc[source.id] = source;
+          return acc;
+        }, {} as Record<string, DataSourceMetadata>);
+        state.error = null;
+      })
+      .addCase(fetchDataSources.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.error.message ?? 'Failed to fetch data sources';
+      })
+      .addCase(createDataSource.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(createDataSource.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.sources[action.payload.id] = action.payload;
+        state.error = null;
+      })
+      .addCase(createDataSource.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload ?? 'Failed to create data source';
+      })
+      .addCase(deleteDataSource.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(deleteDataSource.fulfilled, (state, action) => {
+        state.isLoading = false;
+        delete state.sources[action.payload];
+        delete state.configs[action.payload];
+        delete state.validation[action.payload];
+        delete state.preview[action.payload];
+        if (state.selectedSourceId === action.payload) {
+          state.selectedSourceId = null;
+        }
+        state.error = null;
+      })
+      .addCase(createDataSource.rejected, (state, action) => {
+        state.isLoading = false;
+        // Fix: Ensure we're handling string error properly
+        state.error = typeof action.payload === 'string' ? action.payload : 'Failed to create data source';
+      })  }
 });
 
 export const {
-  setSources,
-  updateSource,
-  removeSource,
+  setDataSources,
+  updateDataSource,
+  removeDataSource,
   setConfig,
   setValidation,
   setPreview,
   setFilters,
   setSelectedSource,
   setLoading,
-  setError
+  setError,
+  clearState
 } = dataSourceSlice.actions;
 
+export type dataSourceState = typeof initialState;
 export default dataSourceSlice.reducer;
-

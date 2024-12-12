@@ -1,4 +1,4 @@
-// src/common/store/ui/selectors.ts
+// src/common/store/ui/inputs/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '../types';
 import type { Modal } from '@/common/types/ui'; 

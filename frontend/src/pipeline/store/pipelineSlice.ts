@@ -1,34 +1,29 @@
-// src/store/pipeline/pipelineSlice.ts
+// src/pipeline/store/pipelineSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type {
+  Pipeline,
   PipelineRun,
   PipelineLogs,
   PipelineMetrics,
-  PipelineSchedule,
-  PipelineEvent,
-  PipelineFilters
+  PipelineStatus
 } from '../types/pipeline';
-
-export type StepStatus = 'pending' | 'running' | 'completed' | 'error';
-export type PipelineStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
-export type PipelineType = 'etl' | 'transformation' | 'validation' | 'custom';
 
 interface PipelineState {
   pipelines: Record<string, Pipeline>;
   runs: Record<string, PipelineRun[]>;
   logs: Record<string, PipelineLogs>;
   metrics: Record<string, PipelineMetrics[]>;
-  schedules: Record<string, PipelineSchedule[]>;
-  events: Record<string, PipelineEvent[]>;
   selectedPipelineId: string | null;
-  filters: PipelineFilters;
   isLoading: boolean;
   error: string | null;
-  activePipelines: Record<string, Pipeline>;
-  pipelineHistory: PipelineHistoryEntry[];
-  configurations: Record<string, PipelineConfig>;
-  currentPipeline: string | null;
-  loading: boolean;
+  filters: {
+    status?: PipelineStatus[];
+    mode?: string[];
+    dateRange?: {
+      start: string;
+      end: string;
+    };
+  };
 }
 
 const initialState: PipelineState = {
@@ -36,72 +31,11 @@ const initialState: PipelineState = {
   runs: {},
   logs: {},
   metrics: {},
-  schedules: {},
-  events: {},
   selectedPipelineId: null,
-  filters: {},
   isLoading: false,
-  error: null
+  error: null,
+  filters: {}
 };
-
-export interface PipelineStep {
-  id: string;
-  name: string;
-  type: string;
-  status: StepStatus;
-  startTime?: string;
-  endTime?: string;
-  error?: string;
-  metadata?: Record<string, unknown>;
-}
-
-interface PipelineConfig {
-  name: string;
-  type: string;
-  description?: string;
-  steps: PipelineStep[];
-  sourceId: string;
-  targetId?: string;
-  schedule?: {
-    enabled: boolean;
-    cron?: string;
-    lastRun?: string;
-    nextRun?: string;
-  };
-  retryConfig?: {
-    maxAttempts: number;
-    backoffMultiplier: number;
-  };
-}
-
-interface Pipeline {
-  id: string;
-  name: string;
-  status: PipelineStatus;
-  progress: number;
-  sourceId: string;
-  config: PipelineConfig;
-  metadata: Record<string, unknown>;
-  error?: string;
-  startTime: string;
-  endTime?: string;
-  currentStep?: string;
-  attempts: number;
-}
-
-interface PipelineHistoryEntry {
-  id: string;
-  pipelineId: string;
-  startTime: string;
-  endTime?: string;
-  status: PipelineStatus;
-  error?: string;
-  metrics?: {
-    duration: number;
-    processedRecords: number;
-    failedRecords: number;
-  };
-}
 
 const pipelineSlice = createSlice({
   name: 'pipeline',
@@ -113,9 +47,15 @@ const pipelineSlice = createSlice({
         return acc;
       }, {} as Record<string, Pipeline>);
     },
+
     updatePipeline(state, action: PayloadAction<Pipeline>) {
       state.pipelines[action.payload.id] = action.payload;
     },
+
+    removePipeline(state, action: PayloadAction<string>) {
+      delete state.pipelines[action.payload];
+    },
+
     updatePipelineStatus(
       state,
       action: PayloadAction<{ id: string; status: PipelineStatus }>
@@ -124,12 +64,14 @@ const pipelineSlice = createSlice({
         state.pipelines[action.payload.id].status = action.payload.status;
       }
     },
+
     setPipelineRuns(
       state,
       action: PayloadAction<{ pipelineId: string; runs: PipelineRun[] }>
     ) {
       state.runs[action.payload.pipelineId] = action.payload.runs;
     },
+
     addPipelineRun(
       state,
       action: PayloadAction<{ pipelineId: string; run: PipelineRun }>
@@ -139,41 +81,39 @@ const pipelineSlice = createSlice({
       }
       state.runs[action.payload.pipelineId].unshift(action.payload.run);
     },
+
     setPipelineLogs(
       state,
       action: PayloadAction<{ pipelineId: string; logs: PipelineLogs }>
     ) {
       state.logs[action.payload.pipelineId] = action.payload.logs;
     },
+
     setPipelineMetrics(
       state,
       action: PayloadAction<{ pipelineId: string; metrics: PipelineMetrics[] }>
     ) {
       state.metrics[action.payload.pipelineId] = action.payload.metrics;
     },
-    setPipelineSchedules(
-      state,
-      action: PayloadAction<{ pipelineId: string; schedules: PipelineSchedule[] }>
-    ) {
-      state.schedules[action.payload.pipelineId] = action.payload.schedules;
-    },
-    setPipelineEvents(
-      state,
-      action: PayloadAction<{ pipelineId: string; events: PipelineEvent[] }>
-    ) {
-      state.events[action.payload.pipelineId] = action.payload.events;
-    },
-    setFilters(state, action: PayloadAction<PipelineFilters>) {
-      state.filters = action.payload;
-    },
-    setSelectedPipeline(state, action: PayloadAction<string | null>) {
+
+    setSelectedPipelineId(state, action: PayloadAction<string | null>) {
       state.selectedPipelineId = action.payload;
     },
+
+    setFilters(state, action: PayloadAction<PipelineState['filters']>) {
+      state.filters = action.payload;
+    },
+
     setLoading(state, action: PayloadAction<boolean>) {
       state.isLoading = action.payload;
     },
+
     setError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
+    },
+
+    resetPipelineState(state) {
+      Object.assign(state, initialState);
     }
   }
 });
@@ -181,18 +121,20 @@ const pipelineSlice = createSlice({
 export const {
   setPipelines,
   updatePipeline,
+  removePipeline,
   updatePipelineStatus,
   setPipelineRuns,
   addPipelineRun,
   setPipelineLogs,
   setPipelineMetrics,
-  setPipelineSchedules,
-  setPipelineEvents,
+  setSelectedPipelineId,
   setFilters,
-  setSelectedPipeline,
   setLoading,
-  setError
+  setError,
+  resetPipelineState
 } = pipelineSlice.actions;
 
+export type pipelineState = typeof initialState;
 export default pipelineSlice.reducer;
+
 

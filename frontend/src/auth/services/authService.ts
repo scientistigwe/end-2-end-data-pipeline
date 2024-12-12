@@ -2,11 +2,11 @@
 import { authApi } from '../api/authApi';
 import { authUtils } from '../utils/authUtils';
 import type { 
-  User, 
   LoginCredentials, 
   RegisterData, 
   AuthTokens 
 } from '../types/auth';
+import type { User } from '@/common/types/user';
 
 interface AuthResult {
   user: User;

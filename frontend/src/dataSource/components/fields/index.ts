@@ -1,4 +1,4 @@
-// /components/dataSource/fields/index.ts
+// src/dataSource/components/fields/index.ts
 export * from './ApiFields';
 export * from './DBFields';
 export * from './FileFields';

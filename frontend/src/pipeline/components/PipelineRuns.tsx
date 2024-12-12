@@ -1,41 +1,86 @@
-// src/components/pipeline/PipelineRuns.tsx
 import React from "react";
-import { Card } from "../../components/ui/card";
-import { Badge } from "../../components/ui/badge";
-import type { PipelineRun } from "../types/pipeline";
+import { Card } from "@/common/components/ui/card";
+import { Badge } from "@/common/components/ui/badge";
+import { usePipelineRuns } from "../hooks/usePipelineRuns";
+import { getStatusColor, formatDuration } from "../utils/formatters";
 
 interface PipelineRunsProps {
-  runs: PipelineRun[];
-  onRunClick: (runId: string) => void;
+  pipelineId: string;
   className?: string;
 }
 
 export const PipelineRuns: React.FC<PipelineRunsProps> = ({
-  runs,
-  onRunClick,
+  pipelineId,
   className = "",
 }) => {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-100 text-green-800";
-      case "failed":
-        return "bg-red-100 text-red-800";
-      case "running":
-        return "bg-blue-100 text-blue-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+  const { runs, isLoading, hasError, refresh, stats, isEmpty } =
+    usePipelineRuns(pipelineId);
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-center">
+        <div className="animate-pulse">Loading runs...</div>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="p-4 text-center">
+        <p className="text-red-500 mb-2">Failed to load pipeline runs</p>
+        <button
+          onClick={() => refresh()}
+          className="text-sm text-blue-500 hover:underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <div className="p-4 text-center text-gray-500">
+        No pipeline runs available
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {stats && (
+        <Card className="p-4">
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">Total Runs</h4>
+              <p className="text-2xl font-bold">{stats.totalRuns}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">
+                Success Rate
+              </h4>
+              <p className="text-2xl font-bold">
+                {((stats.successfulRuns / stats.totalRuns) * 100).toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">Failed Runs</h4>
+              <p className="text-2xl font-bold">{stats.failedRuns}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">
+                Avg Duration
+              </h4>
+              <p className="text-2xl font-bold">
+                {formatDuration(stats.averageDuration)}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {runs.map((run) => (
-        <Card
-          key={run.id}
-          className="p-4 hover:bg-gray-50 cursor-pointer"
-          onClick={() => onRunClick(run.id)}
-        >
+        <Card key={run.id} className="p-4">
           <div className="flex justify-between items-start">
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -46,24 +91,20 @@ export const PipelineRuns: React.FC<PipelineRunsProps> = ({
                   Run #{run.id.slice(0, 8)}
                 </span>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">
-                  Started: {new Date(run.startedAt).toLocaleString()}
-                </p>
+              <div className="text-sm text-gray-600">
+                <p>Started: {new Date(run.startedAt).toLocaleString()}</p>
                 {run.completedAt && (
-                  <p className="text-sm text-gray-600">
-                    Completed: {new Date(run.completedAt).toLocaleString()}
-                  </p>
+                  <p>Completed: {new Date(run.completedAt).toLocaleString()}</p>
                 )}
               </div>
             </div>
 
             <div className="text-right">
               <p className="text-sm font-medium">
-                Duration: {(run.duration || 0) / 1000}s
+                Duration: {formatDuration(run.duration || 0)}
               </p>
               {run.error && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-600 mt-2">
                   Error: {run.error.message}
                 </p>
               )}
@@ -81,10 +122,15 @@ export const PipelineRuns: React.FC<PipelineRunsProps> = ({
                   >
                     {step.status}
                   </Badge>
-                  <span className="text-sm">{step.id}</span>
+                  <span className="text-sm">{step.stepId}</span>
                   {step.duration && (
                     <span className="text-sm text-gray-500">
-                      ({(step.duration / 1000).toFixed(1)}s)
+                      ({formatDuration(step.duration)})
+                    </span>
+                  )}
+                  {step.error && (
+                    <span className="text-sm text-red-600">
+                      {step.error.message}
                     </span>
                   )}
                 </div>

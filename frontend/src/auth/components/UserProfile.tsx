@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { Button } from "@/common/components/ui/button";
-import { Input } from "@/common/components/ui/inputs/input";
+import { Input } from "@/common/components//ui/inputs/input";
 import { Alert } from "@/common/components/ui/alert";
 import { Avatar } from "@/common/components/ui/avatar";
 import type { User } from "../types/auth";

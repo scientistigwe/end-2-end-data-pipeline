@@ -1,9 +1,9 @@
 // src/components/datasource/types/ApiSourceFields.tsx
 import React from "react";
 import { UseFormRegister, FieldErrors } from "react-hook-form";
-import { Input } from "../../../../../components/ui/input";
-import { Select } from "../../../../../components/ui/select";
-import { Textarea } from "../../../../../components/ui/textarea";
+import { Input } from "@/common/components//ui/inputs/input";
+import { Select } from "@/common/components/ui/inputs/select";
+import { Textarea } from "@/common/components/ui/textarea";
 import type { ApiSourceConfig } from "../../types/dataSources";
 
 interface ApiSourceFieldsProps {

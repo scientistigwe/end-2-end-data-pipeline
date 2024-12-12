@@ -1,23 +1,23 @@
-// src/recommendations/components/RecommendationFilters.tsx
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../common/components/ui/card";
-import { Select } from "../../common/components/ui/inputs/select";
-import { Slider } from "../../common/components/ui/slider";
-import { Badge } from "../../common/components/ui/badge";
-import { Button } from "../../common/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/common/components/ui/card";
+import { Select } from "@/common/components/ui/inputs/select";
+import { Slider } from "@/common/components/ui/slider";
+import { Badge } from "@/common/components/ui/badge";
+import { Button } from "@/common/components/ui/button";
 import { X } from "lucide-react";
-import { 
+import {
   RECOMMENDATION_TYPES,
   RECOMMENDATION_STATUSES,
   RECOMMENDATION_TYPE_LABELS,
   RECOMMENDATION_STATUS_LABELS,
-  RECOMMENDATION_CONFIG
+  RECOMMENDATION_CONFIG,
 } from "../constants";
-import { 
-  IMPACT_LEVELS,
-  IMPACT_LEVEL_LABELS,
-  type ImpactLevel 
-} from "../../common/types/common";
+import { IMPACT_LEVELS, IMPACT_LEVEL_LABELS } from "@/common/types/common";
 import type { RecommendationFilters as FilterType } from "../types/recommendations";
 
 interface RecommendationFiltersProps {
@@ -34,7 +34,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
   className = "",
 }) => {
   const handleMultiSelect =
-    (field: keyof Pick<FilterType, 'types' | 'impact' | 'status'>) =>
+    (field: keyof Pick<FilterType, "types" | "impact" | "status">) =>
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const options = Array.from(e.target.selectedOptions);
       onChange({
@@ -45,9 +45,9 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
 
   const getSelectedCount = (): number => {
     return (
-      (filters.types?.length || 0) +
-      (filters.impact?.length || 0) +
-      (filters.status?.length || 0) +
+      (filters.types?.length ?? 0) +
+      (filters.impact?.length ?? 0) +
+      (filters.status?.length ?? 0) +
       (filters.minConfidence ? 1 : 0)
     );
   };
@@ -75,7 +75,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
           <label className="text-sm font-medium">Types</label>
           <Select
             multiple
-            value={filters.types || []}
+            value={filters.types ?? []}
             onChange={handleMultiSelect("types")}
             className="min-h-[40px]"
           >
@@ -85,7 +85,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
               </option>
             ))}
           </Select>
-          {filters.types?.length > 0 && (
+          {filters.types && filters.types.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {filters.types.map((type) => (
                 <Badge key={type} variant="secondary" className="text-xs">
@@ -101,7 +101,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
           <label className="text-sm font-medium">Impact Level</label>
           <Select
             multiple
-            value={filters.impact || []}
+            value={filters.impact ?? []}
             onChange={handleMultiSelect("impact")}
             className="min-h-[40px]"
           >
@@ -111,7 +111,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
               </option>
             ))}
           </Select>
-          {filters.impact?.length > 0 && (
+          {filters.impact && filters.impact.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {filters.impact.map((impact) => (
                 <Badge key={impact} variant="secondary" className="text-xs">
@@ -127,7 +127,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
           <label className="text-sm font-medium">Status</label>
           <Select
             multiple
-            value={filters.status || []}
+            value={filters.status ?? []}
             onChange={handleMultiSelect("status")}
             className="min-h-[40px]"
           >
@@ -137,7 +137,7 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
               </option>
             ))}
           </Select>
-          {filters.status?.length > 0 && (
+          {filters.status && filters.status.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {filters.status.map((status) => (
                 <Badge key={status} variant="secondary" className="text-xs">
@@ -157,7 +157,9 @@ export const RecommendationFilters: React.FC<RecommendationFiltersProps> = ({
             </span>
           </div>
           <Slider
-            value={[filters.minConfidence ?? RECOMMENDATION_CONFIG.MIN_CONFIDENCE]}
+            value={[
+              filters.minConfidence ?? RECOMMENDATION_CONFIG.MIN_CONFIDENCE,
+            ]}
             min={RECOMMENDATION_CONFIG.MIN_CONFIDENCE}
             max={RECOMMENDATION_CONFIG.MAX_CONFIDENCE}
             step={5}

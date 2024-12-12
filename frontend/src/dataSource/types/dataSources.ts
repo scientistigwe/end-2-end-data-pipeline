@@ -5,6 +5,7 @@ export type DataSourceType = 'file' | 'api' | 'database' | 's3' | 'stream';
 export type DataSourceStatus = 'connected' | 'disconnected' | 'error' | 'connecting' | 'validating';
 export type DataSourceValidationSeverity = 'error' | 'warning' | 'info';
 
+
 // Base Interfaces
 export interface BaseDataSourceConfig {
   id: string;
@@ -18,6 +19,12 @@ export interface BaseDataSourceConfig {
   createdAt: string;
   updatedAt: string;
   status: 'active' | 'inactive' | 'error';
+}
+
+export interface SourceConnectionResponse {
+  connectionId: string;
+  status: string;
+  details?: Record<string, unknown>;
 }
 
 export interface ValidationRule {
@@ -69,10 +76,12 @@ export interface ApiSourceConfig extends BaseDataSourceConfig {
   };
 }
 
+
 export interface DBSourceConfig extends BaseDataSourceConfig {
   type: 'database';
   config: {
     type: 'postgresql' | 'mysql' | 'mongodb' | 'oracle';
+    protocol: 'kafka' | 'rabbitmq' | 'mqtt' | 'redis';
     host: string;
     port: number;
     database: string;
@@ -128,6 +137,8 @@ export interface StreamSourceConfig extends BaseDataSourceConfig {
 
 // Metadata Interfaces
 export interface DataSourceMetadata extends BaseMetadata {
+  createdAt: string;
+  updatedAt: string;
   lastSync?: string;
   nextSync?: string;
   fields?: Array<{

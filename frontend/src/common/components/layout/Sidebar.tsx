@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.tsx
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { useAppSelector } from "../../store";
+import { useAppSelector } from "../../../store/store";
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: "📊" },

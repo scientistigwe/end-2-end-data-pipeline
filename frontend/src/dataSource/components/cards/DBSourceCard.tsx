@@ -1,92 +1,111 @@
-// src/components/sources/DBSourceCard.tsx
-import React from "react";
-import { Card } from "../../../../components/ui/card";
-import { Badge } from "../../../../components/ui/badge";
-import type { DBSourceConfig } from "../../types/dataSources";
+// src/dataSource/components/cards/DBSourceCard.tsx
+import React from 'react';
+import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
+import { Badge } from '../../../common/components/ui/badge';
+import { Database } from 'lucide-react';
+import type { DBSourceConfig } from '../../types/dataSources';
 
 interface DBSourceCardProps {
   source: DBSourceConfig;
   status?: string;
   metrics?: {
-    totalTables?: number;
-    totalRows?: number;
-    lastSync?: string;
     connectionPool?: {
       active: number;
       idle: number;
       max: number;
     };
+    queryStats?: {
+      averageResponseTime: number;
+      queriesPerMinute: number;
+    };
+    lastSync?: string;
   };
+  className?: string;
 }
 
 export const DBSourceCard: React.FC<DBSourceCardProps> = ({
   source,
-  status = "disconnected",
+  status = 'disconnected',
   metrics,
+  className = ''
 }) => {
   return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">{source.name}</h3>
-        <Badge variant={status === "connected" ? "success" : "secondary"}>
+    <Card className={className}>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div className="flex items-center space-x-2">
+          <Database className="h-5 w-5" />
+          <div>
+            <Badge variant="outline">{source.config.type}</Badge>
+            <h3 className="text-lg font-medium mt-2">{source.name}</h3>
+          </div>
+        </div>
+        <Badge 
+          variant={status === 'connected' ? 'success' : 'secondary'}
+        >
           {status}
         </Badge>
-      </div>
+      </CardHeader>
 
-      <div className="mt-4">
-        <div className="text-sm text-gray-600 space-y-1">
-          <p>Type: {source.config.type}</p>
-          <p>
-            Host: {source.config.host}:{source.config.port}
-          </p>
-          <p>Database: {source.config.database}</p>
-          {source.config.schema && <p>Schema: {source.config.schema}</p>}
-          {source.config.ssl && <p>SSL: Enabled</p>}
-        </div>
-
-        {metrics && (
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div className="text-sm">
-              <p className="text-gray-500">Tables</p>
-              <p className="font-medium">
-                {metrics.totalTables?.toLocaleString()}
-              </p>
-            </div>
-            <div className="text-sm">
-              <p className="text-gray-500">Total Rows</p>
-              <p className="font-medium">
-                {metrics.totalRows?.toLocaleString()}
-              </p>
-            </div>
-
-            {metrics.connectionPool && (
-              <div className="col-span-2">
-                <p className="text-sm text-gray-500">Connection Pool</p>
-                <div className="mt-1 flex gap-4 text-sm">
-                  <span className="text-green-600">
-                    {metrics.connectionPool.active} active
-                  </span>
-                  <span className="text-blue-600">
-                    {metrics.connectionPool.idle} idle
-                  </span>
-                  <span className="text-gray-600">
-                    {metrics.connectionPool.max} max
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {metrics.lastSync && (
-              <div className="col-span-2 text-sm">
-                <p className="text-gray-500">Last Synced</p>
-                <p className="font-medium">
-                  {new Date(metrics.lastSync).toLocaleString()}
-                </p>
-              </div>
-            )}
+      <CardContent>
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p>Host: {source.config.host}:{source.config.port}</p>
+            <p>Database: {source.config.database}</p>
+            {source.config.schema && <p>Schema: {source.config.schema}</p>}
+            {source.config.ssl && <p>SSL: Enabled</p>}
           </div>
-        )}
-      </div>
+
+          {metrics && (
+            <>
+              {metrics.connectionPool && (
+                <div className="pt-2 border-t">
+                  <p className="text-sm font-medium">Connection Pool</p>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Active</p>
+                      <p className="font-medium text-green-600">
+                        {metrics.connectionPool.active}
+                      </p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Idle</p>
+                      <p className="font-medium text-blue-600">
+                        {metrics.connectionPool.idle}
+                      </p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Max</p>
+                      <p className="font-medium">
+                        {metrics.connectionPool.max}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {metrics.queryStats && (
+                <div className="pt-2 border-t">
+                  <p className="text-sm font-medium">Query Stats</p>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Avg Response</p>
+                      <p className="font-medium">
+                        {metrics.queryStats.averageResponseTime}ms
+                      </p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-muted-foreground">Queries/min</p>
+                      <p className="font-medium">
+                        {metrics.queryStats.queriesPerMinute}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 };

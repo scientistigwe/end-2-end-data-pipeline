@@ -1,128 +1,96 @@
 // src/routes/index.tsx
-import React from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { MainLayout } from "../components/layout/MainLayout";
-import { AuthLayout } from "../auth/components/AuthLayout";
-import {
-  RequireAuth,
-  RequirePermission,
-  RequireRole,
-} from "../auth/components/middleware/AuthMiddleware";
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { ProtectedRoute } from '../auth/components/ProtectedRoute';
 
 // Auth Pages
-import { LoginForm } from "../auth/components/LoginForm";
-import { RegisterForm } from "../auth/components/RegisterForm";
-import { ForgotPasswordPage } from "../auth/pages/ForgotPasswordPage";
+import { LoginPage, RegisterPage, ForgotPasswordPage, ProfilePage } from '../auth/pages';
 
-// Main Pages
-import { DashboardPage } from "../analysis/pages/DashboardPage";
-import { DataSourcesPage } from "../dataSource/pages/DataSourcesPage";
-import { PipelinesPage } from "../pipeline/PipelinesPage";
-import { AnalysisPage } from "../analysis/pages/AnalysisPage";
-import { MonitoringPage } from "../monitoring/pages/MonitoringPage";
-import { ReportsPage } from "../reports/pages/ReportsPage";
-import { SettingsPage } from "../settings/pages/SettingsPage";
+// Analysis Pages
+import { DashboardPage as AnalysisDashboardPage } from '@/analysis/pages/DashboardPage';
+import { AnalysisPage } from '@/analysis/pages/AnalysisPage';
+// DataSource Pages
+import { DataSourcesPage } from '../dataSource/pages';
 
-// Error Pages
-import { NotFound } from "../common/components/errors/NotFound";
-import { ServerError } from "../common/components/errors/ServerError";
+// Decisions Pages
+import { DecisionsPage, DashboardPage as DecisionDashboardPage } from '../decisions/pages';
 
-export const AppRoutes: React.FC = () => {
-  const location = useLocation();
+// Monitoring Pages
+import MonitoringPage from '@/monitoring/pages/MonitoringPage';
 
-  // Auth routes - using a layout specifically for auth pages
-  if (location.pathname.startsWith("/auth")) {
-    return (
-      <AuthLayout>
-        <Routes>
-          <Route path="/auth/login" element={<LoginForm />} />
-          <Route path="/auth/register" element={<RegisterForm />} />
-          <Route
-            path="/auth/forgot-password"
-            element={<ForgotPasswordPage />}
-          />
-          <Route path="*" element={<Navigate to="/auth/login" replace />} />
-        </Routes>
-      </AuthLayout>
-    );
-  }
+// Pipeline Pages
+import { DashboardPage as PipelineDashboardPage 
+} from '../pipeline/pages/DashboardPage';
+import { PipelineDetailsPage
+} from '../pipeline/pages/PipelineDetailsPage';
+import { PipelinesPage } from '../pipeline/pages/PipelinesPage';
 
-  // Protected routes - all wrapped in MainLayout
+// Reports Pages
+import { 
+  ReportsPage, 
+  ReportDetailsPage, 
+  ReportGenerationPage, 
+  ScheduledReportsPage 
+} from '../reports/pages';
+
+// Recommendations Pages
+import { RecommendationsPage } from '../recommendations/pages';
+
+// Settings Pages
+import { SettingsPage } from '../settings/pages/SettingsPage';
+
+export const AppRoutes = () => {
   return (
-    <MainLayout>
-      <Routes>
-        {/* Redirect root to dashboard */}
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      
+      {/* Protected Routes */}
+      <Route element={<ProtectedRoute />}>
+        {/* Dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/auth/*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<AnalysisDashboardPage />} />
 
-        {/* Main Routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <RequireAuth>
-              <DashboardPage />
-            </RequireAuth>
-          }
-        />
+        {/* Profile & Settings */}
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
 
-        <Route
-          path="/sources/*"
-          element={
-            <RequireAuth>
-              <DataSourcesPage />
-            </RequireAuth>
-          }
-        />
+        {/* Analysis */}
+        <Route path="/analysis" element={<AnalysisPage />} />
+        <Route path="/analysis/dashboard" element={<AnalysisDashboardPage />} />
 
-        <Route
-          path="/pipelines/*"
-          element={
-            <RequireAuth>
-              <PipelinesPage />
-            </RequireAuth>
-          }
-        />
+        {/* Data Sources */}
+        <Route path="/data-sources" element={<DataSourcesPage />} />
 
-        <Route
-          path="/analysis/*"
-          element={
-            <RequirePermission permission="view_analytics">
-              <AnalysisPage />
-            </RequirePermission>
-          }
-        />
+        {/* Decisions */}
+        <Route path="/decisions" element={<DecisionsPage />} />
+        <Route path="/decisions/dashboard" element={<DecisionDashboardPage />} />
 
-        <Route
-          path="/monitoring/*"
-          element={
-            <RequireAuth>
-              <MonitoringPage />
-            </RequireAuth>
-          }
-        />
+        {/* Monitoring */}
+        <Route path="/monitoring" element={<MonitoringPage />} />
 
-        <Route
-          path="/reports/*"
-          element={
-            <RequireAuth>
-              <ReportsPage />
-            </RequireAuth>
-          }
-        />
+        {/* Pipeline */}
+        <Route path="/pipelines">
+          <Route index element={<PipelinesPage />} />
+          <Route path=":id" element={<PipelineDetailsPage />} />
+          <Route path="dashboard" element={<PipelineDashboardPage />} />
+        </Route>
 
-        <Route
-          path="/settings/*"
-          element={
-            <RequireRole role="admin">
-              <SettingsPage />
-            </RequireRole>
-          }
-        />
+        {/* Reports */}
+        <Route path="/reports">
+          <Route index element={<ReportsPage />} />
+          <Route path=":id" element={<ReportDetailsPage />} />
+          <Route path="generate" element={<ReportGenerationPage />} />
+          <Route path="scheduled" element={<ScheduledReportsPage />} />
+        </Route>
 
-        {/* Error Routes */}
-        <Route path="/500" element={<ServerError />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </MainLayout>
+        {/* Recommendations */}
+        <Route path="/recommendations" element={<RecommendationsPage />} />
+      </Route>
+
+      {/* Catch all - 404 */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };

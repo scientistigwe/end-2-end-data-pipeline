@@ -15,7 +15,13 @@ export function useQueryParams<T extends Record<string, string>>() {
 
   const setParams = (newParams: Partial<T>) => {
     const current = { ...params, ...newParams };
-    setSearchParams(new URLSearchParams(current));
+    const stringParams: Record<string, string> = {};
+    for (const key in current) {
+      if (current.hasOwnProperty(key)) {
+        stringParams[key] = String(current[key]);
+      }
+    }
+    setSearchParams(new URLSearchParams(stringParams));
   };
 
   return [params, setParams] as const;

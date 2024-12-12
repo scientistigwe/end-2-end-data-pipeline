@@ -1,9 +1,9 @@
-// src/common/store/ui/uiSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { Theme, Modal, Notification, TableConfig } from '../../types/ui';
 
-interface UIState {
+export interface UIState {
   theme: Theme;
+  sidebarCollapsed: boolean;
   sidebarOpen: boolean;
   sidebarWidth: number;
   activeModals: Modal[];
@@ -11,17 +11,25 @@ interface UIState {
   tableConfigs: Record<string, TableConfig>;
   loadingStates: Record<string, boolean>;
   breadcrumbs: Array<{ path: string; label: string }>;
+  preferences: Array<{
+    dateFormat: string;
+    timezone: string;
+    language: string;
+  }>;
 }
 
+
 const initialState: UIState = {
-  theme: 'system',
+  theme: 'light',
+  sidebarCollapsed: false,
   sidebarOpen: true,
   sidebarWidth: 256,
   activeModals: [],
   notifications: [],
   tableConfigs: {},
   loadingStates: {},
-  breadcrumbs: []
+  breadcrumbs: [],
+  preferences: []
 };
 
 export const uiSlice = createSlice({
@@ -32,7 +40,7 @@ export const uiSlice = createSlice({
       state.theme = action.payload;
     },
     toggleSidebar: (state) => {
-      state.sidebarOpen = !state.sidebarOpen;
+      state.sidebarCollapsed = !state.sidebarCollapsed;
     },
     setSidebarWidth: (state, action: PayloadAction<number>) => {
       state.sidebarWidth = action.payload;
@@ -97,6 +105,5 @@ export const {
   setBreadcrumbs
 } = uiSlice.actions;
 
+export type uiState = typeof initialState;
 export default uiSlice.reducer;
-
-

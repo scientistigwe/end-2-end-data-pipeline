@@ -1,66 +1,71 @@
-// src/components/sources/ApiSourceCard.tsx
-import React from "react";
-import { Card } from "../../../../components/ui/card";
-import { Badge } from "../../../../components/ui/badge";
-import type { ApiSourceConfig } from "../../types/dataSources";
+// src/dataSource/components/cards/ApiSourceCard.tsx
+import React from 'react';
+import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
+import { Badge } from '../../../common/components/ui/badge';
+import type { ApiSourceConfig } from '../../types/dataSources';
 
 interface ApiSourceCardProps {
   source: ApiSourceConfig;
   status?: string;
   metrics?: {
     responseTime?: number;
-    lastSuccess?: string;
     successRate?: number;
+    lastSuccess?: string;
   };
+  className?: string;
 }
 
 export const ApiSourceCard: React.FC<ApiSourceCardProps> = ({
   source,
-  status = "disconnected",
+  status = 'disconnected',
   metrics,
+  className = ''
 }) => {
   return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">{source.name}</h3>
-        <Badge variant={status === "connected" ? "success" : "secondary"}>
+    <Card className={className}>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+          <Badge variant="outline">{source.config.method}</Badge>
+          <h3 className="text-lg font-medium mt-2">{source.name}</h3>
+        </div>
+        <Badge 
+          variant={status === 'connected' ? 'success' : 'secondary'}
+          className="ml-2"
+        >
           {status}
         </Badge>
-      </div>
+      </CardHeader>
 
-      <div className="mt-4">
-        <div className="text-sm text-gray-600 space-y-1">
-          <p>URL: {source.config.url}</p>
-          <p>Method: {source.config.method}</p>
-          {source.config.rateLimit && (
-            <p>
-              Rate Limit: {source.config.rateLimit.requests} /{" "}
-              {source.config.rateLimit.period}s
-            </p>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground">
+            <p>Endpoint: {source.config.url}</p>
+            {source.config.rateLimit && (
+              <p>Rate Limit: {source.config.rateLimit.requests}/min</p>
+            )}
+          </div>
+
+          {metrics && (
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Response Time</p>
+                <p className="font-medium">{metrics.responseTime}ms</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Success Rate</p>
+                <p className="font-medium">{metrics.successRate}%</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Last Success</p>
+                <p className="font-medium">
+                  {metrics.lastSuccess ? new Date(metrics.lastSuccess).toLocaleString() : 'Never'}
+                </p>
+              </div>
+            </div>
           )}
         </div>
-
-        {metrics && (
-          <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500">Avg Response</p>
-              <p className="font-medium">{metrics.responseTime}ms</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Success Rate</p>
-              <p className="font-medium">{metrics.successRate}%</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Last Success</p>
-              <p className="font-medium">
-                {metrics.lastSuccess
-                  ? new Date(metrics.lastSuccess).toLocaleString()
-                  : "Never"}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+      </CardContent>
     </Card>
   );
 };
+

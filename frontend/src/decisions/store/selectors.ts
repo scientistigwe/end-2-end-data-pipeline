@@ -1,44 +1,106 @@
-// src/store/decisions/selectors.ts
+// src/decisions/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '../../../../store/index';
+import type { RootState } from '@/store/rootReducer';
+import type { Decision, DecisionFilters, DecisionHistoryEntry, DecisionDetails } from '@/decisions/types/decisions';
 
-export const selectDecisions = (state: RootState) => 
-  state.decisions.decisions;
+// Base selectors with type assertions
+const selectDecisionsState = (state: RootState) => state.decisions;
 
-export const selectDecisionDetails = (state: RootState) => 
-  state.decisions.details;
+export const selectDecisions = createSelector(
+  [selectDecisionsState],
+  (decisionsState): Record<string, Decision> => decisionsState.decisions
+);
 
-export const selectDecisionHistory = (state: RootState) => 
-  state.decisions.history;
+export const selectDecisionHistory = createSelector(
+  [selectDecisionsState],
+  (decisionsState): DecisionHistoryEntry[] => decisionsState.history
+);
 
-export const selectImpactAnalyses = (state: RootState) => 
-  state.decisions.impact;
+export const selectFilters = createSelector(
+  [selectDecisionsState],
+  (decisionsState): DecisionFilters => decisionsState.filters
+);
 
-export const selectFilters = (state: RootState) => 
-  state.decisions.filters;
+export const selectSelectedDecisionId = createSelector(
+  [selectDecisionsState],
+  (decisionsState): string | null => decisionsState.selectedDecisionId
+);
 
-export const selectSelectedDecisionId = (state: RootState) => 
-  state.decisions.selectedDecisionId;
-
+// Memoized selectors
 export const selectFilteredDecisions = createSelector(
   [selectDecisions, selectFilters],
-  (decisions, filters) => {
-    return Object.values(decisions).filter(decision => {
-      if (filters.types && !filters.types.includes(decision.type)) return false;
-      if (filters.status && !filters.status.includes(decision.status)) return false;
-      if (filters.urgency && !filters.urgency.includes(decision.urgency)) return false;
-      if (filters.assignedTo && decision.assignedTo) {
-        if (!decision.assignedTo.some(user => filters.assignedTo?.includes(user))) {
-          return false;
-        }
-      }
-      if (filters.dateRange) {
-        const decisionDate = new Date(decision.createdAt);
-        const start = new Date(filters.dateRange.start);
-        const end = new Date(filters.dateRange.end);
-        if (decisionDate < start || decisionDate > end) return false;
+  (decisions, filters): Decision[] => {
+    return Object.values(decisions).filter((decision: Decision) => {
+      if (!passesFilter(decision, filters)) {
+        return false;
       }
       return true;
     });
   }
+);
+
+// Helper function to check if a decision passes all filters
+const passesFilter = (decision: Decision, filters: DecisionFilters): boolean => {
+  if (filters.types?.length && !filters.types.includes(decision.type)) {
+    return false;
+  }
+  
+  if (filters.status?.length && !filters.status.includes(decision.status)) {
+    return false;
+  }
+  
+  if (filters.urgency?.length && !filters.urgency.includes(decision.urgency)) {
+    return false;
+  }
+  
+  if (filters.assignedTo?.length && decision.assignedTo) {
+    if (!decision.assignedTo.some(user => filters.assignedTo?.includes(user))) {
+      return false;
+    }
+  }
+  
+  if (filters.dateRange) {
+    const decisionDate = new Date(decision.createdAt); // Using createdAt from Decision interface
+    const start = new Date(filters.dateRange.start);
+    const end = new Date(filters.dateRange.end);
+    if (decisionDate < start || decisionDate > end) {
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+// Selected decision selectors
+export const selectSelectedDecision = createSelector(
+  [selectDecisions, selectSelectedDecisionId],
+  (decisions, selectedId): Decision | null => 
+    selectedId ? decisions[selectedId] : null
+);
+
+// Helper selectors for specific decision data
+export const selectDecisionOptions = createSelector(
+  [selectSelectedDecision],
+  (decision): Decision['options'] => decision?.options ?? []
+);
+
+export const selectDecisionContext = createSelector(
+  [selectSelectedDecision],
+  (decision): Decision['context'] => decision?.context ?? {}
+);
+
+export const selectDecisionAnalysis = createSelector(
+  [selectSelectedDecision],
+  (decision) => (decision as DecisionDetails)?.analysis ?? null
+);
+
+export const selectDecisionComments = createSelector(
+  [selectSelectedDecision],
+  (decision) => (decision as DecisionDetails)?.comments ?? []
+);
+
+export const selectSelectedDecisionHistory = createSelector(
+  [selectDecisionHistory, selectSelectedDecisionId],
+  (history, selectedId): DecisionHistoryEntry[] => 
+    history.filter((record: DecisionHistoryEntry) => record.decisionId === selectedId)
 );

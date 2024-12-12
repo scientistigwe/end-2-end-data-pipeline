@@ -16,15 +16,34 @@ import type {
   ChangePasswordData,
   VerifyEmailData,
   ResetPasswordData,
-  User,
-  AuthTokens
+  AuthTokens,
+  Permission
 } from '../types/auth';
+import { User } from '@/common/types/user';
 
 export function useAuth() {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const error = useSelector(selectAuthError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
+
+    // Add hasPermission method
+  const hasPermission = useCallback(
+    (permission: Permission): boolean => {
+      if (!user || !user.permissions) return false;
+      return authUtils.checkPermission(user.permissions, permission);
+    },
+      [user]
+  );
+  
+  // Add hasPermissions method for checking multiple permissions
+  const hasPermissions = useCallback(
+    (permissions: Permission[]): boolean => {
+      if (!user || !user.permissions) return false;
+      return authUtils.checkPermissions(user.permissions, permissions);
+    },
+    [user]
+  );
 
   // Login mutation
   const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
@@ -128,7 +147,11 @@ export function useAuth() {
     isForgotPasswordLoading,
     isUpdatingProfile,
     isRefreshing,
-    
+
+    // Permission methods
+    hasPermission,
+    hasPermissions,
+        
     // Auth methods
     login,
     register,

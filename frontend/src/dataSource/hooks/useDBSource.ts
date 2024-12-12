@@ -1,69 +1,73 @@
-// src/hooks/sources/useDBSource.ts
+// src/dataSource/hooks/useDBSource.ts
 import { useState } from 'react';
-import { useQuery, useMutation } from 'react-query';
-import { dataSourceApi } from '../api/dataSourceApi';
+import { useMutation, useQuery } from 'react-query';
+import { DataSourceService } from '../services/dataSourceService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import type { DBSourceConfig } from '../types/dataSources';
-import type { 
-  SourceConnectionResponse,
-  ConnectionTestResponse,
-  SourceConnectionStatus,
-  SchemaInfo 
-} from '../types/dataSources';
-import type { ApiResponse } from '../../common/types/api';
+import { DATASOURCE_MESSAGES } from '../constants';
+import type { DBSourceConfig, SchemaInfo } from '../types/dataSources';
 
-export function useDBSource() {
+export const useDBSource = () => {
   const [connectionId, setConnectionId] = useState<string | null>(null);
 
-  const { mutate: connect, isLoading: isConnecting } = useMutation<
-    ApiResponse<SourceConnectionResponse>,
-    Error,
-    DBSourceConfig['config']
-  >(
-    (config) => dataSourceApi.connectDatabase(config),
-    {
-      onError: handleApiError,
-      onSuccess: (response) => {
-        setConnectionId(response.data?.connectionId || null);
+  const {
+    data: schema,
+    isLoading: isLoadingSchema,
+    error: schemaError,
+    refetch: refreshSchema
+  } = useQuery(
+    ['dbSchema', connectionId],
+    async () => {
+      if (!connectionId) return null;
+      try {
+        const response = await DataSourceService.getDatabaseSchema(connectionId);
+        return response;
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(DATASOURCE_MESSAGES.ERRORS.SCHEMA_FETCH_FAILED);
+      }
+    },
+    { enabled: !!connectionId }
+  );
+
+  const { mutateAsync: connect, isLoading: isConnecting } = useMutation(
+    async (config: DBSourceConfig['config']) => {
+      try {
+        const response = await DataSourceService.connectDatabase(config);
+        setConnectionId(response.connectionId);
+        return response;
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(DATASOURCE_MESSAGES.ERRORS.DB_CONNECTION_FAILED);
       }
     }
   );
 
-  const { data: schema } = useQuery<ApiResponse<SchemaInfo>, Error>(
-    ['dbSchema', connectionId],
-    () => dataSourceApi.getDatabaseSchema(connectionId!),
-    { enabled: !!connectionId }
-  );
-
-  const { mutate: executeQuery } = useMutation<
-    ApiResponse<unknown>,
-    Error,
-    string
-  >(
-    (query) => dataSourceApi.executeDatabaseQuery(connectionId!, query),
-    { onError: handleApiError }
-  );
-
-  const { data: status, refetch: refreshStatus } = useQuery<
-    ApiResponse<{
-      status: SourceConnectionStatus;
-      lastChecked: string;
-      error?: string;
-    }>,
-    Error
-  >(
-    ['dbStatus', connectionId],
-    () => dataSourceApi.getSourceStatus(connectionId!),
-    {
-      enabled: !!connectionId,
-      refetchInterval: 5000
+  const { mutateAsync: executeQuery } = useMutation(
+    async ({ query, params }: { query: string; params?: unknown[] }) => {
+      if (!connectionId) throw new Error('No active connection');
+      try {
+        const response = await DataSourceService.executeDatabaseQuery(
+          connectionId,
+          query,
+          params
+        );
+        return response;
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(DATASOURCE_MESSAGES.ERRORS.QUERY_FAILED);
+      }
     }
   );
 
   const disconnect = async () => {
     if (connectionId) {
-      await dataSourceApi.disconnectSource(connectionId);
-      setConnectionId(null);
+      try {
+        await DataSourceService.disconnectSource(connectionId);
+        setConnectionId(null);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(DATASOURCE_MESSAGES.ERRORS.DISCONNECT_FAILED);
+      }
     }
   };
 
@@ -71,13 +75,14 @@ export function useDBSource() {
     connect,
     disconnect,
     executeQuery,
-    refreshStatus,
     connectionId,
-    schema: schema?.data,
-    status: status?.data?.status,
-    isConnecting
+    schema,
+    isConnecting,
+    isLoadingSchema,
+    schemaError,
+    refreshSchema
   };
-}
+};
 
 
 

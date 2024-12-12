@@ -1,33 +1,30 @@
-// src/store/pipeline/selectors.ts
+// src/pipeline/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '../../../../store/index';
+import type { RootState } from '../../store';
+import { PipelineState } from './pipelineSlice';
+import { PipelineStatus } from '../types/pipeline';
 
-export const selectPipelines = (state: RootState) => state.pipelines.pipelines;
-export const selectPipelineRuns = (state: RootState) => state.pipelines.runs;
-export const selectPipelineLogs = (state: RootState) => state.pipelines.logs;
-export const selectPipelineMetrics = (state: RootState) => state.pipelines.metrics;
-export const selectPipelineSchedules = (state: RootState) => state.pipelines.schedules;
-export const selectPipelineEvents = (state: RootState) => state.pipelines.events;
-export const selectFilters = (state: RootState) => state.pipelines.filters;
+// Base selectors
+export const selectPipelineState = (state: RootState) => state.pipeline;
+export const selectPipelines = (state: RootState) => state.pipeline.pipelines;
 export const selectSelectedPipelineId = (state: RootState) => 
-  state.pipelines.selectedPipelineId;
+  state.pipeline.selectedPipelineId;
+export const selectPipelineFilters = (state: RootState) => state.pipeline.filters;
+
+// Derived selectors
+export const selectSelectedPipeline = createSelector(
+  [selectPipelines, selectSelectedPipelineId],
+  (pipelines, selectedId) => selectedId ? pipelines[selectedId] : null
+);
 
 export const selectFilteredPipelines = createSelector(
-  [selectPipelines, selectFilters],
+  [selectPipelines, selectPipelineFilters],
   (pipelines, filters) => {
     return Object.values(pipelines).filter(pipeline => {
-      if (filters.status && !filters.status.includes(pipeline.status)) {
+      if (filters.status?.length && !filters.status.includes(pipeline.status)) {
         return false;
       }
-      if (filters.mode && !filters.mode.includes(pipeline.mode)) {
-        return false;
-      }
-      if (filters.tags && filters.tags.length > 0) {
-        if (!pipeline.tags?.some(tag => filters.tags?.includes(tag))) {
-          return false;
-        }
-      }
-      if (filters.createdBy && !filters.createdBy.includes(pipeline.createdBy)) {
+      if (filters.mode?.length && !filters.mode.includes(pipeline.mode)) {
         return false;
       }
       if (filters.dateRange) {
@@ -43,8 +40,31 @@ export const selectFilteredPipelines = createSelector(
   }
 );
 
-export const selectSelectedPipeline = createSelector(
-  [selectPipelines, selectSelectedPipelineId],
-  (pipelines, selectedId) => selectedId ? pipelines[selectedId] : null
+export const selectPipelinesByStatus = createSelector(
+  [selectPipelines],
+  (pipelines) => {
+    return Object.values(pipelines).reduce((acc, pipeline) => {
+      if (!acc[pipeline.status]) {
+        acc[pipeline.status] = [];
+      }
+      acc[pipeline.status].push(pipeline);
+      return acc;
+    }, {} as Record<PipelineStatus, Pipeline[]>);
+  }
 );
 
+export const selectPipelineStats = createSelector(
+  [selectPipelines],
+  (pipelines) => {
+    const pipelineArray = Object.values(pipelines);
+    return {
+      total: pipelineArray.length,
+      running: pipelineArray.filter(p => p.status === 'running').length,
+      completed: pipelineArray.filter(p => p.status === 'completed').length,
+      failed: pipelineArray.filter(p => p.status === 'failed').length,
+      success_rate: pipelineArray.length > 0
+        ? (pipelineArray.filter(p => p.status === 'completed').length / pipelineArray.length) * 100
+        : 0
+    };
+  }
+);

@@ -1,8 +1,8 @@
 // src/components/layout/Navbar.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppSelector } from "../../store";
-import { useAuth } from "../../hooks/auth/useAuth";
+import { useAppSelector } from "../../../store/store";
+import { useAuth } from "../../../auth/hooks/useAuth";
 
 export const Navbar: React.FC = () => {
   const navigate = useNavigate();

@@ -1,113 +1,152 @@
-// src/components/forms/FileSourceForm.tsx
+import React, { useCallback } from "react";
 import { useForm } from "react-hook-form";
-import { useFileSource } from "../../dataSource/hooks/useFileSource";
-
-// Define supported file types
-type FileType = "csv" | "json" | "parquet" | "excel";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+} from "../../../common/components/ui/card";
+import { Button } from "../../../common/components/ui/button";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "../../../common/components/ui/alert";
+import { Progress } from "../../../common/components/ui/progress";
+import { Upload } from "lucide-react";
+import { useFileSource } from "../../hooks/useFileSource";
+import type { FileSourceConfig } from "../../types/dataSources";
+import { v4 as uuidv4 } from "uuid";
 
 interface FileSourceFormData {
   files: FileList;
-  validateOnly?: boolean;
+  config: FileSourceConfig["config"];
 }
 
-interface FileUploadConfig {
-  file: File;
-  config: {
-    type: FileType;
-    delimiter?: string;
-    encoding?: string;
-    hasHeader?: boolean;
-    sheet?: string;
-    skipRows?: number;
-  };
+interface FileSourceFormProps {
+  onSubmit: (config: FileSourceConfig) => Promise<void>;
+  onCancel: () => void;
 }
 
-export const FileSourceForm: React.FC = () => {
-  const { upload, uploadProgress } = useFileSource();
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<FileSourceFormData>();
+export const FileSourceForm: React.FC<FileSourceFormProps> = ({
+  onSubmit,
+  onCancel,
+}) => {
+  const { uploadProgress, isUploading } = useFileSource();
+  const [error, setError] = React.useState<Error | null>(null);
 
-  const getFileType = (filename: string): FileType => {
-    const extension = filename.split(".").pop()?.toLowerCase() || "";
-    switch (extension) {
-      case "csv":
-        return "csv";
-      case "json":
-        return "json";
-      case "parquet":
-        return "parquet";
-      case "xlsx":
-      case "xls":
-        return "excel";
-      default:
-        throw new Error(`Unsupported file type: ${extension}`);
-    }
-  };
+  const { register, handleSubmit, watch, reset } =
+    useForm<FileSourceFormData>();
 
-  const onSubmit = (data: FileSourceFormData) => {
-    const files = Array.from(data.files).map(
-      (file): FileUploadConfig => ({
-        file,
-        config: {
-          type: getFileType(file.name),
-          hasHeader: true, // Default value, adjust as needed
-        },
-      })
+  const selectedFiles = watch("files");
+
+  const handleFormSubmit = useCallback(
+    async (data: FileSourceFormData) => {
+      try {
+        setError(null);
+        const file = data.files[0];
+        const fileSourceConfig: Omit<FileSourceConfig, "id"> = {
+          name: file.name,
+          type: "file",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: "active",
+          config: {
+            type: data.config.type,
+            delimiter: data.config.delimiter,
+            encoding: data.config.encoding,
+            hasHeader: Boolean(data.config.hasHeader),
+            sheet: data.config.sheet,
+            skipRows: Number(data.config.skipRows) || 0,
+          },
+        };
+        await onSubmit({ ...fileSourceConfig, id: uuidv4() });
+        reset();
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error("File upload failed"));
+      }
+    },
+    [onSubmit, reset]
+  );
+
+  const renderFilePreview = useCallback(() => {
+    if (!selectedFiles?.length) return null;
+
+    const file = selectedFiles[0];
+    return (
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+        <p className="text-sm font-medium">Selected File:</p>
+        <p className="text-sm text-gray-600">{file.name}</p>
+        <p className="text-sm text-gray-500">
+          Size: {(file.size / 1024 / 1024).toFixed(2)} MB
+        </p>
+      </div>
     );
-
-    upload(files[0]); // If you need to upload multiple files, you'll need to modify the upload function
-  };
+  }, [selectedFiles]);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Upload Files
-        </label>
-        <input
-          type="file"
-          multiple
-          {...register("files", {
-            required: "Please select files to upload",
-            validate: {
-              fileType: (files: FileList) => {
-                if (!files.length) return true;
-                const validTypes = ["csv", "json", "xlsx", "xls", "parquet"];
-                return (
-                  Array.from(files).every((file) =>
-                    validTypes.includes(
-                      file.name.split(".").pop()?.toLowerCase() || ""
-                    )
-                  ) || "Invalid file type. Supported: CSV, JSON, XLSX, Parquet"
-                );
-              },
-            },
-          })}
-          className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-        />
-        {errors.files && (
-          <p className="mt-1 text-sm text-red-600">{errors.files.message}</p>
-        )}
-      </div>
+    <Card>
+      <CardHeader>
+        <h3 className="text-lg font-medium">File Upload Configuration</h3>
+      </CardHeader>
 
-      {uploadProgress > 0 && (
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
-          <div
-            className="bg-blue-600 h-2.5 rounded-full"
-            style={{ width: `${uploadProgress}%` }}
-          />
-        </div>
-      )}
+      <form onSubmit={handleSubmit(handleFormSubmit)}>
+        <CardContent className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Upload Error</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
 
-      <button
-        type="submit"
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-      >
-        Upload Files
-      </button>
-    </form>
+          <div className="space-y-4">
+            {/* File Input */}
+            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+              <input
+                type="file"
+                {...register("files", { required: "Please select a file" })}
+                className="hidden"
+                id="file-upload"
+                accept=".csv,.json,.parquet,.xlsx,.xls"
+              />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer flex flex-col items-center"
+              >
+                <Upload className="h-12 w-12 text-gray-400" />
+                <span className="mt-2 text-sm text-gray-500">
+                  Click to upload or drag and drop
+                </span>
+                <span className="mt-1 text-xs text-gray-400">
+                  Supported formats: CSV, JSON, Parquet, Excel
+                </span>
+              </label>
+            </div>
+
+            {renderFilePreview()}
+
+            {/* Upload Progress */}
+            {uploadProgress > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Upload Progress</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <Progress value={uploadProgress} />
+              </div>
+            )}
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex justify-end space-x-4">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isUploading}>
+            {isUploading ? "Uploading..." : "Upload File"}
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
   );
 };

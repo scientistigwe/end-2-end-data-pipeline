@@ -1,68 +1,68 @@
-// src/components/reports/ReportViewer.tsx
+// src/report/components/ReportViewer.tsx
 import React from "react";
-import { Card, CardHeader, CardContent } from "../../components/ui/card";
-import { Button } from "../../components/ui/button";
-import { Download } from "lucide-react";
-import type { Report, ReportMetadata } from "../../types/reports";
+import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
+import { Button } from "@/common/components/ui/button";
+import { Download, RefreshCw } from "lucide-react";
+import { useReportMetadata } from "../hooks/useReportMetadata";
+import type { Report } from "../types/report";
 
 interface ReportViewerProps {
   report: Report;
-  metadata?: ReportMetadata;
   onExport: () => void;
+  onRefresh: () => void;
   className?: string;
 }
 
 export const ReportViewer: React.FC<ReportViewerProps> = ({
   report,
-  metadata,
   onExport,
+  onRefresh,
   className = "",
 }) => {
+  const { data: metadata } = useReportMetadata(report.id);
+
   return (
-    <Card className={`${className}`}>
+    <Card className={className}>
       <CardHeader className="flex flex-row justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">{report.config.name}</h2>
           <p className="text-sm text-gray-500">
-            Generated on {new Date(report.createdAt).toLocaleString()}
+            Generated: {formatDateTime(report.createdAt)}
           </p>
         </div>
-        {report.status === "completed" && (
-          <Button onClick={onExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
+        <div className="flex space-x-2">
+          <Button variant="outline" size="sm" onClick={onRefresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
           </Button>
-        )}
+          {report.status === "completed" && (
+            <Button onClick={onExport}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {metadata && (
-          <>
-            <div className="grid grid-cols-3 gap-4">
-              {metadata.metrics.map((metric) => (
-                <div key={metric.name} className="p-4 rounded-lg bg-gray-50">
-                  <p className="text-sm text-gray-600">{metric.name}</p>
-                  <p className="text-2xl font-bold">{metric.value}</p>
-                  <p
-                    className={`text-sm ${
-                      metric.status === "healthy"
-                        ? "text-green-600"
-                        : metric.status === "warning"
-                        ? "text-yellow-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {metric.status}
-                  </p>
-                </div>
-              ))}
-            </div>
+        {metadata?.metrics && (
+          <div className="grid grid-cols-3 gap-4">
+            {metadata.metrics.map((metric) => (
+              <MetricCard
+                key={metric.name}
+                name={metric.name}
+                value={metric.value}
+                status={metric.status}
+              />
+            ))}
+          </div>
+        )}
 
-            <div className="mt-6">
-              <h3 className="text-lg font-medium mb-2">Summary</h3>
-              <p className="text-gray-700">{metadata.summary}</p>
-            </div>
-          </>
+        {metadata?.summary && (
+          <div className="prose max-w-none">
+            <h3>Summary</h3>
+            <p>{metadata.summary}</p>
+          </div>
         )}
 
         {report.error && (
@@ -74,3 +74,30 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
     </Card>
   );
 };
+
+interface MetricCardProps {
+  name: string;
+  value: number;
+  status: string;
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({ name, value, status }) => (
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h4 className="text-sm font-medium text-gray-500">{name}</h4>
+    <p className="text-2xl font-bold">{value}</p>
+    <p className={`text-sm ${getStatusColor(status)}`}>{status}</p>
+  </div>
+);
+
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "healthy":
+      return "text-green-600";
+    case "warning":
+      return "text-yellow-600";
+    case "critical":
+      return "text-red-600";
+    default:
+      return "text-gray-600";
+  }
+}

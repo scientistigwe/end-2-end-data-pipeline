@@ -1,10 +1,10 @@
 // src/components/dataSource/preview/ApiPreview.tsx
 import React, { useState } from "react";
 import type { ApiSourceConfig } from "../../types/dataSources";
-import { Card, CardHeader, CardContent } from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
-import { Textarea } from "../../../components/ui/textarea";
-import { Select } from "../../../components/ui/select";
+import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
+import { Button } from "@/common/components/ui/button";
+import { Textarea } from "@/common/components/ui/textarea";
+import { Select } from "@/common/components/ui/inputs/select";
 
 interface ApiPreviewProps {
   source: ApiSourceConfig;

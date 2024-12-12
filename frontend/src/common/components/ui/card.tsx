@@ -1,6 +1,5 @@
-// src/components/ui/card.tsx
 import * as React from "react";
-import { cn } from "../../utils/lib/utils";
+import { cn } from "@/common/utils/cn";
 
 const Card = React.forwardRef<
   HTMLDivElement,
@@ -29,6 +28,21 @@ const CardHeader = React.forwardRef<
 ));
 CardHeader.displayName = "CardHeader";
 
+const CardTitle = React.forwardRef<
+  HTMLHeadingElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn(
+      "text-lg font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+));
+CardTitle.displayName = "CardTitle";
+
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -49,4 +63,4 @@ const CardFooter = React.forwardRef<
 ));
 CardFooter.displayName = "CardFooter";
 
-export { Card, CardHeader, CardContent, CardFooter };
+export { Card, CardHeader, CardTitle, CardContent, CardFooter };

@@ -1,6 +1,6 @@
 // src/utils/apiUtils.ts
 import { AxiosError } from 'axios';
-import { ApiError, ApiErrorFormatter } from '../../types';
+import { ApiError, ApiErrorFormatter } from '../../types/api';
 import { toast } from 'react-hot-toast';
 
 export const formatApiError: ApiErrorFormatter = (error): ApiError => {

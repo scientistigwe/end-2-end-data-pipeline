@@ -8,20 +8,19 @@ import {
   DialogFooter,
 } from "@/common/components/ui/overlays/dialog";
 import { Button } from "@/common/components/ui/button";
-import { Input } from "@/common/components/ui/inputs/input";
+import { Input } from "@/common/components//ui/inputs/input";
 import { Alert } from "@/common/components/ui/alert";
 import { useModal } from "@/common/hooks/useModal";
 import { useAuth } from "../hooks/useAuth";
 import type { ChangePasswordData } from "../types/auth";
-import { useSelector } from 'react-redux';
-import { selectActiveModals } from '@/common/store/ui/selectors';
-import type { Modal } from '@/common/types/ui';  // Add this import
-
+import { useSelector } from "react-redux";
+import { selectActiveModals } from "@/common/store/ui/selectors";
+import type { Modal } from "@/common/types/ui"; // Add this import
 
 export const ChangePasswordModal: React.FC = () => {
-  const MODAL_ID = 'change-password';
+  const MODAL_ID = "change-password";
   const { close } = useModal({ id: MODAL_ID });
-  
+
   // Get modal state from store
   const activeModals = useSelector(selectActiveModals);
   const isOpen = activeModals.some((modal: Modal) => modal.id === MODAL_ID);

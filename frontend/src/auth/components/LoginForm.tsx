@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/common/components/ui/button";
-import { Input } from "@/common/components/ui/inputs/input";
+import { Input } from "@/common/components//ui/inputs/input";
 import { Alert } from "@/common/components/ui/alert";
 import type { LoginCredentials } from "../types/auth";
 

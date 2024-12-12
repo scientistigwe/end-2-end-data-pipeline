@@ -49,3 +49,27 @@ export interface RecommendationFilters {
   status?: RecommendationStatus[];
   minConfidence?: number;
 }
+
+export interface RecommendationsState {
+  items: Array<{
+    id: string;
+    type: 'performance' | 'security' | 'cost' | 'reliability';
+    title: string;
+    description: string;
+    impact: 'high' | 'medium' | 'low';
+    effort: 'high' | 'medium' | 'low';
+    status: 'pending' | 'implementing' | 'completed' | 'dismissed';
+    metadata: {
+      createdAt: string;
+      updatedAt: string;
+      implementedAt?: string;
+    };
+  }>;
+  filters: {
+    types?: string[];
+    impact?: string[];
+    status?: string[];
+  };
+  isLoading: boolean;
+  error: string | null;
+}

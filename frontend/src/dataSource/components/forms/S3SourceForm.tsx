@@ -1,172 +1,192 @@
-// src/components/forms/S3SourceForm.tsx
-import React from "react";
+import React, { useCallback } from "react";
 import { useForm } from "react-hook-form";
-import { useS3Source } from "../../dataSource/hooks/useS3Source";
+import { v4 as uuidv4 } from 'uuid';
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+} from "../../../common/components/ui/card";
+import { Button } from "../../../common/components/ui/button";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "../../../common/components/ui/alert";
+import { useS3Source } from "../../hooks/useS3Source";
+import type { S3SourceConfig } from "../../types/dataSources";
 
-interface S3FormData {
-  accessKeyId: string;
-  secretAccessKey: string;
-  region: string;
-  bucket: string;
-  prefix?: string;
-  endpoint?: string;
-  useCustomEndpoint: boolean;
+interface S3SourceFormData {
+  config: S3SourceConfig["config"];
 }
 
-export const S3SourceForm: React.FC = () => {
-  const { connect, isConnecting } = useS3Source();
+interface S3SourceFormProps {
+  onSubmit: (config: S3SourceConfig) => Promise<void>;
+  onCancel: () => void;
+}
+
+export const S3SourceForm: React.FC<S3SourceFormProps> = ({ onSubmit, onCancel }) => {
+  const [error, setError] = React.useState<Error | null>(null);
+  const { isConnecting } = useS3Source();
+
   const {
     register,
     handleSubmit,
-    watch,
+    reset,
     formState: { errors },
-  } = useForm<S3FormData>({
-    defaultValues: {
-      region: "us-east-1",
-      useCustomEndpoint: false,
+  } = useForm<S3SourceFormData>();
+
+  const handleFormSubmit = useCallback(
+    async (data: S3SourceFormData) => {
+      try {
+        setError(null);
+        const s3SourceConfig: S3SourceConfig = {
+          id: uuidv4(),
+          name: 'New S3 Source',
+          type: 's3',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(), 
+          status: 'active',
+          config: data.config,
+        };
+        await onSubmit(s3SourceConfig);
+        reset();
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('S3 connection failed'));
+      }
     },
-  });
-
-  const useCustomEndpoint = watch("useCustomEndpoint");
-
-  const onSubmit = (data: S3FormData) => {
-    const config = {
-      ...data,
-      endpoint: data.useCustomEndpoint ? data.endpoint : undefined,
-    };
-    connect(config);
-  };
+    [onSubmit, reset],
+  );
+    
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Access Key ID
-          </label>
-          <input
-            type="text"
-            {...register("accessKeyId", {
-              required: "Access Key ID is required",
-            })}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          />
-          {errors.accessKeyId && (
-            <p className="mt-1 text-sm text-red-600">
-              {errors.accessKeyId.message}
-            </p>
+    <Card>
+      <CardHeader>
+        <h3 className="text-lg font-medium">S3 Configuration</h3>
+      </CardHeader>
+
+      <form onSubmit={handleSubmit(handleFormSubmit)}>
+        <CardContent className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Connection Error</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
           )}
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Secret Access Key
-          </label>
-          <input
-            type="password"
-            {...register("secretAccessKey", {
-              required: "Secret Access Key is required",
-            })}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          />
-          {errors.secretAccessKey && (
-            <p className="mt-1 text-sm text-red-600">
-              {errors.secretAccessKey.message}
-            </p>
-          )}
-        </div>
-      </div>
+          <div className="space-y-4">
+            {/* Form fields */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Bucket Name</label>
+              <input
+                {...register("config.bucket", {
+                  required: "Bucket name is required",
+                  pattern: {
+                    value: /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/,
+                    message: "Invalid bucket name format",
+                  },
+                })}
+                placeholder="my-bucket-name"
+                className="block w-full rounded border-gray-300 shadow-sm"
+              />
+              {errors.config?.bucket && (
+                <p className="text-sm text-red-500">
+                  {String(errors.config.bucket.message)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Bucket Name</label>
+              <input
+                {...register("config.bucket", {
+                  required: "Bucket name is required",
+                  pattern: {
+                    value: /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/,
+                    message: "Invalid bucket name format",
+                  },
+                })}
+                placeholder="my-bucket-name"
+                className="block w-full rounded border-gray-300 shadow-sm"
+              />
+              {errors.config?.bucket && (
+                <p className="text-sm text-red-500">
+                  {String(errors.config.bucket.message)}
+                </p>
+              )}
+            </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Region
-          </label>
-          <select
-            {...register("region", { required: "Region is required" })}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          >
-            <option value="us-east-1">US East (N. Virginia)</option>
-            <option value="us-east-2">US East (Ohio)</option>
-            <option value="us-west-1">US West (N. California)</option>
-            <option value="us-west-2">US West (Oregon)</option>
-            <option value="eu-west-1">EU (Ireland)</option>
-            <option value="eu-central-1">EU (Frankfurt)</option>
-            <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-          </select>
-          {errors.region && (
-            <p className="mt-1 text-sm text-red-600">{errors.region.message}</p>
-          )}
-        </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Region</label>
+              <select
+                {...register("config.region", { required: "Region is required" })}
+                className="block w-full rounded border-gray-300 shadow-sm"
+              >
+                <option value="">Select region...</option>
+                <option value="us-east-1">US East (N. Virginia)</option>
+                <option value="us-west-2">US West (Oregon)</option>
+                <option value="eu-west-1">EU (Ireland)</option>
+                <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+              </select>
+              {errors.config?.region && (
+                <p className="text-sm text-red-500">
+                  {String(errors.config.region.message)}
+                </p>
+              )}
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Bucket Name
-          </label>
-          <input
-            type="text"
-            {...register("bucket", { required: "Bucket name is required" })}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          />
-          {errors.bucket && (
-            <p className="mt-1 text-sm text-red-600">{errors.bucket.message}</p>
-          )}
-        </div>
-      </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Access Key ID</label>
+              <input
+                {...register("config.accessKeyId", {
+                  required: "Access Key ID is required",
+                })}
+                placeholder="AKIAXXXXXXXXXXXXXXXX"
+                className="block w-full rounded border-gray-300 shadow-sm"
+              />
+              {errors.config?.accessKeyId && (
+                <p className="text-sm text-red-500">
+                  {String(errors.config.accessKeyId.message)}
+                </p>
+              )}
+            </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Prefix (Optional)
-        </label>
-        <input
-          type="text"
-          {...register("prefix")}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          placeholder="folder/subfolder/"
-        />
-      </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Secret Access Key</label>
+              <input
+                type="password"
+                {...register("config.secretAccessKey", {
+                  required: "Secret Access Key is required",
+                })}
+                placeholder="Enter your secret access key"
+                className="block w-full rounded border-gray-300 shadow-sm"
+              />
+              {errors.config?.secretAccessKey && (
+                <p className="text-sm text-red-500">
+                  {String(errors.config.secretAccessKey.message)}
+                </p>
+              )}
+            </div>
 
-      <div className="flex items-center">
-        <input
-          type="checkbox"
-          {...register("useCustomEndpoint")}
-          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-        />
-        <label className="ml-2 block text-sm text-gray-900">
-          Use custom endpoint
-        </label>
-      </div>
-
-      {useCustomEndpoint && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Custom Endpoint
-          </label>
-          <input
-            type="text"
-            {...register("endpoint", {
-              required: useCustomEndpoint
-                ? "Endpoint is required when using custom endpoint"
-                : false,
-            })}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-            placeholder="https://s3.custom-domain.com"
-          />
-          {errors.endpoint && (
-            <p className="mt-1 text-sm text-red-600">
-              {errors.endpoint.message}
-            </p>
-          )}
-        </div>
-      )}
-
-      <button
-        type="submit"
-        disabled={isConnecting}
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-      >
-        {isConnecting ? "Connecting..." : "Connect to S3"}
-      </button>
-    </form>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Prefix (Optional)</label>
+              <input
+                {...register("config.prefix")}
+                placeholder="folder/subfolder/"
+                className="block w-full rounded border-gray-300 shadow-sm"
+              />
+            </div>
+          </div>
+          </CardContent>
+        
+        <CardFooter className="flex justify-end space-x-4">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isConnecting}>
+            {isConnecting ? "Connecting..." : "Connect S3"}
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
   );
 };

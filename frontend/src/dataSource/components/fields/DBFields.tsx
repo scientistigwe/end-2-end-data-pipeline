@@ -1,7 +1,7 @@
 import { UseFormRegister, FieldErrors } from "react-hook-form";
-import { Input } from "../../../../../components/ui/input";
-import { Select } from "../../../../../components/ui/select";
-import { Switch } from "../../../../../components/ui/switch";
+import { Input } from "@/common/components//ui/inputs/input";
+import { Select } from "@/common/components/ui/inputs/select";
+import { Switch } from "@/common/components/ui/switch";
 import type { DBSourceConfig } from "../../types/dataSources";
 
 interface DatabaseSourceFieldsProps {

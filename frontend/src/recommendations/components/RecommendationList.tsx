@@ -1,20 +1,17 @@
-// src/recommendations/components/RecommendationList.tsx
 import React from 'react';
 import { RecommendationCard } from './RecommendationCard';
-import { Alert } from '../../common/components/ui/alert';
+import { Alert } from '@/common/components/ui/alert';
 import type { Recommendation } from '../types/recommendations';
 
 interface RecommendationListProps {
   recommendations: Recommendation[];
-  onApply: (recommendationId: string, actionId: string) => void;
-  onDismiss: (recommendationId: string) => void;
+  onSelect?: (recommendation: Recommendation) => void;
   className?: string;
 }
 
 export const RecommendationList: React.FC<RecommendationListProps> = ({
   recommendations,
-  onApply,
-  onDismiss,
+  onSelect,
   className = ''
 }) => {
   if (!recommendations.length) {
@@ -31,8 +28,8 @@ export const RecommendationList: React.FC<RecommendationListProps> = ({
         <RecommendationCard
           key={recommendation.id}
           recommendation={recommendation}
-          onApply={(action) => onApply(recommendation.id, action.id)}
-          onDismiss={() => onDismiss(recommendation.id)}
+          onSelect={onSelect}
+          className="w-full"
         />
       ))}
     </div>

@@ -1,8 +1,10 @@
+// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
 import "./index.css";
 import App from "./App";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
 
 // Create your theme
 const theme = createTheme({
@@ -17,13 +19,14 @@ const theme = createTheme({
   typography: {
     fontFamily: "Roboto, sans-serif",
   },
+  // You can add more theme customization here
 });
 
-// Render the app inside the ThemeProvider
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
+// Use non-null assertion since we know 'root' exists
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
+      <CssBaseline /> {/* Adds MUI's CSS baseline */}
       <App />
     </ThemeProvider>
   </React.StrictMode>

@@ -1,46 +1,13 @@
-// src/types/pipeline.ts
-
-export type PipelineStatus = 
-  | 'idle' 
-  | 'running' 
-  | 'stopped' 
-  | 'completed' 
-  | 'failed' 
-  | 'cancelled';
-
-export type PipelineTrigger = 'manual' | 'scheduled' | 'event';
+// src/pipeline/types/pipeline.ts
+export type PipelineStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type PipelineMode = 'development' | 'staging' | 'production';
-
-export interface PipelineConfig {
-  id?: string;
-  name: string;
-  description?: string;
-  mode: PipelineMode;
-  source: {
-    type: string;
-    config: Record<string, unknown>;
-  };
-  steps: PipelineStep[];
-  triggers: PipelineTrigger[];
-  schedule?: string; // cron expression
-  timeout?: number;
-  retryPolicy?: {
-    attempts: number;
-    backoff: number;
-  };
-  notifications?: {
-    onFailure?: boolean;
-    onSuccess?: boolean;
-    channels?: string[];
-  };
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-}
+export type LogLevel = 'info' | 'warn' | 'error';
 
 export interface PipelineStep {
   id: string;
   name: string;
   type: string;
+  status: PipelineStatus;
   config: Record<string, unknown>;
   dependencies?: string[];
   enabled: boolean;
@@ -51,9 +18,54 @@ export interface PipelineStep {
   metadata?: Record<string, unknown>;
 }
 
+export interface PipelineConfig {
+  name: string;
+  description?: string;
+  mode: PipelineMode;
+  steps: PipelineStep[];
+  sourceId: string;
+  targetId?: string;
+  schedule?: {
+    enabled: boolean;
+    cron?: string;
+    timezone?: string;
+  };
+  retryConfig?: {
+    maxAttempts: number;
+    backoffMultiplier: number;
+  };
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface PipelineStats {
+  successfulRuns: number;
+  totalRuns: number;
+  averageDuration: number;
+}
+
+export interface MetricData {
+  timestamp: string;
+  metrics: {
+    throughput: number;
+    latency: number;
+    errorRate: number;
+    resourceUsage: {
+      cpu: number;
+      memory: number;
+    };
+  };
+}
+
 export interface Pipeline extends PipelineConfig {
   id: string;
   status: PipelineStatus;
+  progress: number;
+  error?: string;
+  startTime: string;
+  endTime?: string;
+  currentStep?: string;
+  attempts: number;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -61,15 +73,7 @@ export interface Pipeline extends PipelineConfig {
   lastRun?: string;
   nextRun?: string;
   stats: PipelineStats;
-}
-
-export interface PipelineStats {
-  totalRuns: number;
-  successfulRuns: number;
-  failedRuns: number;
-  averageDuration: number;
-  lastRunDuration?: number;
-  uptime: number;
+  metrics?: MetricData[];
 }
 
 export interface PipelineRun {
@@ -77,7 +81,6 @@ export interface PipelineRun {
   pipelineId: string;
   version: number;
   status: PipelineStatus;
-  trigger: PipelineTrigger;
   startedAt: string;
   completedAt?: string;
   duration?: number;
@@ -108,7 +111,7 @@ export interface PipelineStepRun {
 export interface PipelineLogs {
   logs: Array<{
     timestamp: string;
-    level: 'info' | 'warn' | 'error';
+    level: LogLevel;
     step?: string;
     message: string;
     metadata?: Record<string, unknown>;
@@ -135,34 +138,34 @@ export interface PipelineMetrics {
   };
 }
 
-export interface PipelineSchedule {
-  id: string;
-  pipelineId: string;
-  cron: string;
-  enabled: boolean;
-  lastRun?: string;
-  nextRun?: string;
-  timezone?: string;
-  description?: string;
-}
-
-export interface PipelineEvent {
-  id: string;
-  pipelineId: string;
-  type: string;
-  timestamp: string;
-  data: Record<string, unknown>;
-  processed: boolean;
-  error?: string;
-}
-
-export interface PipelineFilters {
-  status?: PipelineStatus[];
-  mode?: PipelineMode[];
-  tags?: string[];
-  createdBy?: string[];
-  dateRange?: {
-    start: string;
-    end: string;
-  };
+export interface PipelineState {
+  pipelines: Record<string, {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'active' | 'paused' | 'failed';
+    steps: Array<{
+      id: string;
+      type: string;
+      config: Record<string, unknown>;
+      dependencies: string[];
+      status: 'pending' | 'running' | 'completed' | 'failed';
+    }>;
+    schedule?: {
+      enabled: boolean;
+      cron: string;
+      lastRun?: string;
+      nextRun?: string;
+    };
+    metadata: {
+      createdAt: string;
+      updatedAt: string;
+      lastRun?: string;
+      successCount: number;
+      failureCount: number;
+    };
+  }>;
+  activePipelineId: string | null;
+  isLoading: boolean;
+  error: string | null;
 }

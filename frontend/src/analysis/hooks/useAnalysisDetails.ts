@@ -3,11 +3,12 @@ import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import { setError, setLoading } from '../store/analysisSlice';
 import { analysisApi } from '../api/analysisApi';
+import type { Correlation, Anomaly, Pattern, Trend } from '../types/analysis';
 
 export const useAnalysisDetails = () => {
   const dispatch = useDispatch();
 
-  const getCorrelations = useCallback(async (analysisId: string) => {
+  const getCorrelations = useCallback(async (analysisId: string): Promise<Correlation[]> => {
     try {
       dispatch(setLoading(true));
       const response = await analysisApi.getCorrelations(analysisId);
@@ -20,7 +21,7 @@ export const useAnalysisDetails = () => {
     }
   }, [dispatch]);
 
-  const getAnomalies = useCallback(async (analysisId: string) => {
+  const getAnomalies = useCallback(async (analysisId: string): Promise<Anomaly[]> => {
     try {
       dispatch(setLoading(true));
       const response = await analysisApi.getAnomalies(analysisId);
@@ -33,7 +34,7 @@ export const useAnalysisDetails = () => {
     }
   }, [dispatch]);
 
-  const getTrends = useCallback(async (analysisId: string) => {
+  const getTrends = useCallback(async (analysisId: string): Promise<Trend[]> => {
     try {
       dispatch(setLoading(true));
       const response = await analysisApi.getTrends(analysisId);
@@ -46,7 +47,7 @@ export const useAnalysisDetails = () => {
     }
   }, [dispatch]);
 
-  const getPatternDetails = useCallback(async (analysisId: string, patternId: string) => {
+  const getPatternDetails = useCallback(async (analysisId: string, patternId: string): Promise<Pattern> => {
     try {
       dispatch(setLoading(true));
       const response = await analysisApi.getPatternDetails(analysisId, patternId);

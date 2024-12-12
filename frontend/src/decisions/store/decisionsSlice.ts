@@ -7,7 +7,7 @@ import type {
   DecisionFilters,
   DecisionComment,
   DecisionImpactAnalysis
-} from '../../types/decision';
+} from '../types/decisions';
 
 interface DecisionsState {
   decisions: Record<string, Decision>;
@@ -110,5 +110,6 @@ export const {
   setError
 } = decisionsSlice.actions;
 
+export type decisionState = typeof initialState;
 export default decisionsSlice.reducer;
 

@@ -1,133 +1,88 @@
-// src/pages/ReportsPage.tsx
+// src/report/pages/ReportsPage.tsx
 import React, { useState } from "react";
-import { useReport } from "../hooks/useReports";
-import type { ReportType } from "../../../../types";
-import { formatDate } from "../../common/utils/date/dateUtils";
+import { Button } from "@/common/components/ui/button";
+import { Input } from "@/common/components/ui/inputs/input";
+import { Select } from "@/common/components/ui/inputs/select";
+import { ReportList } from "../components/ReportList";
+import { ReportBreadcrumbs } from "../components/ReportBreadcrumbs";
+import { useReport } from "../hooks/useReport";
+import { useReportNavigation } from "../routes/navigationUtils";
+import { REPORT_CONSTANTS } from "../constants";
+import type { ReportType, ReportStatus } from "../types/report";
 
 export const ReportsPage: React.FC = () => {
-  const [reportType, setReportType] = useState<ReportType>("quality");
+  const { reports, isLoading, exportReport, deleteReport } = useReport();
+  const navigation = useReportNavigation();
+  const [filters, setFilters] = useState({
+    type: "",
+    status: "",
+    search: "",
+  });
 
-  const { generateReport, reportData, reportHistory, isGenerating, error } =
-    useReport("pipeline-123"); // Replace with actual pipeline ID
-
-  const handleGenerateReport = () => {
-    generateReport({
-      type: reportType,
-      timeRange: {
-        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        end: new Date().toISOString(),
-      },
-    });
-  };
+  const filteredReports = reports?.filter((report) => {
+    if (filters.type && report.config.type !== filters.type) return false;
+    if (filters.status && report.status !== filters.status) return false;
+    if (
+      filters.search &&
+      !report.config.name.toLowerCase().includes(filters.search.toLowerCase())
+    )
+      return false;
+    return true;
+  });
 
   return (
-    <div className="space-y-6">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
-        </div>
-      </header>
+    <div className="space-y-6 p-6">
+      <div className="flex justify-between items-center">
+        <ReportBreadcrumbs />
+        <Button onClick={() => navigation.goToReportGeneration()}>
+          Generate Report
+        </Button>
+      </div>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Report Generation */}
-        <section className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Generate Report</h2>
+      <div className="flex space-x-4">
+        <Input
+          placeholder="Search reports..."
+          value={filters.search}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, search: e.target.value }))
+          }
+          className="max-w-xs"
+        />
+        <Select
+          value={filters.type}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, type: e.target.value }))
+          }
+        >
+          <option value="">All Types</option>
+          {Object.values(REPORT_CONSTANTS.TYPES).map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={filters.status}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, status: e.target.value }))
+          }
+        >
+          <option value="">All Status</option>
+          {Object.values(REPORT_CONSTANTS.STATUS).map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </Select>
+      </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Report Type
-              </label>
-              <select
-                value={reportType}
-                onChange={(e) => setReportType(e.target.value as ReportType)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              >
-                <option value="quality">Quality Report</option>
-                <option value="insight">Insight Report</option>
-                <option value="performance">Performance Report</option>
-              </select>
-            </div>
-
-            <button
-              onClick={handleGenerateReport}
-              disabled={isGenerating}
-              className={`px-4 py-2 text-white rounded-md ${
-                isGenerating
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {isGenerating ? "Generating..." : "Generate Report"}
-            </button>
-          </div>
-
-          {error && <div className="mt-4 text-red-600">{error.message}</div>}
-        </section>
-
-        {/* Report Display */}
-        {reportData && (
-          <section className="mt-8 bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Report Results</h2>
-            <div className="prose max-w-none">
-              {/* Add report content rendering logic here */}
-            </div>
-          </section>
-        )}
-
-        {/* Report History */}
-        <section className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Report History</h2>
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Report Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Generated At
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {reportHistory?.map((report) => (
-                  <tr key={report.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {report.type}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatDate(report.generatedAt)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          report.status === "completed"
-                            ? "bg-green-100 text-green-800"
-                            : report.status === "failed"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {report.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {/* Add action buttons */}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </main>
+      <ReportList
+        reports={filteredReports || []}
+        onExport={exportReport}
+        onDelete={deleteReport}
+        onSchedule={(id) => navigation.goToReportDetails(id)}
+        isLoading={isLoading}
+      />
     </div>
   );
 };

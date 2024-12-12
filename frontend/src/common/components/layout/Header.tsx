@@ -1,13 +1,13 @@
-// src/components/layout/Header.tsx
 import React from "react";
-import { useSelector } from "react-redux";
 import { UserMenu } from "./UserMenu";
 import { NotificationsPanel } from "./NotificationsPanel";
-import { selectUser } from "../../store/analysis/analysisSlice";
+import { User } from "@/common/types/user";
 
-export const Header: React.FC = () => {
-  const user = useSelector(selectUser);
+interface HeaderProps {
+  user: User;
+}
 
+export const Header: React.FC<HeaderProps> = ({ user }) => {
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

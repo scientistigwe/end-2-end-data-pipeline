@@ -2,7 +2,7 @@
 import React from "react";
 import { useForm } from "react-hook-form";
 import { Card } from "../../common/components/ui/card";
-import { Input } from "../../common/components/ui/inputs/input";
+import { Input } from "../../common/components//ui/inputs/input";
 import { Button } from "../../common/components/ui/button/Button";
 import { Select } from "../../common/components/ui/inputs/select";
 import { DECISION_TYPES, DECISION_URGENCIES } from "../constants";

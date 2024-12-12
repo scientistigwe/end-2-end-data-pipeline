@@ -1,6 +1,8 @@
 // src/auth/utils/authUtils.ts
 import { jwtDecode } from 'jwt-decode';
-import type { User, AuthTokens, UserRole } from '../types/auth';
+import type { AuthTokens } from '../types/auth';
+import { User, UserRole } from '@/common/types/user';
+import type { Permission } from '../types/auth';
 
 interface DecodedToken {
   sub: string;
@@ -112,5 +114,15 @@ export const authUtils = {
   isValidTokenFormat(token: string): boolean {
     const parts = token.split('.');
     return parts.length === 3 && parts.every(part => part.length > 0);
+  },
+  
+  checkPermission: (userPermissions: Permission[], requiredPermission: Permission): boolean => {
+    return userPermissions.includes(requiredPermission);
+  },
+  
+  checkPermissions: (userPermissions: Permission[], requiredPermissions: Permission[]): boolean => {
+    return requiredPermissions.every(permission => 
+      userPermissions.includes(permission)
+    );
   }
 };

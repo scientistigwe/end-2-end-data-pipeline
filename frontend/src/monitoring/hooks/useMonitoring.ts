@@ -1,21 +1,23 @@
-// src/hooks/monitoring/useMonitoring.ts
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation } from 'react-query';
+// src/monitoring/hooks/useMonitoring.ts
+import { useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
-import { monitoringApi } from '../../api/monitoringAPI';
-import { WebSocketClient } from '../../common/utils/api/websocketUtil';
+import { MonitoringService } from '../services/monitoringService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import { 
-  setMetrics, 
-  setSystemHealth, 
-  setAlerts, 
+import { MONITORING_CONFIG, MONITORING_MESSAGES } from '../constants';
+import {
+  setMetrics,
+  setSystemHealth,
+  setAlerts,
   addAlert,
-  setResources 
+  setResources,
+  setError,
+  setLoading
 } from '../store/monitoringSlice';
-import type { 
+import type {
   MonitoringConfig,
-  MetricsData,
-  AlertConfig 
+  AlertConfig,
+  MetricsData
 } from '../types/monitoring';
 
 interface UseMonitoringOptions {
@@ -25,136 +27,175 @@ interface UseMonitoringOptions {
   resourceInterval?: number;
 }
 
-export function useMonitoring({
+export const useMonitoring = ({
   pipelineId,
-  metricsInterval = 5000,
-  healthInterval = 10000,
-  resourceInterval = 10000
-}: UseMonitoringOptions) {
+  metricsInterval = MONITORING_CONFIG.REFRESH_INTERVAL,
+  healthInterval = MONITORING_CONFIG.HEALTH_CHECK_INTERVAL,
+  resourceInterval = MONITORING_CONFIG.RESOURCE_CHECK_INTERVAL
+}: UseMonitoringOptions) => {
   const dispatch = useDispatch();
-  const [wsClient, setWsClient] = useState<WebSocketClient | null>(null);
-
-  // Start Monitoring
-  const { mutate: startMonitoring, isLoading: isStarting } = useMutation(
-    (config: MonitoringConfig) => monitoringApi.startMonitoring(pipelineId, config),
-    {
-      onError: handleApiError
-    }
-  );
-
-  // Configure Alerts
-  const { mutate: configureAlerts } = useMutation(
-    (config: AlertConfig) => monitoringApi.configureAlerts(pipelineId, config),
-    {
-      onError: handleApiError
-    }
-  );
+  const queryClient = useQueryClient();
 
   // Fetch Metrics
-  const { data: metricsData, refetch: refreshMetrics } = useQuery(
+  const {
+    data: metrics,
+    isLoading: isLoadingMetrics,
+    error: metricsError,
+    refetch: refreshMetrics
+  } = useQuery(
     ['metrics', pipelineId],
-    () => monitoringApi.getMetrics(pipelineId),
+    async () => {
+      try {
+        return await MonitoringService.getMetrics(pipelineId);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.METRICS_FETCH_FAILED);
+      }
+    },
     {
       refetchInterval: metricsInterval,
-      enabled: !!pipelineId,
-      onSuccess: (response) => {
-        dispatch(setMetrics(response.data));
+      enabled: Boolean(pipelineId),
+      onSuccess: (data) => {
+        dispatch(setMetrics(data));
       },
-      onError: handleApiError
+      onError: (error) => {
+        dispatch(setError((error as Error).message));
+      }
     }
   );
 
-  // Fetch Health
-  const { data: healthData, refetch: refreshHealth } = useQuery(
+  // Fetch Health Status
+  const {
+    data: health,
+    refetch: refreshHealth
+  } = useQuery(
     ['health', pipelineId],
-    () => monitoringApi.getHealth(pipelineId),
+    async () => {
+      try {
+        return await MonitoringService.getHealth(pipelineId);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.HEALTH_FETCH_FAILED);
+      }
+    },
     {
       refetchInterval: healthInterval,
-      enabled: !!pipelineId,
-      onSuccess: (response) => {
-        dispatch(setSystemHealth(response.data));
-      },
-      onError: handleApiError
+      enabled: Boolean(pipelineId),
+      onSuccess: (data) => {
+        dispatch(setSystemHealth(data));
+      }
     }
   );
 
   // Fetch Resource Usage
-  const { data: resourceData, refetch: refreshResources } = useQuery(
+  const {
+    data: resources,
+    refetch: refreshResources
+  } = useQuery(
     ['resources', pipelineId],
-    () => monitoringApi.getResourceUsage(pipelineId),
+    async () => {
+      try {
+        return await MonitoringService.getResourceUsage(pipelineId);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.RESOURCE_FETCH_FAILED);
+      }
+    },
     {
       refetchInterval: resourceInterval,
-      enabled: !!pipelineId,
-      onSuccess: (response) => {
-        dispatch(setResources(response.data));
-      },
-      onError: handleApiError
+      enabled: Boolean(pipelineId),
+      onSuccess: (data) => {
+        dispatch(setResources(data));
+      }
     }
   );
 
-  // Fetch Alert History
-  const { data: alertData } = useQuery(
-    ['alerts', pipelineId],
-    () => monitoringApi.getAlertHistory(pipelineId),
-    {
-      enabled: !!pipelineId,
-      onSuccess: (response) => {
-        dispatch(setAlerts(response.data));
-      },
-      onError: handleApiError
+  // Mutations
+  const { mutateAsync: startMonitoring, isLoading: isStarting } = useMutation(
+    async (config: MonitoringConfig) => {
+      dispatch(setLoading(true));
+      try {
+        await MonitoringService.startMonitoring(pipelineId, config);
+        await Promise.all([
+          refreshMetrics(),
+          refreshHealth(),
+          refreshResources()
+        ]);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.START_FAILED);
+      } finally {
+        dispatch(setLoading(false));
+      }
     }
   );
 
-  // WebSocket Connection
-  useEffect(() => {
-    if (!pipelineId) return;
+  const { mutateAsync: configureAlerts } = useMutation(
+    async (config: AlertConfig) => {
+      try {
+        await MonitoringService.configureAlerts(pipelineId, config);
+        await queryClient.invalidateQueries(['alerts', pipelineId]);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_CONFIG_FAILED);
+      }
+    }
+  );
 
-    const client = new WebSocketClient(
-      `${process.env.REACT_APP_WS_URL}/monitoring/${pipelineId}`
-    );
+  const { mutateAsync: acknowledgeAlert } = useMutation(
+    async (alertId: string) => {
+      try {
+        await MonitoringService.acknowledgeAlert(pipelineId, alertId);
+        await queryClient.invalidateQueries(['alerts', pipelineId]);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_ACKNOWLEDGE_FAILED);
+      }
+    }
+  );
 
-    const handleMessage = (message: MetricsData) => {
-      dispatch(setMetrics(message));
-    };
+  const { mutateAsync: resolveAlert } = useMutation(
+    async ({ alertId, resolution }: { alertId: string; resolution?: { comment?: string; action?: string } }) => {
+      try {
+        await MonitoringService.resolveAlert(pipelineId, alertId, resolution);
+        await queryClient.invalidateQueries(['alerts', pipelineId]);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_RESOLVE_FAILED);
+      }
+    }
+  );
 
-    client.connect();
-    const unsubscribe = client.subscribe(handleMessage);
-    setWsClient(client);
-
-    return () => {
-      unsubscribe();
-      client.disconnect();
-      setWsClient(null);
-    };
-  }, [pipelineId, dispatch]);
-
-  // Refresh all data
-  const refreshAll = async () => {
-    await Promise.all([
-      refreshMetrics(),
-      refreshHealth(),
-      refreshResources()
-    ]);
-  };
+  const refreshAll = useCallback(async () => {
+    try {
+      await Promise.all([
+        refreshMetrics(),
+        refreshHealth(),
+        refreshResources()
+      ]);
+    } catch (err) {
+      handleApiError(err);
+    }
+  }, [refreshMetrics, refreshHealth, refreshResources]);
 
   return {
     // Data
-    metrics: metricsData?.data,
-    health: healthData?.data,
-    resources: resourceData?.data,
-    alerts: alertData?.data,
-
+    metrics,
+    health,
+    resources,
+    
+    // Loading States
+    isLoading: isLoadingMetrics || isStarting,
+    error: metricsError as Error | null,
+    
     // Actions
     startMonitoring,
     configureAlerts,
+    acknowledgeAlert,
+    resolveAlert,
     refreshAll,
     refreshMetrics,
     refreshHealth,
-    refreshResources,
-
-    // Status
-    isStarting,
-    wsClient
-  } as const;
-}
-
+    refreshResources
+  };
+};

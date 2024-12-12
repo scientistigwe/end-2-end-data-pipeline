@@ -110,3 +110,67 @@ export interface DecisionFilterOptions {
   assignedTo?: string[];
   dateRange?: DateRange;
 }
+
+export interface DecisionState {
+  decisions: Record<string, {
+    id: string;
+    title: string;
+    type: string;
+    status: 'pending' | 'approved' | 'rejected' | 'implemented';
+    urgency: 'high' | 'medium' | 'low';
+    description: string;
+    assignedTo: string[];
+    metadata: {
+      createdAt: string;
+      updatedAt: string;
+      implementedAt?: string;
+      rationale: string;
+      stakeholders: string[];
+    };
+    alternatives: Array<{
+      id: string;
+      description: string;
+      pros: string[];
+      cons: string[];
+    }>;
+    impact: {
+      areas: Array<{
+        name: string;
+        impact: 'high' | 'medium' | 'low';
+        description: string;
+      }>;
+      risks: Array<{
+        description: string;
+        likelihood: 'high' | 'medium' | 'low';
+        mitigation: string;
+      }>;
+    };
+    documents: Array<{
+      id: string;
+      name: string;
+      url: string;
+    }>;
+  }>;
+  history: Array<{
+    id: string;
+    decisionId: string;
+    type: 'creation' | 'update' | 'status_change' | 'assignment';
+    changes: Record<string, unknown>;
+    timestamp: string;
+    userId: string;
+  }>;
+  filters: {
+    types?: string[];
+    status?: string[];
+    urgency?: string[];
+    assignedTo?: string[];
+    dateRange?: {
+      start: string;
+      end: string;
+    };
+  };
+  selectedDecisionId: string | null;
+  isLoading: boolean;
+  error: string | null;
+}
+

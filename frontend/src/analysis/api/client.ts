@@ -8,8 +8,8 @@ import axios, {
     InternalAxiosRequestConfig
   } from 'axios';
   import { API_CONFIG } from './config';
-  import type { ApiResponse, ApiRequestConfig } from '../../../../types';
-  import { formatEndpoint } from '../../common/api/utils/utils';
+  import type { ApiResponse, ApiRequestConfig } from '@/common/types/api';
+  import { formatEndpoint } from '@/common/config';
   
   export class AnalysisApiClient {
     private client: AxiosInstance;

@@ -1,9 +1,14 @@
 // src/common/types/ui.ts
+import { UiStatus } from './status';
+
 export type Theme = 'light' | 'dark' | 'system';
 export type Size = 'sm' | 'md' | 'lg' | 'xl';
 export type Variant = 'primary' | 'secondary' | 'outline' | 'ghost';
-export type Status = 'idle' | 'loading' | 'success' | 'error';
 
+// Re-export UiStatus for convenience
+export type { UiStatus } from './status';
+
+// Use UiStatus instead of Status
 export interface Modal {
   id: string;
   type: string;

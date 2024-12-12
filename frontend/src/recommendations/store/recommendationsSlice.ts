@@ -68,5 +68,6 @@ export const {
   setError
 } = recommendationsSlice.actions;
 
+export type recommendationsState = typeof initialState;
 export default recommendationsSlice.reducer;
 

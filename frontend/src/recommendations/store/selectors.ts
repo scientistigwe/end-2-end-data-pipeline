@@ -1,6 +1,6 @@
 // src/recommendations/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '../../store/store';
+import type { RootState } from '../../store/rootReducer';
 
 export const selectRecommendations = (state: RootState) => 
   Object.values(state.recommendations.recommendations);

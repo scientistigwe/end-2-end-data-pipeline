@@ -9,6 +9,8 @@ import type {
   RecommendationFilters 
 } from '../types/recommendations';
 
+import { RecommendationsApi } from '../api';
+
 interface UseRecommendationsResult {
   recommendations: Recommendation[] | undefined;
   isLoading: boolean;

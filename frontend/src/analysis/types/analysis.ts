@@ -1,10 +1,11 @@
 // src/analysis/types/analysis.ts
-import { ImpactLevel } from '@/types/common';
+import { ImpactLevel } from '@/common';
 
+// Core Analysis Types
 export type AnalysisStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type AnalysisType = 'quality' | 'insight';
 
-// Base Analysis Types
+// Base Configuration Types
 export interface BaseAnalysisOptions {
   timeout?: number;
   priority?: ImpactLevel;
@@ -17,6 +18,7 @@ export interface AnalysisConfig {
   options?: BaseAnalysisOptions;
 }
 
+// Analysis Result Types
 export interface AnalysisResult {
   id: string;
   type: AnalysisType;
@@ -25,6 +27,7 @@ export interface AnalysisResult {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  updatedAt: string;
 }
 
 // Quality Analysis Types
@@ -43,6 +46,7 @@ export interface QualityConfig extends Omit<AnalysisConfig, 'type'> {
 }
 
 export interface QualityReport {
+  id: string;
   summary: {
     totalIssues: number;
     criticalIssues: number;
@@ -87,35 +91,82 @@ export interface InsightConfig extends Omit<AnalysisConfig, 'type'> {
 }
 
 export interface InsightReport {
+  id: string;
   summary: {
     patternsFound: number;
     anomaliesDetected: number;
     correlationsIdentified: number;
+    confidenceLevel: number;
   };
-  patterns: Array<{
-    id: string;
-    type: string;
-    description: string;
-    confidence: number;
-    affectedColumns: string[];
-  }>;
-  anomalies: Array<{
-    id: string;
-    type: string;
-    description: string;
-    severity: ImpactLevel;
-    timestamp: string;
-  }>;
-  correlations: Array<{
-    columns: string[];
-    strength: number;
-    description: string;
-  }>;
+  patterns: Pattern[];
+  anomalies: Anomaly[];
+  correlations: Correlation[];
 }
 
+// Detailed Analysis Types
+export interface Pattern {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  occurrenceRate: number;
+  confidence: number;
+  affectedFields: string[];
+}
+
+export interface Anomaly {
+  id: string;
+  type: string;
+  severity: ImpactLevel;
+  detectedAt: string;
+  description: string;
+}
+
+export interface Correlation {
+  id: string;
+  sourceField: string;
+  targetField: string;
+  strength: number;
+  confidence: number;
+  description: string;
+  columns: string[];
+}
+
+export interface Trend {
+  id: string;
+  name: string;
+  direction: 'increasing' | 'decreasing' | 'stable';
+  strength: number;
+  timePeriod: string;
+  description: string;
+}
+
+// Export & State Types
 export interface ExportOptions {
   format: 'pdf' | 'csv' | 'json';
   sections?: string[];
   includeRecommendations?: boolean;
 }
 
+export interface AnalysisState {
+  activeAnalyses: Record<string, {
+    id: string;
+    name: string;
+    type: string;
+    status: AnalysisStatus;
+    progress: number;
+    results: Record<string, unknown>;
+    error?: string;
+    startedAt: string;
+    completedAt?: string;
+  }>;
+  history: Array<{
+    id: string;
+    type: string;
+    parameters: Record<string, unknown>;
+    results: Record<string, unknown>;
+    createdAt: string;
+  }>;
+  isLoading: boolean;
+  error: string | null;
+}

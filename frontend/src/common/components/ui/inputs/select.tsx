@@ -1,6 +1,6 @@
-// src/components/ui/select.tsx
+// src/components/ui/inputs/select.tsx
 import * as React from "react";
-import { cn } from "../../utils/lib/utils";
+import { cn } from "../../../utils/cn";
 
 export interface SelectProps
   extends React.SelectHTMLAttributes<HTMLSelectElement> {}

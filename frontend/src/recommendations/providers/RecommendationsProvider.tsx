@@ -1,7 +1,7 @@
 // src/recommendations/providers/RecommendationProvider.tsx
 import React, { useState, useCallback } from 'react';
 import { useDispatch } from 'react-redux';
-import { RecommendationService } from '../services/recommendationService';
+import { RecommendationService } from '../services/recommendationsService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { RecommendationContext } from '../context/RecommendationsContext';
 import { setError, setLoading } from '../store/recommendationsSlice';
@@ -27,7 +27,7 @@ export const RecommendationProvider: React.FC<{ children: React.ReactNode }> = (
     dispatch(setLoading(true));
     
     try {
-      const data = await RecommendationService.getRecommendations(pipelineId, filters);
+      const data = await RecommendationService.listRecommendations(pipelineId, filters);
       setRecommendations(data);
       setErrorState(null);
     } catch (err) {

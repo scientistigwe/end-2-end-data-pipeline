@@ -1,6 +1,6 @@
 // src/services/api/interceptors.ts
 import { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { ErrorResponse } from '../types/api';
+import { ErrorResponse } from '@/common/types/api';
 
 export const requestInterceptor = (config: InternalAxiosRequestConfig) => {
   // Get token from storage

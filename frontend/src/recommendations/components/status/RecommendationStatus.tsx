@@ -1,6 +1,6 @@
 // src/recommendations/components/status/RecommendationStatus.tsx
 import React from 'react';
-import { Badge } from '../../../common/components/ui/badge';
+import { Badge } from '@/common/components/ui/badge';
 import type { RecommendationStatus } from '../../types/recommendations';
 
 interface RecommendationStatusBadgeProps {

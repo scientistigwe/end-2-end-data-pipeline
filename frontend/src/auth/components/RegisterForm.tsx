@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { authApi } from "../../api/authAPI";
-import { RegisterData } from "../../types/auth";
+import { authApi } from "../api/authApi";
+import { RegisterData } from "../types/auth";
 
 export const RegisterForm: React.FC = () => {
   const navigate = useNavigate();

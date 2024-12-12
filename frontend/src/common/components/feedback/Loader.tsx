@@ -1,7 +1,7 @@
 // src/common/components/feedback/Loader.tsx
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { Loader2 } from 'lucide-react'; // Using lucide-react for the spinner icon
+import { Loader2 } from 'lucide-react';
 
 interface LoaderProps {
   size?: 'sm' | 'md' | 'lg';

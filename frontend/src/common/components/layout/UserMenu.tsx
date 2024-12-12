@@ -1,6 +1,6 @@
 // src/components/layout/UserMenu.tsx
 import { Menu } from '@headlessui/react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../../auth/hooks/useAuth';
 
 export const UserMenu: React.FC<{ user: any }> = ({ user }) => {
   const { logout } = useAuth();

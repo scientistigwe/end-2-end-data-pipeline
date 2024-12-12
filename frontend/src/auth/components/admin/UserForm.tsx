@@ -1,11 +1,11 @@
 // src/auth/components/admin/UserForm.tsx
-import React, { useState } from 'react';
-import { USER_ROLES, USER_PERMISSIONS } from '../../constants';
-import { Button } from '@/common/components/ui/button';
-import { Input } from '@/common/components/ui/inputs/input';
-import { Select } from '@/common/components/ui/inputs/select';
-import { Alert } from '@/common/components/ui/alert';
-import type { User } from '../../types/auth';
+import React, { useState } from "react";
+import { USER_ROLES, USER_PERMISSIONS } from "../../constants";
+import { Button } from "@/common/components/ui/button";
+import { Input } from "@/common/components//ui/inputs/input";
+import { Select } from "@/common/components/ui/inputs/select";
+import { Alert } from "@/common/components/ui/alert";
+import type { User } from "../../types/auth";
 
 interface UserFormProps {
   user?: Partial<User>;
@@ -13,13 +13,17 @@ interface UserFormProps {
   onCancel: () => void;
 }
 
-export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) => {
+export const UserForm: React.FC<UserFormProps> = ({
+  user,
+  onSubmit,
+  onCancel,
+}) => {
   const [formData, setFormData] = useState<Partial<User>>({
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
-    email: user?.email || '',
-    role: user?.role || 'user',
-    permissions: user?.permissions || []
+    firstName: user?.firstName || "",
+    lastName: user?.lastName || "",
+    email: user?.email || "",
+    role: user?.role || "user",
+    permissions: user?.permissions || [],
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,23 +36,25 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
     try {
       await onSubmit(formData);
     } catch (err: any) {
-      setError(err.message || 'Failed to save user');
+      setError(err.message || "Failed to save user");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handlePermissionChange = (permission: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       permissions: prev.permissions?.includes(permission)
-        ? prev.permissions.filter(p => p !== permission)
-        : [...(prev.permissions || []), permission]
+        ? prev.permissions.filter((p) => p !== permission)
+        : [...(prev.permissions || []), permission],
     }));
   };
 
@@ -62,7 +68,10 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="firstName"
+            className="block text-sm font-medium text-gray-700"
+          >
             First Name
           </label>
           <Input
@@ -76,7 +85,10 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
         </div>
 
         <div>
-          <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="lastName"
+            className="block text-sm font-medium text-gray-700"
+          >
             Last Name
           </label>
           <Input
@@ -91,7 +103,10 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+        <label
+          htmlFor="email"
+          className="block text-sm font-medium text-gray-700"
+        >
           Email
         </label>
         <Input
@@ -106,7 +121,10 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
       </div>
 
       <div>
-        <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+        <label
+          htmlFor="role"
+          className="block text-sm font-medium text-gray-700"
+        >
           Role
         </label>
         <Select
@@ -139,9 +157,10 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm text-gray-700">
-                {key.split('_').map(word => 
-                  word.charAt(0) + word.slice(1).toLowerCase()
-                ).join(' ')}
+                {key
+                  .split("_")
+                  .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+                  .join(" ")}
               </span>
             </label>
           ))}
@@ -158,10 +177,9 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel }) 
           Cancel
         </Button>
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Saving...' : (user ? 'Update User' : 'Create User')}
+          {isLoading ? "Saving..." : user ? "Update User" : "Create User"}
         </Button>
       </div>
     </form>
   );
 };
-

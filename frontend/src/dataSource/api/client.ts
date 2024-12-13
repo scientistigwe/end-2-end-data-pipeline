@@ -1,9 +1,9 @@
-import { AxiosClient } from '../../common/api/client/baseClient';
+import { BaseClient } from '../../common/api/client/baseClient';
 import { API_CONFIG } from './config';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
 import type { AxiosProgressEvent, AxiosRequestConfig } from 'axios';
 
-export class DataSourceApiClient extends AxiosClient {
+export class DataSourceApiClient extends BaseClient {
   constructor() {
     super({
       baseURL: API_CONFIG.BASE_URL,

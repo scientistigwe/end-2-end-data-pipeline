@@ -2,7 +2,8 @@ import React from "react";
 import { useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
-import { useAppSelector, type RootState } from "../../../store/store";
+import { type RootState } from "../../../store/rootReducer";
+import { useAppSelector } from "@/store/store";
 import { selectIsAuthenticated } from "../../../auth/store/selectors";
 
 interface MainLayoutProps {

@@ -1,45 +1,82 @@
-// src/auth/hooks/useRBAC.ts
+// auth/hooks/useRBAC.ts
+import { useMemo } from 'react';
 import { usePermissions } from './usePermissions';
-import { checkRoleHierarchy, getRolePermissions, isValidRole } from '../utils/rbac';
-import type { User, RoleType } from '../types/auth';
-import type { Permission } from '../types/rbac';
+import type { User } from '@/common/types/user';
+import type { Permission, RoleType } from '../types';
+import { CORE_PERMISSIONS } from '../types/permissions';
 
-export const useRBAC = () => {
-  const { role, permissions } = usePermissions();
-  
-  // Add type assertion or validation
-  const validRole = role && isValidRole(role) ? role : undefined;
+export interface RBACCheckOptions {
+ requireAll?: boolean;
+ checkHierarchy?: boolean;
+}
 
-  const canManageUser = (targetUser: User) => {
-    if (!validRole || !targetUser.role) return false;
-    
-    const canManageRole = checkRoleHierarchy(validRole, targetUser.role);
-    if (!canManageRole) return false;
+export function useRBAC() {
+ const { permissions, hasPermission } = usePermissions();
 
-    return permissions.includes('manage:users');
-  };
+ // Check if user can manage another user based on roles and permissions
+ const canManageUser = useMemo(() => 
+   (targetUser: User, options: RBACCheckOptions = {}): boolean => {
+     // Super admin can manage all users
+     if (permissions.includes(CORE_PERMISSIONS.MANAGE_ALL)) return true;
 
-  const canAssignRole = (targetRole: RoleType) => {
-    if (!validRole) return false;
+     // Must have basic user management permission
+     if (!hasPermission(CORE_PERMISSIONS.MANAGE_USERS)) return false;
 
-    const canManageRole = checkRoleHierarchy(validRole, targetRole);
-    if (!canManageRole) return false;
+     // Additional role-specific logic could be added here
+     return true;
+   },
+   [permissions, hasPermission]
+ );
 
-    return permissions.includes('manage:roles');
-  };
+ // Check if user can perform specific role operations
+ const canManageRole = useMemo(() => 
+   (targetRole: RoleType, operation: 'assign' | 'modify' | 'delete'): boolean => {
+     // Super admin can manage all roles
+     if (permissions.includes(CORE_PERMISSIONS.MANAGE_ALL)) return true;
 
-  const canAccessFeature = (featurePermission: Permission) => {
-    if (!validRole) return false;
+     // Must have role management permission
+     if (!hasPermission(CORE_PERMISSIONS.MANAGE_ROLES)) return false;
 
-    if (permissions.includes(featurePermission)) return true;
+     // Additional role-specific checks could be added here
+     return true;
+   },
+   [permissions, hasPermission]
+ );
 
-    const rolePermissions = getRolePermissions(validRole);
-    return rolePermissions.includes(featurePermission);
-  };
+ // Check if user can access specific features
+ const canAccessFeature = useMemo(() => 
+   (requiredPermissions: Permission | Permission[], options: RBACCheckOptions = {}): boolean => {
+     const { requireAll = false } = options;
 
-  return {
-    canManageUser,
-    canAssignRole,
-    canAccessFeature,
-  } as const;
-};
+     // Convert single permission to array
+     const permissionsToCheck = Array.isArray(requiredPermissions) 
+       ? requiredPermissions 
+       : [requiredPermissions];
+
+     // Super admin can access all features
+     if (permissions.includes(CORE_PERMISSIONS.MANAGE_ALL)) return true;
+
+     return requireAll
+       ? permissionsToCheck.every(perm => hasPermission(perm))
+       : permissionsToCheck.some(perm => hasPermission(perm));
+   },
+   [permissions, hasPermission]
+ );
+
+ // Check general resource access
+ const canAccessResource = useMemo(() => 
+   (resource: string, action: 'view' | 'create' | 'edit' | 'delete'): boolean => {
+     const permission = `${action}:${resource}` as Permission;
+     return hasPermission(permission);
+   },
+   [hasPermission]
+ );
+
+ return {
+   canManageUser,
+   canManageRole,
+   canAccessFeature,
+   canAccessResource
+ } as const;
+}
+

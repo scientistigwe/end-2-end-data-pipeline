@@ -3,7 +3,8 @@ import React from 'react';
 import { Card } from '@/common/components/ui/card';
 import { ReportBreadcrumbs } from '../components/ReportBreadcrumbs';
 import { useReport } from '../hooks/useReport';
-import { formatDateTime, getStatusBadgeClass } from '../utils/formatters';
+import { getStatusBadgeClass } from '../utils/formatters';
+import { dateUtils } from '@/common';
 
 export const ScheduledReportsPage: React.FC = () => {
   const { reports, isLoading } = useReport();
@@ -26,7 +27,7 @@ export const ScheduledReportsPage: React.FC = () => {
                   Frequency: {report.config.schedule?.frequency}
                 </p>
                 <p className="text-sm text-gray-500">
-                  Next Run: {formatDateTime(report.config.schedule?.nextRunAt!)}
+                  Next Run: {dateUtils.formatDate(report.config.schedule?.nextRunAt!, { includeTime: true })}
                 </p>
               </div>
               

@@ -1,18 +1,19 @@
-// src/auth/store/authSlice.ts
+// auth/store/authSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { AuthState, AuthTokens, AuthStatus } from '../types/auth';
+import type { AuthState, AuthTokens, AuthStatus } from '../types';
 import type { User } from '@/common/types/user';
 
 const initialState: AuthState = {
     user: null,
-    isLoading: null,
     status: 'unauthenticated',
     error: null,
     tokens: {
         accessToken: null,
         refreshToken: null,
         expiresIn: null
-    }
+    },
+    isLoading: false,
+    initialized: false
 };
 
 const authSlice = createSlice({
@@ -28,25 +29,29 @@ const authSlice = createSlice({
         },
         setError(state, action: PayloadAction<string | null>) {
             state.error = action.payload;
+            state.isLoading = false;
         },
         setStatus(state, action: PayloadAction<AuthStatus>) {
             state.status = action.payload;
+        },
+        setLoading(state, action: PayloadAction<boolean>) {
+            state.isLoading = action.payload;
+        },
+        setInitialized(state, action: PayloadAction<boolean>) {
+            state.initialized = action.payload;
         },
         setAuth(state, action: PayloadAction<{ user: User; tokens: AuthTokens }>) {
             state.user = action.payload.user;
             state.tokens = action.payload.tokens;
             state.status = 'authenticated';
             state.error = null;
+            state.isLoading = false;
         },
         clearAuth(state) {
-            state.user = null;
-            state.tokens = {
-                accessToken: null,
-                refreshToken: null,
-                expiresIn: null
+            return {
+                ...initialState,
+                initialized: state.initialized
             };
-            state.status = 'unauthenticated';
-            state.error = null;
         }
     }
 });
@@ -56,9 +61,10 @@ export const {
     setTokens,
     setError,
     setStatus,
+    setLoading,
+    setInitialized,
     setAuth,
     clearAuth
 } = authSlice.actions;
 
-export type authState = typeof initialState;
 export default authSlice.reducer;

@@ -1,7 +1,7 @@
 // src/recommendations/services/recommendationService.ts
 import { RecommendationsApi } from '../api/recommendationsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import { formatDate } from '../../common/utils/date/dateUtils';
+import { dateUtils } from '../../common/utils/date/dateUtils';
 import { RECOMMENDATION_MESSAGES } from '../constants';
 import type {
   Recommendation,
@@ -66,16 +66,16 @@ export class RecommendationService {
   private static transformRecommendation(recommendation: Recommendation): Recommendation {
     return {
       ...recommendation,
-      createdAt: formatDate(recommendation.createdAt),
-      updatedAt: formatDate(recommendation.updatedAt),
-      appliedAt: recommendation.appliedAt ? formatDate(recommendation.appliedAt) : undefined
+      createdAt: dateUtils.formatDate(recommendation.createdAt),
+      updatedAt: dateUtils.formatDate(recommendation.updatedAt),
+      appliedAt: recommendation.appliedAt ? dateUtils.formatDate(recommendation.appliedAt) : undefined
     };
   }
 
   private static transformHistory(history: RecommendationHistory): RecommendationHistory {
     return {
       ...history,
-      appliedAt: formatDate(history.appliedAt)
+      appliedAt: dateUtils.formatDate(history.appliedAt)
     };
   }
 }

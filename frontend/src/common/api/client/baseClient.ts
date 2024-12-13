@@ -8,8 +8,8 @@ import axios, {
   InternalAxiosRequestConfig
 } from 'axios';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
-import { handleApiError } from '../utils/errorHandlers';
-import { formatEndpoint } from '../utils/formatters';
+import { handleApiError } from '../../utils/errorHandlers';
+import { formatEndpoint } from '../../utils/formatters/formatters';
 
 export class BaseClient {
   protected client: AxiosInstance;

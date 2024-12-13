@@ -5,7 +5,8 @@ export const RESOURCE_TYPES = {
   ROLES: 'roles',
   PROFILE: 'profile',
   SYSTEM: 'system',
-  SETTINGS: 'settings'
+  SETTINGS: 'settings',
+  ALL: 'all'
 } as const;
 
 export const ACTION_TYPES = {
@@ -13,7 +14,8 @@ export const ACTION_TYPES = {
   CREATE: 'create',
   EDIT: 'edit',
   DELETE: 'delete',
-  MANAGE: 'manage'
+  MANAGE: 'manage',
+  ALL: 'all'
 } as const;
 
 // Derive types from const objects
@@ -53,6 +55,9 @@ export const CORE_PERMISSIONS = {
   // Profile
   VIEW_PROFILE: `${ACTION_TYPES.VIEW}:${RESOURCE_TYPES.PROFILE}` as Permission,
   EDIT_PROFILE: `${ACTION_TYPES.EDIT}:${RESOURCE_TYPES.PROFILE}` as Permission,
+
+    // Super Admin Permission
+    MANAGE_ALL: `${ACTION_TYPES.ALL}:${RESOURCE_TYPES.ALL}` as Permission
 } as const;
 
 // Helper functions

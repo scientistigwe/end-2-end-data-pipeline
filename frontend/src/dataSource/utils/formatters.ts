@@ -1,4 +1,4 @@
-import { formatDate, formatBytes } from '@/common';
+import { dateUtils, formatBytes } from '@/common';
 import type { 
   DataSourceMetadata, 
   DataSourceType,
@@ -39,10 +39,10 @@ interface FormattedMetadata extends Omit<DataSourceMetadata, 'stats'> {
 export const formatSourceMetadata = (metadata: DataSourceMetadata): FormattedMetadata => {
   const formattedMetadata: FormattedMetadata = {
     ...metadata,
-    createdAt: formatDate(metadata.createdAt),
-    updatedAt: formatDate(metadata.updatedAt),
-    lastSync: metadata.lastSync ? formatDate(metadata.lastSync) : undefined,
-    nextSync: metadata.nextSync ? formatDate(metadata.nextSync) : undefined,
+    createdAt: dateUtils.formatDate(metadata.createdAt),
+    updatedAt: dateUtils.formatDate(metadata.updatedAt),
+    lastSync: metadata.lastSync ? dateUtils.formatDate(metadata.lastSync) : undefined,
+    nextSync: metadata.nextSync ? dateUtils.formatDate(metadata.nextSync) : undefined,
   };
 
   if (metadata.stats) {
@@ -50,7 +50,7 @@ export const formatSourceMetadata = (metadata: DataSourceMetadata): FormattedMet
     formattedMetadata.formattedStats = {
       rowCount: metadata.stats.rowCount,
       formattedSize: metadata.stats.size ? formatBytes(metadata.stats.size) : undefined,
-      lastUpdated: metadata.stats.lastUpdated ? formatDate(metadata.stats.lastUpdated) : undefined
+      lastUpdated: metadata.stats.lastUpdated ? dateUtils.formatDate(metadata.stats.lastUpdated) : undefined
     };
   }
 

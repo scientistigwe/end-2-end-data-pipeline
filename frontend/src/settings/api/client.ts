@@ -1,6 +1,6 @@
-import { axiosClient } from '@/common/api/client/baseClient';
+import { BaseClient } from '@/common/api/client/baseClient';
 
-class SettingsApiClient extends axiosClient {
+class SettingsApiClient extends BaseClient {
   constructor() {
     super();
   }

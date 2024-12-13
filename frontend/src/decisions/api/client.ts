@@ -1,10 +1,10 @@
 // src/decisions/api/client.ts
-import { AxiosClient } from '../../common/api/client/baseClient';
+import { BaseClient } from '../../common/api/client/baseClient';
 import { API_CONFIG } from './config';
 import type { AxiosRequestConfig } from 'axios';
 import type { ApiRequestConfig } from '../../common/types/api';
 
-export class DecisionsApiClient extends AxiosClient {
+export class DecisionsApiClient extends BaseClient {
     constructor() {
     const config: AxiosRequestConfig = {
       baseURL: API_CONFIG.BASE_URL,

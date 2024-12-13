@@ -1,5 +1,5 @@
 // src/decisions/utils/decisionUtils.ts
-import { formatDate } from '../../common/utils/date/dateUtils';
+import { dateUtils } from '../../common/utils/date/dateUtils';
 import { DECISION_CONFIG, DECISION_MESSAGES } from '../constants';
 import type { 
   Decision, 
@@ -71,7 +71,7 @@ export const sortDecisionsByPriority = (decisions: Decision[]): Decision[] => {
 export const formatDecisionHistory = (history: DecisionHistoryEntry[]): DecisionHistoryEntry[] => {
   return history.map(entry => ({
     ...entry,
-    timestamp: formatDate(entry.timestamp),
+    timestamp: dateUtils.formatDate(entry.timestamp),
     changes: entry.changes?.map(change => ({
       ...change,
       oldValue: formatHistoryValue(change.oldValue),
@@ -125,7 +125,7 @@ export const analyzeDecisionImpact = (details: DecisionDetails): {
 export const generateDecisionSummary = (decision: DecisionDetails): string => {
   const impact = analyzeDecisionImpact(decision);
   const deadline = decision.deadline ? 
-    `Deadline: ${formatDate(decision.deadline)}` : 
+    `Deadline: ${dateUtils.formatDate(decision.deadline)}` : 
     'No deadline set';
 
   return `

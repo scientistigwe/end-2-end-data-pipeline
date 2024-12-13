@@ -8,7 +8,7 @@ export * from './hooks';
 export * from './utils';
 
 // Export Axios client
-export { axiosClient } from './api/client';
+export { BaseClient } from './api/client';
 
 // Export types
 export * from './types';

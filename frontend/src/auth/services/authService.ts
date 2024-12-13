@@ -1,17 +1,15 @@
-// src/auth/services/authService.ts
-import { authApi } from '../api/authApi';
-import { authUtils } from '../utils/authUtils';
+// auth/services/authService.ts
+import { authApi } from '../api';
+import { storageUtils } from '@/common/utils/storage/storageUtils';
 import type { 
   LoginCredentials, 
   RegisterData, 
   AuthTokens 
-} from '../types/auth';
+} from '../types';
 import type { User } from '@/common/types/user';
+import type { ApiResponse } from '@/common/types/api';
 
-interface AuthResult {
-  user: User;
-  tokens: AuthTokens;
-}
+const AUTH_STORAGE_KEY = 'auth_tokens';
 
 class AuthService {
   private static instance: AuthService;
@@ -25,67 +23,42 @@ class AuthService {
     return AuthService.instance;
   }
 
-  async login(credentials: LoginCredentials): Promise<AuthResult> {
+  async login(credentials: LoginCredentials): Promise<ApiResponse<AuthTokens & { user: User }>> {
     try {
       const response = await authApi.login(credentials);
-      const { user, ...tokens } = response.data;
-      authUtils.setTokens(tokens);
-      return { user, tokens };
+      if (response.data) {
+        storageUtils.setItem(AUTH_STORAGE_KEY, response.data);
+      }
+      return response;
     } catch (error) {
-      authUtils.clearTokens();
+      storageUtils.removeItem(AUTH_STORAGE_KEY);
       throw error;
     }
   }
 
-  async register(data: RegisterData): Promise<User> {
-    const response = await authApi.register(data);
-    return response.data.user;
+  async register(data: RegisterData): Promise<ApiResponse<{ user: User }>> {
+    return authApi.register(data);
   }
 
-  async refreshSession(): Promise<AuthTokens | null> {
-    const currentTokens = authUtils.getTokens();
-    if (!currentTokens?.refreshToken) return null;
-
-    try {
-      const response = await authApi.refreshToken(currentTokens.refreshToken);
-      const newTokens = response.data;
-      authUtils.setTokens(newTokens);
-      return newTokens;
-    } catch (error) {
-      authUtils.clearTokens();
-      return null;
-    }
-  }
-
-  async validateSession(): Promise<boolean> {
-    const tokens = authUtils.getTokens();
-    if (!tokens?.accessToken) return false;
-
-    if (authUtils.isTokenExpired(tokens.accessToken)) {
-      const newTokens = await this.refreshSession();
-      return !!newTokens;
-    }
-
-    return true;
-  }
-
-  async getCurrentUser(): Promise<User | null> {
-    try {
-      const response = await authApi.getCurrentUser();
-      return response.data;
-    } catch {
-      return null;
-    }
+  async getCurrentUser(): Promise<ApiResponse<User>> {
+    return authApi.getCurrentUser();
   }
 
   async logout(): Promise<void> {
     try {
       await authApi.logout();
     } finally {
-      authUtils.clearTokens();
+      storageUtils.removeItem(AUTH_STORAGE_KEY);
     }
+  }
+
+  getStoredTokens(): AuthTokens | null {
+    return storageUtils.getItem(AUTH_STORAGE_KEY);
+  }
+
+  clearStoredTokens(): void {
+    storageUtils.removeItem(AUTH_STORAGE_KEY);
   }
 }
 
 export const authService = AuthService.getInstance();
-

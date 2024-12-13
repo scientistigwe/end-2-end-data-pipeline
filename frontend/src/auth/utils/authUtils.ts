@@ -1,10 +1,13 @@
-// src/auth/utils/authUtils.ts
+// auth/utils/authUtils.ts
 import { jwtDecode } from 'jwt-decode';
-import type { AuthTokens } from '../types/auth';
-import { User, UserRole } from '@/common/types/user';
-import type { Permission } from '../types/auth';
+import { tokenUtils } from '@/common/utils/token/tokenUtils';
+import { storageUtils } from '@/common/utils/storage/storageUtils';
+import type { AuthTokens, Permission } from '../types';
+import type { User, UserRole } from '@/common/types/user';
 
-interface DecodedToken {
+const AUTH_STORAGE_KEY = 'auth_tokens';
+
+interface AuthDecodedToken {
   sub: string;
   exp: number;
   roles: UserRole[];
@@ -14,37 +17,28 @@ interface DecodedToken {
   lastName?: string;
 }
 
-export const AUTH_STORAGE_KEY = 'auth_tokens';
-
 export const authUtils = {
-  setTokens(tokens: AuthTokens): void {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(tokens));
+  getTokens(): AuthTokens | null {
+    return storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
   },
 
-  getTokens(): AuthTokens | null {
-    const tokens = localStorage.getItem(AUTH_STORAGE_KEY);
-    return tokens ? JSON.parse(tokens) : null;
+  setTokens(tokens: AuthTokens, remember: boolean): void {
+    storageUtils.setItem(AUTH_STORAGE_KEY, tokens, {
+      storage: remember ? 'local' : 'session'
+    });
   },
 
   clearTokens(): void {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  },
-
-  isTokenExpired(token: string): boolean {
-    try {
-      const decoded = jwtDecode<DecodedToken>(token);
-      return (decoded.exp * 1000) <= Date.now() + 10000;
-    } catch {
-      return true;
-    }
+    // Clear from both storages to ensure complete cleanup
+    storageUtils.removeItem(AUTH_STORAGE_KEY, { storage: 'local' });
+    storageUtils.removeItem(AUTH_STORAGE_KEY, { storage: 'session' });
   },
 
   getUserFromToken(token: string): Partial<User> | null {
     try {
-      const decoded = jwtDecode<DecodedToken>(token);
-      
-      // Ensure role is of type UserRole
+      const decoded = jwtDecode<AuthDecodedToken>(token);
       const role = decoded.roles[0];
+      
       if (!this.isValidUserRole(role)) {
         throw new Error('Invalid role in token');
       }
@@ -66,63 +60,28 @@ export const authUtils = {
     return ['admin', 'manager', 'user'].includes(role);
   },
 
-  isRefreshTokenValid(token: string): boolean {
-    try {
-      const decoded = jwtDecode<DecodedToken>(token);
-      return (decoded.exp * 1000) > Date.now() + 60000;
-    } catch {
-      return false;
-    }
-  },
-
-  parseAuthHeader(header: string): string | null {
-    if (!header || !header.startsWith('Bearer ')) {
-      return null;
-    }
-    return header.substring(7);
-  },
-
-  createAuthHeader(token: string): string {
-    return `Bearer ${token}`;
-  },
-
-  persistSession(tokens: AuthTokens, remember: boolean = false): void {
-    if (remember) {
-      this.setTokens(tokens);
-    } else {
-      sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(tokens));
-    }
-  },
-
-  clearSession(): void {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
-  },
-
-  // Type guard for AuthTokens
-  isAuthTokens(obj: unknown): obj is AuthTokens {
-    return (
-      typeof obj === 'object' &&
-      obj !== null &&
-      'accessToken' in obj &&
-      'refreshToken' in obj &&
-      'expiresIn' in obj
-    );
-  },
-
-  // Validate token format without decoding
-  isValidTokenFormat(token: string): boolean {
-    const parts = token.split('.');
-    return parts.length === 3 && parts.every(part => part.length > 0);
-  },
-  
-  checkPermission: (userPermissions: Permission[], requiredPermission: Permission): boolean => {
+  checkPermission(userPermissions: Permission[], requiredPermission: Permission): boolean {
     return userPermissions.includes(requiredPermission);
   },
-  
-  checkPermissions: (userPermissions: Permission[], requiredPermissions: Permission[]): boolean => {
+
+  checkPermissions(userPermissions: Permission[], requiredPermissions: Permission[]): boolean {
     return requiredPermissions.every(permission => 
       userPermissions.includes(permission)
     );
+  },
+
+  isTokenExpired(token: string): boolean {
+    return tokenUtils.isTokenExpired(token);
+  },
+
+  createAuthHeader(token: string): string {
+    return tokenUtils.createAuthHeader(token);
+  },
+
+  parseAuthHeader(header: string): string | null {
+    return tokenUtils.parseAuthHeader(header);
   }
 };
+
+// Export types if needed by other modules
+export type { AuthDecodedToken };

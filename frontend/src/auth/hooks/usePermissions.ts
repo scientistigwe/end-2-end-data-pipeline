@@ -1,84 +1,62 @@
-// src/auth/hooks/usePermissions.ts
+// auth/hooks/usePermissions.ts
 import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
-import { selectUser, selectUserPermissions, selectUserRole } from '../store/selectors';
-import { USER_ROLES } from '../constants';
-import type { Permission } from '../types/permissions';
-import { RoleType } from '../types/auth';
+import { selectUser, selectUserPermissions } from '../store/selectors';
+import { CORE_PERMISSIONS } from '../types/permissions';
+import type { Permission } from '../types';
 
 export interface UsePermissionsReturn {
-  role: string | undefined;
-  permissions: string[];
-  isAdmin: boolean;
+  permissions: Permission[];
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasAllPermissions: (permissions: Permission[]) => boolean;
-  checkPermissions: (config: {
-    permissions: Permission[];
-    requireAll?: boolean;
-  }) => boolean;
 }
 
 export function usePermissions(): UsePermissionsReturn {
   const user = useSelector(selectUser);
-  const role = useSelector(selectUserRole) as RoleType | undefined;
-  const permissions = useSelector(selectUserPermissions);
-  
-  const isAdmin = useMemo(() => role === USER_ROLES.ADMIN, [role]);
+  // Cast the permissions to Permission[] type since we know they're valid
+  const userPermissions = useSelector(selectUserPermissions) as Permission[];
+
+  const isSuperAdmin = useMemo(() => 
+    userPermissions.includes(CORE_PERMISSIONS.MANAGE_ALL),
+    [userPermissions]
+  );
 
   const hasPermission = useMemo(() => 
     (permission: Permission): boolean => {
       if (!user) return false;
-      if (isAdmin) return true;
-      return permissions.includes(permission);
+      if (isSuperAdmin) return true;
+      return userPermissions.includes(permission);
     },
-    [user, isAdmin, permissions]
+    [user, userPermissions, isSuperAdmin]
   );
 
   const hasAnyPermission = useMemo(() => 
     (requiredPermissions: Permission[]): boolean => {
       if (!user) return false;
-      if (isAdmin) return true;
+      if (isSuperAdmin) return true;
       return requiredPermissions.some(permission => 
-        hasPermission(permission)
+        userPermissions.includes(permission)
       );
     },
-    [user, isAdmin, hasPermission]
+    [user, userPermissions, isSuperAdmin]
   );
 
   const hasAllPermissions = useMemo(() => 
     (requiredPermissions: Permission[]): boolean => {
       if (!user) return false;
-      if (isAdmin) return true;
+      if (isSuperAdmin) return true;
       return requiredPermissions.every(permission => 
-        hasPermission(permission)
+        userPermissions.includes(permission)
       );
     },
-    [user, isAdmin, hasPermission]
-  );
-
-  const checkPermissions = useMemo(() => 
-    ({ permissions: requiredPermissions, requireAll = true }: {
-      permissions: Permission[];
-      requireAll?: boolean;
-    }): boolean => {
-      if (!user) return false;
-      if (isAdmin) return true;
-      return requireAll 
-        ? hasAllPermissions(requiredPermissions)
-        : hasAnyPermission(requiredPermissions);
-    },
-    [user, isAdmin, hasAllPermissions, hasAnyPermission]
+    [user, userPermissions, isSuperAdmin]
   );
 
   return {
-    role,
-    permissions,
-    isAdmin,
+    permissions: userPermissions,
     hasPermission,
     hasAnyPermission,
-    hasAllPermissions,
-    checkPermissions
+    hasAllPermissions
   };
 }
-

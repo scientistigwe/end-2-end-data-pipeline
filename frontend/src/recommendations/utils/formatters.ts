@@ -1,5 +1,5 @@
 // src/recommendations/utils/formatters.ts
-import { formatDate } from '../../common/utils/date/dateUtils';
+import { dateUtils } from '../../common/utils/date/dateUtils';
 import type {
   Recommendation,
   RecommendationType,
@@ -23,7 +23,7 @@ export const formatConfidence = (confidence: number): string => {
 };
 
 export const formatRecommendationSummary = (recommendation: Recommendation): string => {
-  const formattedDate = formatDate(recommendation.createdAt);
+  const formattedDate = dateUtils.formatDate(recommendation.createdAt);
   return `${formatRecommendationType(recommendation.type)} - ${recommendation.title} (${formatConfidence(recommendation.confidence)}) - Created: ${formattedDate}`;
 };
 

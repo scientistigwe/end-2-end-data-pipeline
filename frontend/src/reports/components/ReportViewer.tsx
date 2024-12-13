@@ -5,6 +5,7 @@ import { Button } from "@/common/components/ui/button";
 import { Download, RefreshCw } from "lucide-react";
 import { useReportMetadata } from "../hooks/useReportMetadata";
 import type { Report } from "../types/report";
+import { dateUtils } from "@/common";
 
 interface ReportViewerProps {
   report: Report;
@@ -27,7 +28,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
         <div>
           <h2 className="text-2xl font-bold">{report.config.name}</h2>
           <p className="text-sm text-gray-500">
-            Generated: {formatDateTime(report.createdAt)}
+          Generated: {dateUtils.formatDate(report.createdAt, { includeTime: true })}
           </p>
         </div>
         <div className="flex space-x-2">

@@ -4,7 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/common/components/ui/Popover";
+} from "@/common/components/ui/popover";
 import { Button } from "@/common/components/ui/button";
 import { Input } from "@/common/components/ui/inputs/input";
 import { cn } from "@/common/utils/cn";

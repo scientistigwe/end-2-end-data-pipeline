@@ -1,8 +1,9 @@
-// src/components/analysis/AnalysisStatus.tsx
+// src/analysis/components/status/AnalysisStatus.tsx
 import React from "react";
-import { Progress } from "../../../../../components/ui/progress";
-import { Card, CardHeader, CardContent } from "../../../../../components/ui/card";
+import { Progress } from "@/common/components/ui/progress";
+import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { AlertCircle, CheckCircle, Clock, Play } from "lucide-react";
+import { dateUtils } from "@/common";
 import type { AnalysisResult } from "../../types/analysis";
 
 interface AnalysisStatusProps {
@@ -46,12 +47,20 @@ export const AnalysisStatus: React.FC<AnalysisStatusProps> = ({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span>Started</span>
-              <span>{new Date(analysis.startedAt).toLocaleString()}</span>
+              <span>
+                {dateUtils.formatDate(analysis.startedAt, {
+                  includeTime: true,
+                })}
+              </span>
             </div>
             {analysis.completedAt && (
               <div className="flex justify-between">
                 <span>Completed</span>
-                <span>{new Date(analysis.completedAt).toLocaleString()}</span>
+                <span>
+                  {dateUtils.formatDate(analysis.completedAt, {
+                    includeTime: true,
+                  })}
+                </span>
               </div>
             )}
             {analysis.error && (

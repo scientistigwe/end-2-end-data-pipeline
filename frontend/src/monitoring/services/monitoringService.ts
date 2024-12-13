@@ -1,7 +1,7 @@
 // src/monitoring/services/monitoringService.ts
 import { MonitoringApi } from '../api/monitoringApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import { formatDate } from '@/common/utils/date/dateUtils';
+import { dateUtils } from '@/common/utils/date/dateUtils';
 import { MONITORING_MESSAGES } from '../constants';
 import type {
   MonitoringConfig,
@@ -103,17 +103,17 @@ export class MonitoringService {
   private static transformMetrics(metrics: MetricsData): MetricsData {
     return {
       ...metrics,
-      timestamp: formatDate(metrics.timestamp)
+      timestamp: dateUtils.formatDate(metrics.timestamp)
     };
   }
 
   private static transformHealth(health: SystemHealth): SystemHealth {
     return {
       ...health,
-      lastChecked: formatDate(health.lastChecked),
+      lastChecked: dateUtils.formatDate(health.lastChecked),
       components: health.components.map(component => ({
         ...component,
-        lastChecked: component.lastChecked ? formatDate(component.lastChecked) : undefined
+        lastChecked: component.lastChecked ? dateUtils.formatDate(component.lastChecked) : undefined
       }))
     };
   }
@@ -121,15 +121,15 @@ export class MonitoringService {
   private static transformResourceUsage(usage: ResourceUsage): ResourceUsage {
     return {
       ...usage,
-      timestamp: formatDate(usage.timestamp)
+      timestamp: dateUtils.formatDate(usage.timestamp)
     };
   }
 
   private static transformAlert(alert: Alert): Alert {
     return {
       ...alert,
-      timestamp: formatDate(alert.timestamp),
-      resolvedAt: alert.resolvedAt ? formatDate(alert.resolvedAt) : undefined
+      timestamp: dateUtils.formatDate(alert.timestamp),
+      resolvedAt: alert.resolvedAt ? dateUtils.formatDate(alert.resolvedAt) : undefined
     };
   }
 

@@ -2,7 +2,7 @@
 import { AuthClient } from './authClient';
 import { AUTH_API_CONFIG } from './config';
 import type { ApiResponse } from '@/common/types/api';
-import type { StorageUtils } from '@/common/api/utils/storage';
+import { storageUtils } from '@/common/utils/storage/storageUtils';
 import type {
   AuthTokens,
   LoginCredentials,
@@ -23,7 +23,7 @@ class AuthApi extends AuthClient {
     );
     
     if (response.data?.accessToken) {
-      StorageUtils.setItem(AUTH_STORAGE_KEY, response.data);
+      storageUtils.setItem(AUTH_STORAGE_KEY, response.data);
     }
     
     return response;
@@ -35,7 +35,7 @@ class AuthApi extends AuthClient {
 
   async logout(): Promise<ApiResponse<void>> {
     const response = await this.post<void>(AUTH_API_CONFIG.endpoints.LOGOUT);
-    StorageUtils.removeItem(AUTH_STORAGE_KEY);
+    storageUtils.removeItem(AUTH_STORAGE_KEY);
     return response;
   }
 

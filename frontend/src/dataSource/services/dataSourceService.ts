@@ -1,7 +1,7 @@
 // src/dataSource/services/dataSourceService.ts
 import { dataSourceApi } from '../api/dataSourceApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import { formatDate } from '@/common';
+import { dateUtils } from '@/common';
 import type {
   DataSourceConfig,
   DataSourceMetadata,
@@ -149,10 +149,10 @@ export class DataSourceService {
   private static transformMetadata(metadata: DataSourceMetadata): DataSourceMetadata {
     return {
       ...metadata,
-      createdAt: formatDate(metadata.createdAt),
-      updatedAt: formatDate(metadata.updatedAt),
-      lastSync: metadata.lastSync ? formatDate(metadata.lastSync) : undefined,
-      nextSync: metadata.nextSync ? formatDate(metadata.nextSync) : undefined
+      createdAt: dateUtils.formatDate(metadata.createdAt),
+      updatedAt: dateUtils.formatDate(metadata.updatedAt),
+      lastSync: metadata.lastSync ? dateUtils.formatDate(metadata.lastSync) : undefined,
+      nextSync: metadata.nextSync ? dateUtils.formatDate(metadata.nextSync) : undefined
     };
   }
 }

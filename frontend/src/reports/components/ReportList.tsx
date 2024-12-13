@@ -3,9 +3,9 @@ import React from "react";
 import { Card } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Button } from "@/common/components/ui/button";
-import { Download, Trash2, Calendar, MoreVertical } from "lucide-react";
+import { Download, Trash2, Calendar } from "lucide-react";
 import type { Report } from "../types/report";
-import { formatDateTime } from "../utils/formatters";
+import { dateUtils } from "@/common/utils/date/dateUtils";
 
 interface ReportListProps {
   reports: Report[];
@@ -38,7 +38,7 @@ export const ReportList: React.FC<ReportListProps> = ({
                 Type: {report.config.type}
               </p>
               <p className="text-sm text-gray-500">
-                Created: {formatDateTime(report.createdAt)}
+                Created: {dateUtils.formatDate(report.createdAt, { includeTime: true })}
               </p>
             </div>
 

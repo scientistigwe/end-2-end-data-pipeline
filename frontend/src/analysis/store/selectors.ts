@@ -1,6 +1,6 @@
 // src/analysis/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '@/store/store';
+import type { RootState } from '@/store/rootReducer';
 
 export const selectActiveAnalyses = (state: RootState) => 
   state.analysis.activeAnalyses;

@@ -1,7 +1,7 @@
 // src/decisions/services/decisionService.ts
 import { decisionsApi } from '../api/decisionsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import { formatDate } from '../../common/utils/date/dateUtils';
+import { dateUtils } from '../../common/utils/date/dateUtils';
 import type {
   Decision,
   DecisionDetails,
@@ -107,9 +107,9 @@ export class DecisionService {
   private static transformDecision(decision: Decision): Decision {
     return {
       ...decision,
-      createdAt: formatDate(decision.createdAt),
-      updatedAt: formatDate(decision.updatedAt),
-      deadline: decision.deadline ? formatDate(decision.deadline) : undefined
+      createdAt: dateUtils.formatDate(decision.createdAt),
+      updatedAt: dateUtils.formatDate(decision.updatedAt),
+      deadline: decision.deadline ? dateUtils.formatDate(decision.deadline) : undefined
     };
   }
 
@@ -124,14 +124,14 @@ export class DecisionService {
   private static transformHistoryEntry(entry: DecisionHistoryEntry): DecisionHistoryEntry {
     return {
       ...entry,
-      timestamp: formatDate(entry.timestamp)
+      timestamp: dateUtils.formatDate(entry.timestamp)
     };
   }
 
   private static transformComment(comment: DecisionComment): DecisionComment {
     return {
       ...comment,
-      timestamp: formatDate(comment.timestamp)
+      timestamp: dateUtils.formatDate(comment.timestamp)
     };
   }
 }

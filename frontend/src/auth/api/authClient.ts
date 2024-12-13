@@ -1,8 +1,9 @@
 // auth/api/authClient.ts
 import { BaseClient } from '@/common/api/client/baseClient';
 import type { InternalAxiosRequestConfig } from 'axios';
+import type { ApiResponse } from '@/common/types/api';
 import { AUTH_API_CONFIG } from './config';
-import { StorageUtils } from '@/common/utils/storage';
+import { storageUtils } from '@/common/utils/storage/storageUtils';
 import type { AuthTokens } from '../types';
 
 const AUTH_STORAGE_KEY = 'auth_tokens';
@@ -20,7 +21,7 @@ export class AuthClient extends BaseClient {
     
     this.client.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        const tokens = StorageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
+        const tokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
         if (tokens?.accessToken) {
           config.headers.set('Authorization', `Bearer ${tokens.accessToken}`);
         }
@@ -35,17 +36,17 @@ export class AuthClient extends BaseClient {
         
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
-          const tokens = StorageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
+          const tokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
           
           if (tokens?.refreshToken) {
             try {
               const response = await this.refreshToken(tokens.refreshToken);
               const newTokens = response.data;
-              StorageUtils.setItem(AUTH_STORAGE_KEY, newTokens);
+              storageUtils.setItem(AUTH_STORAGE_KEY, newTokens);
               originalRequest.headers.set('Authorization', `Bearer ${newTokens.accessToken}`);
               return this.client(originalRequest);
             } catch {
-              StorageUtils.removeItem(AUTH_STORAGE_KEY);
+              storageUtils.removeItem(AUTH_STORAGE_KEY);
               window.dispatchEvent(new CustomEvent('auth:sessionExpired'));
             }
           }
@@ -55,8 +56,7 @@ export class AuthClient extends BaseClient {
     );
   }
 
-  private async refreshToken(token: string): Promise<ApiResponse<AuthTokens>> {
+  public async refreshToken(token: string): Promise<ApiResponse<AuthTokens>> {
     return this.post(AUTH_API_CONFIG.endpoints.REFRESH, { token });
   }
 }
-

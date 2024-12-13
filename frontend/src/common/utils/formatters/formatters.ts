@@ -7,3 +7,4 @@ export const formatEndpoint = (url: string, params: Record<string, string>): str
     return formattedEndpoint;
   };
   
+

@@ -1,7 +1,7 @@
 // src/components/analysis/QualityStatus.tsx
 import React from "react";
-import { Card, CardHeader, CardContent } from "../../../../../components/ui/card";
-import { Badge } from "../../../../../components/ui/badge";
+import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
+import { Badge } from "@/common/components/ui/badge";
 import type { QualityReport as QualityReportType } from "../../types/analysis";
 
 interface QualityReportProps {
@@ -9,7 +9,7 @@ interface QualityReportProps {
   className?: string;
 }
 
-export const QualityReport: React.FC<QualityReportProps> = ({
+export const QualityStatus: React.FC<QualityReportProps> = ({
   report,
   className = "",
 }) => {

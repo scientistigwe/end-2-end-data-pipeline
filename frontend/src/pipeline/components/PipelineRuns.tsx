@@ -2,7 +2,8 @@ import React from "react";
 import { Card } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { usePipelineRuns } from "../hooks/usePipelineRuns";
-import { getStatusColor, formatDuration } from "../utils/formatters";
+import { getStatusColor } from "../utils/formatters";
+import { dateUtils } from "@/common";
 
 interface PipelineRunsProps {
   pipelineId: string;
@@ -72,7 +73,7 @@ export const PipelineRuns: React.FC<PipelineRunsProps> = ({
                 Avg Duration
               </h4>
               <p className="text-2xl font-bold">
-                {formatDuration(stats.averageDuration)}
+                {dateUtils.formatDetailedDuration(stats.averageDuration)}
               </p>
             </div>
           </div>
@@ -92,16 +93,16 @@ export const PipelineRuns: React.FC<PipelineRunsProps> = ({
                 </span>
               </div>
               <div className="text-sm text-gray-600">
-                <p>Started: {new Date(run.startedAt).toLocaleString()}</p>
+                <p>Started: {dateUtils.formatDate(run.startedAt, { includeTime: true })}</p>
                 {run.completedAt && (
-                  <p>Completed: {new Date(run.completedAt).toLocaleString()}</p>
+                  <p>Completed: {dateUtils.formatDate(run.completedAt, { includeTime: true })}</p>
                 )}
               </div>
             </div>
 
             <div className="text-right">
               <p className="text-sm font-medium">
-                Duration: {formatDuration(run.duration || 0)}
+                Duration: {dateUtils.formatDetailedDuration(run.duration || 0)}
               </p>
               {run.error && (
                 <p className="text-sm text-red-600 mt-2">
@@ -125,7 +126,7 @@ export const PipelineRuns: React.FC<PipelineRunsProps> = ({
                   <span className="text-sm">{step.stepId}</span>
                   {step.duration && (
                     <span className="text-sm text-gray-500">
-                      ({formatDuration(step.duration)})
+                      ({dateUtils.formatDetailedDuration(step.duration)})
                     </span>
                   )}
                   {step.error && (

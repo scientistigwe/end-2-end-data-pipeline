@@ -1,9 +1,9 @@
 // src/recommendations/api/client.ts
-import { AxiosClient } from '../../common/api/client/baseClient';
+import { BaseClient } from '../../common/api/client/baseClient';
 import { API_CONFIG } from './config';
 import type { AxiosRequestConfig } from 'axios';
 
-export class RecommendationsApiClient extends AxiosClient {
+export class RecommendationsApiClient extends BaseClient {
   constructor() {
     const config: AxiosRequestConfig = {
       baseURL: API_CONFIG.BASE_URL,

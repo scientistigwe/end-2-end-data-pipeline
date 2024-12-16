@@ -1,8 +1,11 @@
-// src/services/api/config.ts
+// src/common/api/config.ts
+import type { 
+  AxiosRequestConfig, 
+  AxiosProgressEvent 
+} from 'axios';
 
-// In your API_CONFIG
 export const API_CONFIG = {
-  BASE_URL: process.env.REACT_APP_API_URL || '/api/v1',
+  BASE_URL: import.meta.env.REACT_APP_API_URL || '/api/v1',
   TIMEOUT: 30000,
   RETRY_COUNT: 3,
   DEFAULT_HEADERS: {
@@ -90,7 +93,14 @@ export const API_CONFIG = {
       START: '/pipelines/:id/start',
       STOP: '/pipelines/:id/stop',
       STATUS: '/pipelines/:id/status',
-      LOGS: '/pipelines/:id/logs'
+      LOGS: '/pipelines/:id/logs',
+      PAUSE: '/pipelines/pause',
+      RESUME: '/pipelines/resume',
+      RETRY: '/pipelines/retry',
+      METRICS: '/pipelines/metrics',
+      RUNS: '/pipelines/runs',
+      VALIDATE: '/pipelines/validate'
+
     },
 
     // Analysis endpoints
@@ -134,12 +144,16 @@ export const API_CONFIG = {
       STATUS: '/reports/:id/status',
       DELETE: '/reports/:id',
       EXPORT: '/reports/:id/export',
-      SCHEDULE: '/reports/schedule'
+      SCHEDULE: '/reports/schedule',
+      METADATA: '/reports/:id/metadata',
+      PREVIEW: '/reports/:id/preview',
+      TEMPLATES: '/reports/templates',
+      UPDATE: '/reports/update'
     },
     
     // Recommendations endpoints
     RECOMMENDATIONS: {
-      LIST: '/recommendations/pipeline/:id',
+      LIST: '/recommendations',
       DETAILS: '/recommendations/:id',
       APPLY: '/recommendations/:id/apply',
       STATUS: '/recommendations/:id/status',
@@ -149,23 +163,43 @@ export const API_CONFIG = {
     
     // Decisions endpoints
     DECISIONS: {
-      LIST: '/decisions/pipeline/:id',
+      LIST: '/decisions',
       DETAILS: '/decisions/:id',
       MAKE: '/decisions/:id/make',
       DEFER: '/decisions/:id/defer',
       HISTORY: '/decisions/pipeline/:id/history',
       ANALYZE_IMPACT: '/decisions/:id/options/:optionId/impact'
     },
+
+    // Settings endpoints
+    SETTINGS: {
+        PROFILE: '/settings/profile',
+        PREFERENCES: '/settings/preferences',
+        SECURITY: '/settings/security',
+        NOTIFICATIONS: '/settings/notifications',
+      APPEARANCE: '/settings/appearance',
+      VALIDATE: '/settings/validate',
+        RESET: '/settings/reset',
+    },
   }
 } as const;
 
-export const formatEndpoint = (endpoint: string, params: Record<string, string>): string => {
-  let formattedEndpoint = endpoint;
-  Object.entries(params).forEach(([key, value]) => {
-    formattedEndpoint = formattedEndpoint.replace(`:${key}`, value);
-  });
-  return formattedEndpoint;
-};
-
-// Helper type for endpoint parameters
+// Helper Types
 export type EndpointParams = Record<string, string>;
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  status: number;
+}
+
+export interface ApiRequestConfig extends Omit<AxiosRequestConfig, 'url' | 'method' | 'data'> {
+  routeParams?: EndpointParams;
+  onUploadProgress?: (progressEvent: AxiosProgressEvent) => void;  // Changed from ProgressEvent to AxiosProgressEvent
+}

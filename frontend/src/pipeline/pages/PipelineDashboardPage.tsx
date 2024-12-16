@@ -13,7 +13,7 @@ import { usePipeline } from "../hooks/usePipeline";
 import { useSelector } from "react-redux";
 import { selectPipelineStats } from "../store/selectors";
 
-export const DashboardPage: React.FC = () => {
+const PipelineDashboardPage: React.FC = () => {
   const { pipelines, isLoading } = usePipeline();
   const stats = useSelector(selectPipelineStats);
 
@@ -64,3 +64,5 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+
+export default PipelineDashboardPage;

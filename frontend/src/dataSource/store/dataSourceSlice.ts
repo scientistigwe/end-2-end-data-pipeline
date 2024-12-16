@@ -123,6 +123,7 @@ const dataSourceSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Fetch cases
       .addCase(fetchDataSources.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -139,6 +140,7 @@ const dataSourceSlice = createSlice({
         state.isLoading = false;
         state.error = action.error.message ?? 'Failed to fetch data sources';
       })
+      // Create cases
       .addCase(createDataSource.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -150,8 +152,9 @@ const dataSourceSlice = createSlice({
       })
       .addCase(createDataSource.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload ?? 'Failed to create data source';
+        state.error = typeof action.payload === 'string' ? action.payload : 'Failed to create data source';
       })
+      // Delete cases
       .addCase(deleteDataSource.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -167,11 +170,11 @@ const dataSourceSlice = createSlice({
         }
         state.error = null;
       })
-      .addCase(createDataSource.rejected, (state, action) => {
+      .addCase(deleteDataSource.rejected, (state, action) => {
         state.isLoading = false;
-        // Fix: Ensure we're handling string error properly
-        state.error = typeof action.payload === 'string' ? action.payload : 'Failed to create data source';
-      })  }
+        state.error = typeof action.payload === 'string' ? action.payload : 'Failed to delete data source';
+      });
+  }
 });
 
 export const {

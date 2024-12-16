@@ -83,7 +83,7 @@ const SOURCE_TYPES: SourceTypeConfig[] = [
   },
 ];
 
-export const DataSourcesPage: React.FC = () => {
+const DataSourcesPage: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const { type } = useParams<{ type?: string }>();
@@ -306,3 +306,5 @@ export const DataSourcesPage: React.FC = () => {
     </div>
   );
 };
+
+export default DataSourcesPage;

@@ -9,7 +9,7 @@ import type {
   RecommendationFilters 
 } from '../types/recommendations';
 
-import { RecommendationsApi } from '../api';
+import { recommendationsApi } from '../api';
 
 interface UseRecommendationsResult {
   recommendations: Recommendation[] | undefined;
@@ -63,7 +63,7 @@ export const useRecommendations = (
     async ({ recommendationId, reason }: { recommendationId: string; reason?: string }) => {
       try {
         // Make sure this method exists in RecommendationService
-        const response = await RecommendationsApi.dismissRecommendation(recommendationId, reason);
+        const response = await recommendationsApi.dismissRecommendation(recommendationId, reason);
         return response.data;
       } catch (error) {
         handleApiError(error);

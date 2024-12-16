@@ -5,7 +5,7 @@ import { ChangePasswordModal } from "../components/ChangePasswordModal";
 import { useModal } from "@/common/hooks/useModal";
 import { Card } from "@/common/components/ui/card";
 
-export const ProfilePage: React.FC = () => {
+const ProfilePage: React.FC = () => {
   const { open: openChangePassword } = useModal({ id: "change-password" });
 
   return (
@@ -28,3 +28,4 @@ export const ProfilePage: React.FC = () => {
   );
 };
 
+export default ProfilePage;

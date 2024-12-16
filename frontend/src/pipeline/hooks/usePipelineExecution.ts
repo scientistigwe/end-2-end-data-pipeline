@@ -1,13 +1,12 @@
 import { useMutation, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
-import { PipelineApi } from '../api/pipelineApi';
+import { pipelineApi } from '../api/pipelineApi';
 import { updatePipelineStatus } from '../store/pipelineSlice';
 import type { PipelineRun } from '../types/pipeline';
 
 export function usePipelineExecution(pipelineId: string) {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
-  const pipelineApi = new PipelineApi();
 
   const startPipeline = useMutation<
     PipelineRun,

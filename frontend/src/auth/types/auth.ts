@@ -1,6 +1,5 @@
 // auth/types/auth.ts
 import type { User } from '@/common/types/user';
-import type { Role } from './roles';
 
 // Core auth status
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'loading';
@@ -85,14 +84,23 @@ export interface AuthEvent {
 export interface ResetPasswordData {
   email: string;
   token: string;
+  password: string;
   newPassword: string;
+  confirmPassword: string;
 }
 
 export interface ChangePasswordData {
   currentPassword: string;
   newPassword: string;
+  confirmPassword: string;
 }
 
 export interface VerifyEmailData {
   token: string;
 }
+
+export interface AuthResponse extends AuthTokens {
+  user: User;
+}
+
+

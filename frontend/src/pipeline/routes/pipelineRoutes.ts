@@ -5,7 +5,7 @@ import { PipelineGuard } from '../components/PipelineGuard';
 
 // Lazy load pages
 const PipelinesPage = lazy(() => import('../pages/PipelinesPage'));
-const DashboardPage = lazy(() => import('../pages/DashboardPage'));
+const DashboardPage = lazy(() => import('../pages/PipelineDashboardPage'));
 const PipelineDetailsPage = lazy(() => import('../pages/PipelineDetailsPage'));
 const PipelineRunsPage = lazy(() => import('../pages/PipelineRunsPage'));
 const PipelineMetricsPage = lazy(() => import('../pages/PipelineMetricsPage'));

@@ -1,25 +1,52 @@
-// src/pipeline/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '../../store';
-import { PipelineState } from './pipelineSlice';
-import { PipelineStatus } from '../types/pipeline';
+import type { RootState } from '../../store/rootReducer';
+import type { 
+  Pipeline, 
+  PipelineStatus, 
+  PipelineRun, 
+  PipelineLogs, 
+  PipelineMetrics 
+} from '../types/pipeline';
+import type { PipelineState } from './pipelineSlice';
 
 // Base selectors
-export const selectPipelineState = (state: RootState) => state.pipeline;
-export const selectPipelines = (state: RootState) => state.pipeline.pipelines;
-export const selectSelectedPipelineId = (state: RootState) => 
-  state.pipeline.selectedPipelineId;
-export const selectPipelineFilters = (state: RootState) => state.pipeline.filters;
+export const selectPipelineState = (state: RootState): PipelineState => 
+  state.pipelines;
+
+export const selectPipelines = (state: RootState): Record<string, Pipeline> => 
+  state.pipelines?.pipelines || {};
+
+export const selectSelectedPipelineId = (state: RootState): string | null => 
+  state.pipelines?.selectedPipelineId || null;
+
+export const selectPipelineFilters = (state: RootState): PipelineState['filters'] => 
+  state.pipelines?.filters || {};
+
+export const selectPipelineRuns = (state: RootState): Record<string, PipelineRun[]> => 
+  state.pipelines?.runs || {};
+
+export const selectPipelineLogs = (state: RootState): Record<string, PipelineLogs> => 
+  state.pipelines?.logs || {};
+
+export const selectPipelineMetrics = (state: RootState): Record<string, PipelineMetrics[]> => 
+  state.pipelines?.metrics || {};
+
+export const selectIsLoading = (state: RootState): boolean => 
+  state.pipelines?.isLoading || false;
+
+export const selectError = (state: RootState): string | null => 
+  state.pipelines?.error || null;
 
 // Derived selectors
 export const selectSelectedPipeline = createSelector(
   [selectPipelines, selectSelectedPipelineId],
-  (pipelines, selectedId) => selectedId ? pipelines[selectedId] : null
+  (pipelines, selectedId): Pipeline | null => 
+    selectedId ? pipelines[selectedId] || null : null
 );
 
 export const selectFilteredPipelines = createSelector(
   [selectPipelines, selectPipelineFilters],
-  (pipelines, filters) => {
+  (pipelines, filters): Pipeline[] => {
     return Object.values(pipelines).filter(pipeline => {
       if (filters.status?.length && !filters.status.includes(pipeline.status)) {
         return false;
@@ -42,7 +69,7 @@ export const selectFilteredPipelines = createSelector(
 
 export const selectPipelinesByStatus = createSelector(
   [selectPipelines],
-  (pipelines) => {
+  (pipelines): Record<PipelineStatus, Pipeline[]> => {
     return Object.values(pipelines).reduce((acc, pipeline) => {
       if (!acc[pipeline.status]) {
         acc[pipeline.status] = [];
@@ -67,4 +94,22 @@ export const selectPipelineStats = createSelector(
         : 0
     };
   }
+);
+
+export const selectPipelineRunsByPipelineId = createSelector(
+  [selectPipelineRuns, (_state: RootState, pipelineId: string) => pipelineId],
+  (runs, pipelineId): PipelineRun[] => 
+    runs[pipelineId] || []
+);
+
+export const selectPipelineLogsByPipelineId = createSelector(
+  [selectPipelineLogs, (_state: RootState, pipelineId: string) => pipelineId],
+  (logs, pipelineId): PipelineLogs | null => 
+    logs[pipelineId] || null
+);
+
+export const selectPipelineMetricsByPipelineId = createSelector(
+  [selectPipelineMetrics, (_state: RootState, pipelineId: string) => pipelineId],
+  (metrics, pipelineId): PipelineMetrics[] => 
+    metrics[pipelineId] || []
 );

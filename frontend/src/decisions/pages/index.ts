@@ -1,5 +1,5 @@
 // src/decisions/pages/index.ts
-export * from './DashboardPage';
+export * from './DecisionDashboardPage';
 export * from './DecisionsPage';
 
 

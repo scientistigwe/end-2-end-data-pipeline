@@ -1,25 +1,25 @@
 // src/report/providers/ReportProvider.tsx
-import React, { useState, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { ReportContext } from '../context/ReportContext';
-import { reportsApi } from '../api/reportsApi';
-import { reportService } from '../services/reportService';
+import React, { useState, useCallback } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { ReportContext } from "../context/ReportContext";
+import { reportsApi } from "../api/reportsApi";
+import { reportService } from "../services/reportService";
 import {
   setSelectedReport,
   addReport,
   updateReport as updateReportState,
   removeReport,
-  setError,
-  setLoading
-} from '../store/reportSlice';
-import { selectSelectedReportId } from '../store/selectors';
+  setError
+} from "../store/reportSlice";
+import { selectSelectedReportId } from "../store/selectors";
 import type {
   Report,
   ReportConfig,
   ReportMetadata,
   ScheduleConfig,
-  ExportOptions
-} from '../types/report';
+  ExportOptions,
+  ReportStatus,
+} from "../types/report";
 
 interface ReportProviderProps {
   children: React.ReactNode;
@@ -31,150 +31,199 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setErrorState] = useState<string | null>(null);
 
-  // Report Selection
-  const setSelectedReportId = useCallback((id: string | null) => {
-    dispatch(setSelectedReport(id));
-  }, [dispatch]);
-
-  // Report Operations
-  const createReport = useCallback((config: ReportConfig) => {
-    setIsLoading(true);
-    setErrorState(null);
-    try {
-      const validationResult = reportService.validateReportConfig(config);
-      if (!validationResult.isValid) {
-        throw new Error(validationResult.errors.join(', '));
-      }
-
-      const report = reportsApi.createReport(config);
-      dispatch(addReport(report));
-      return report;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create report';
+  // Error Handler
+  const handleError = useCallback(
+    (error: unknown, fallbackMessage: string) => {
+      const message = error instanceof Error ? error.message : fallbackMessage;
       setErrorState(message);
       dispatch(setError(message));
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [dispatch]);
+      throw error;
+    },
+    [dispatch]
+  );
 
-  const updateReport = useCallback(async (id: string, updates: Partial<ReportConfig>) => {
-    setIsLoading(true);
-    try {
-      const report = await ReportsApi.updateReport(id, updates);
-      dispatch(updateReportState(report));
-      return report;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update report';
-      setErrorState(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [dispatch]);
+  // Report Selection
+  const setSelectedReportId = useCallback(
+    (id: string | null) => {
+      try {
+        dispatch(setSelectedReport(id));
+      } catch (err) {
+        handleError(err, "Failed to set selected report");
+      }
+    },
+    [dispatch, handleError]
+  );
 
-  const deleteReport = useCallback(async (id: string) => {
-    setIsLoading(true);
-    try {
-      await ReportsApi.deleteReport(id);
-      dispatch(removeReport(id));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete report';
-      setErrorState(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [dispatch]);
+  // Report Operations
+  const createReport = useCallback(
+    async (config: ReportConfig): Promise<Report> => {
+      setIsLoading(true);
+      setErrorState(null);
+      try {
+        const validationResult = reportService.validateReportConfig(config);
+        if (!validationResult.isValid) {
+          throw new Error(validationResult.errors.join(", "));
+        }
+
+        const response = await reportsApi.createReport(config);
+        const report = response.data;
+        dispatch(addReport(report));
+        return report;
+      } catch (err) {
+        return handleError(err, "Failed to create report");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dispatch, handleError]
+  );
+
+  const updateReport = useCallback(
+    async (id: string, updates: Partial<ReportConfig>): Promise<Report> => {
+      setIsLoading(true);
+      try {
+        const currentReport = await reportsApi.getReport(id);
+        const updatedConfig = { ...currentReport.data.config, ...updates };
+        const response = await reportsApi.updateReport(id, updatedConfig);
+        const updatedReport = response.data;
+        dispatch(updateReportState(updatedReport));
+        return updatedReport;
+      } catch (err) {
+        return handleError(err, "Failed to update report");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dispatch, handleError]
+  );
+
+  const deleteReport = useCallback(
+    async (id: string): Promise<void> => {
+      setIsLoading(true);
+      try {
+        await reportsApi.deleteReport(id);
+        dispatch(removeReport(id));
+      } catch (err) {
+        return handleError(err, "Failed to delete report");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dispatch, handleError]
+  );
 
   // Report Generation
-  const generateReport = useCallback(async (id: string) => {
-    setIsLoading(true);
-    try {
-      await ReportsApi.generateReport(id);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to generate report';
-      setErrorState(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const generateReport = useCallback(
+    async (id: string): Promise<void> => {
+      setIsLoading(true);
+      try {
+        const response = await reportsApi.getReport(id);
+        const report = response.data;
+        await reportsApi.waitForReportGeneration(id, {
+          onProgress: (progress) => {
+            dispatch(
+              updateReportState({
+                id,
+                progress,
+                status: "generating" as ReportStatus,
+              })
+            );
+          },
+        });
+      } catch (err) {
+        return handleError(err, "Failed to generate report");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dispatch, handleError]
+  );
 
-  const cancelGeneration = useCallback(async (id: string) => {
-    try {
-      await ReportsApi.cancelGeneration(id);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to cancel generation';
-      setErrorState(message);
-      throw err;
-    }
-  }, []);
+  const cancelGeneration = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        await reportsApi.cancelGeneration(id);
+        dispatch(
+          updateReportState({
+            id,
+            status: "cancelled" as ReportStatus,
+          })
+        );
+      } catch (err) {
+        return handleError(err, "Failed to cancel report generation");
+      }
+    },
+    [dispatch, handleError]
+  );
 
-  const getReportStatus = useCallback(async (id: string) => {
-    try {
-      const status = await ReportsApi.getReportStatus(id);
-      return status;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to get report status';
-      setErrorState(message);
-      throw err;
-    }
-  }, []);
+  const getReportStatus = useCallback(
+    async (id: string): Promise<ReportStatus> => {
+      try {
+        const response = await reportsApi.getReportStatus(id);
+        return response.data.status;
+      } catch (err) {
+        return handleError(err, "Failed to get report status");
+      }
+    },
+    [handleError]
+  );
 
   // Report Export
-  const exportReport = useCallback(async (id: string, options: ExportOptions) => {
-    try {
-      const { downloadUrl } = await ReportsApi.exportReport(id, options);
-      return downloadUrl;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to export report';
-      setErrorState(message);
-      throw err;
-    }
-  }, []);
+  const exportReport = useCallback(
+    async (id: string, options: ExportOptions): Promise<string> => {
+      try {
+        const response = await reportsApi.exportReport(id, options);
+        return response.data.downloadUrl;
+      } catch (err) {
+        return handleError(err, "Failed to export report");
+      }
+    },
+    [handleError]
+  );
 
   // Report Scheduling
-  const scheduleReport = useCallback(async (config: ScheduleConfig) => {
-    setIsLoading(true);
-    try {
-      const validationResult = reportService.validateScheduleConfig(config);
-      if (!validationResult.isValid) {
-        throw new Error(validationResult.errors.join(', '));
+  const scheduleReport = useCallback(
+    async (config: ScheduleConfig): Promise<void> => {
+      setIsLoading(true);
+      try {
+        const validationResult = reportService.validateScheduleConfig(config);
+        if (!validationResult.isValid) {
+          throw new Error(validationResult.errors.join(", "));
+        }
+
+        await reportsApi.scheduleReport(config);
+      } catch (err) {
+        return handleError(err, "Failed to schedule report");
+      } finally {
+        setIsLoading(false);
       }
+    },
+    [handleError]
+  );
 
-      await ReportsApi.scheduleReport(config);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to schedule report';
-      setErrorState(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const updateSchedule = useCallback(async (id: string, updates: Partial<ScheduleConfig>) => {
-    try {
-      await ReportsApi.updateSchedule(id, updates);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update schedule';
-      setErrorState(message);
-      throw err;
-    }
-  }, []);
+  const updateSchedule = useCallback(
+    async (id: string, updates: Partial<ScheduleConfig>): Promise<void> => {
+      try {
+        await reportsApi.updateSchedule(id, updates);
+      } catch (err) {
+        return handleError(err, "Failed to update schedule");
+      }
+    },
+    [handleError]
+  );
 
   // Report Metadata
-  const getReportMetadata = useCallback(async (id: string): Promise<ReportMetadata> => {
-    try {
-      const metadata = await ReportsApi.getReportMetadata(id);
-      return metadata;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to get report metadata';
-      setErrorState(message);
-      throw err;
-    }
-  }, []);
+  const getReportMetadata = useCallback(
+    async (id: string): Promise<ReportMetadata> => {
+      try {
+        const response = await reportsApi.getReportMetadata(id);
+        return response.data;
+      } catch (err) {
+        return handleError(err, "Failed to get report metadata");
+      }
+    },
+    [handleError]
+  );
 
   const value = {
     selectedReportId,
@@ -190,12 +239,10 @@ export const ReportProvider: React.FC<ReportProviderProps> = ({ children }) => {
     updateSchedule,
     getReportMetadata,
     isLoading,
-    error
+    error,
   };
 
   return (
-    <ReportContext.Provider value={value}>
-      {children}
-    </ReportContext.Provider>
+    <ReportContext.Provider value={value}>{children}</ReportContext.Provider>
   );
 };

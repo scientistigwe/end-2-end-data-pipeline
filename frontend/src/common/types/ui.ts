@@ -13,6 +13,11 @@ export interface Modal {
   id: string;
   type: string;
   props?: Record<string, any>;
+  title: string;
+  content?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  onClose?: () => void;
+
 }
 
 export interface Notification {
@@ -30,4 +35,23 @@ export interface TableConfig {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   filters?: Record<string, unknown>;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  customizations?: {
+    density?: 'compact' | 'normal' | 'spacious';
+    showBorders?: boolean;
+    highlightOnHover?: boolean;
+  };
+
+}
+
+export interface Breadcrumb {
+  path: string;
+  label: string;
+}
+
+export interface UserPreferences {
+  dateFormat: string;
+  timezone: string;
+  language: string;
 }

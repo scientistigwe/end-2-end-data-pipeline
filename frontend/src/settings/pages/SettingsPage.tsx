@@ -73,7 +73,7 @@ const NotificationSettings: React.FC = () => {
   );
 };
 
-export const SettingsPage: React.FC = () => {
+const SettingsPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState("profile");
 
   const sections: SettingsSection[] = [
@@ -144,3 +144,5 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
+
+export default SettingsPage;

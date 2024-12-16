@@ -1,5 +1,4 @@
 // src/pipeline/pages/PipelinesPage.tsx
-// src/pipeline/pages/PipelinesPage.tsx
 import React, { useState, useMemo, useCallback } from "react";
 import { useSelector } from "react-redux";
 import { Button } from "@/common/components/ui/button";
@@ -27,7 +26,7 @@ interface FormState {
   error?: string | null;
 }
 
-export const PipelinesPage: React.FC = () => {
+const PipelinesPage: React.FC = () => {
   // Global hooks
   const { pipelines, createPipeline: { mutateAsync: createPipeline }, isLoading } = usePipeline();
   const activeModal = useSelector(selectModalById(MODAL_ID));
@@ -226,3 +225,5 @@ export const PipelinesPage: React.FC = () => {
     </div>
   );
 };
+
+export default PipelinesPage

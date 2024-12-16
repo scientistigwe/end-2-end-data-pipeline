@@ -6,13 +6,8 @@ import type {
   InsightReport
 } from '../types/analysis';
 
-interface AnalysisState {
-  analyses: Record<string, {
-    id: string;
-    type: string;
-    status: 'running' | 'completed' | 'error';
-    results: unknown;
-  }>;
+export interface AnalysisState {
+  analyses: Record<string, AnalysisResult>;
   activeAnalyses: Record<string, AnalysisResult>;
   qualityReports: Record<string, QualityReport>;
   insightReports: Record<string, InsightReport>;
@@ -30,6 +25,7 @@ const initialState: AnalysisState = {
   isLoading: false,
   error: null
 };
+
 
 const analysisSlice = createSlice({
   name: 'analysis',

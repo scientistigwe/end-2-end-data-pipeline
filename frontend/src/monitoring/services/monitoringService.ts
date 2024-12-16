@@ -1,5 +1,5 @@
 // src/monitoring/services/monitoringService.ts
-import { MonitoringApi } from '../api/monitoringApi';
+import { monitoringApi } from '../api/monitoringApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { dateUtils } from '@/common/utils/date/dateUtils';
 import { MONITORING_MESSAGES } from '../constants';
@@ -18,7 +18,7 @@ export class MonitoringService {
     config: MonitoringConfig
   ): Promise<void> {
     try {
-      await MonitoringApi.startMonitoring(pipelineId, config);
+      await monitoringApi.startMonitoring(pipelineId, config);
     } catch (err) {
       handleApiError(err);
       throw new Error(MONITORING_MESSAGES.ERRORS.START_FAILED);
@@ -27,7 +27,7 @@ export class MonitoringService {
 
   static async getMetrics(pipelineId: string): Promise<MetricsData> {
     try {
-      const response = await MonitoringApi.getMetrics(pipelineId);
+      const response = await monitoringApi.getMetrics(pipelineId);
       return this.transformMetrics(response.data);
     } catch (err) {
       handleApiError(err);
@@ -37,7 +37,7 @@ export class MonitoringService {
 
   static async getHealth(pipelineId: string): Promise<SystemHealth> {
     try {
-      const response = await MonitoringApi.getHealth(pipelineId);
+      const response = await monitoringApi.getHealth(pipelineId);
       return this.transformHealth(response.data);
     } catch (err) {
       handleApiError(err);
@@ -47,7 +47,7 @@ export class MonitoringService {
 
   static async getResourceUsage(pipelineId: string): Promise<ResourceUsage> {
     try {
-      const response = await MonitoringApi.getResourceUsage(pipelineId);
+      const response = await monitoringApi.getResourceUsage(pipelineId);
       return this.transformResourceUsage(response.data);
     } catch (err) {
       handleApiError(err);
@@ -60,7 +60,7 @@ export class MonitoringService {
     config: AlertConfig
   ): Promise<void> {
     try {
-      await MonitoringApi.configureAlerts(pipelineId, config);
+      await monitoringApi.configureAlerts(pipelineId, config);
     } catch (err) {
       handleApiError(err);
       throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_CONFIG_FAILED);
@@ -69,7 +69,7 @@ export class MonitoringService {
 
   static async getAlertHistory(pipelineId: string): Promise<Alert[]> {
     try {
-      const response = await MonitoringApi.getAlertHistory(pipelineId);
+      const response = await monitoringApi.getAlertHistory(pipelineId);
       return response.data.map(this.transformAlert);
     } catch (err) {
       handleApiError(err);
@@ -79,7 +79,7 @@ export class MonitoringService {
 
   static async acknowledgeAlert(pipelineId: string, alertId: string): Promise<void> {
     try {
-      await MonitoringApi.acknowledgeAlert(pipelineId, alertId);
+      await monitoringApi.acknowledgeAlert(pipelineId, alertId);
     } catch (err) {
       handleApiError(err);
       throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_ACKNOWLEDGE_FAILED);
@@ -92,7 +92,7 @@ export class MonitoringService {
     resolution?: { comment?: string; action?: string }
   ): Promise<void> {
     try {
-      await MonitoringApi.resolveAlert(pipelineId, alertId, resolution);
+      await monitoringApi.resolveAlert(pipelineId, alertId, resolution);
     } catch (err) {
       handleApiError(err);
       throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_RESOLVE_FAILED);

@@ -1,7 +1,7 @@
 // src/pipeline/hooks/usePipelineLogs.ts
 import { useQuery } from 'react-query';
 import { useDispatch } from 'react-redux';
-import { PipelineApi } from '../api/pipelineApi';
+import { pipelineApi } from '../api/pipelineApi';
 import { setPipelineLogs } from '../store/pipelineSlice';
 import type { PipelineLogs } from '../types/pipeline';
 
@@ -18,7 +18,6 @@ export function usePipelineLogs(
   options: UsePipelineLogsOptions = {}
 ) {
   const dispatch = useDispatch();
-  const pipelineApi = new PipelineApi();
 
   const {
     data,

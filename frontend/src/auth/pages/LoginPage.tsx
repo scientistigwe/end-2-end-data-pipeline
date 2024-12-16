@@ -1,17 +1,17 @@
 // src/auth/pages/LoginPage.tsx
-import React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { LoginForm } from '../components/LoginForm';
-import { AuthLayout } from '../components/AuthLayout';
-import type { LoginCredentials } from '../types/auth';
-import { useAuth } from '../hooks/useAuth';
+import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { LoginForm } from "../components/LoginForm";
+import { AuthLayout } from "../components/AuthLayout";
+import type { LoginCredentials } from "../types/auth";
+import { useAuth } from "../hooks/useAuth";
 
-export const LoginPage: React.FC = () => {
+const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
 
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (location.state as any)?.from?.pathname || "/";
 
   const handleLogin = async (credentials: LoginCredentials) => {
     try {
@@ -30,8 +30,11 @@ export const LoginPage: React.FC = () => {
           Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Or{' '}
-          <a href="/register" className="font-medium text-blue-600 hover:text-blue-500">
+          Or{" "}
+          <a
+            href="/register"
+            className="font-medium text-blue-600 hover:text-blue-500"
+          >
             create a new account
           </a>
         </p>
@@ -41,3 +44,4 @@ export const LoginPage: React.FC = () => {
   );
 };
 
+export default LoginPage;

@@ -1,5 +1,5 @@
 // auth/providers/AuthProvider.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { AuthContext } from "../context";
 import { useAuth } from "../hooks/useAuth";
 import { useSession } from "../hooks/useSession";
@@ -34,30 +34,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Initialize auth state
   useEffect(() => {
     validateSession();
-  }, [validateSession]);
+  }, []);
 
-  const value: AuthContextValue = {
-    // State
-    user,
-    isAuthenticated,
-    error,
-    tokens,
-    isLoading: isLoggingIn || isRegistering || isUpdatingProfile,
+  // In AuthProvider.tsx
+  const value: AuthContextValue = useMemo(
+    () => ({
+      // State
+      user,
+      isAuthenticated,
+      error,
+      tokens,
+      isLoading: isLoggingIn || isRegistering || isUpdatingProfile,
 
-    // Auth operations
-    login,
-    register,
-    logout,
-    refreshSession,
+      // Auth operations
+      login,
+      register,
+      logout,
+      refreshSession,
 
-    // Profile operations
-    updateProfile,
+      // Profile operations
+      updateProfile,
 
-    // Loading states
-    isLoggingIn,
-    isRegistering,
-    isUpdatingProfile,
-  };
+      // Loading states
+      isLoggingIn,
+      isRegistering,
+      isUpdatingProfile,
+    }),
+    [
+      user,
+      isAuthenticated,
+      error,
+      tokens,
+      isLoggingIn,
+      isRegistering,
+      isUpdatingProfile,
+      login,
+      register,
+      logout,
+      refreshSession,
+      updateProfile,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

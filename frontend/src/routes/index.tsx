@@ -1,96 +1,152 @@
-// src/routes/index.tsx
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { ProtectedRoute } from '../auth/components/ProtectedRoute';
+import { lazy, useEffect } from "react";
+import {
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import { useAuth } from "../auth/hooks/useAuth";
+import { ProtectedRoute } from "../auth/components/ProtectedRoute";
 
-// Auth Pages
-import { LoginPage, RegisterPage, ForgotPasswordPage, ProfilePage } from '../auth/pages';
+// Route constants for use throughout the app
+export const ROUTES = {
+  HOME: "/",
+  DASHBOARD: "/dashboard",
+  LOGIN: "/login",
+  REGISTER: "/register",
+  FORGOT_PASSWORD: "/forgot-password",
+  PROFILE: "/profile",
+  SETTINGS: "/settings",
+  ANALYSIS: "/analysis",
+  DATA_SOURCES: "/data-sources",
+  DECISIONS: "/decisions",
+  MONITORING: "/monitoring",
+  PIPELINES: "/pipelines",
+  REPORTS: "/reports",
+  RECOMMENDATIONS: "/recommendations",
+} as const;
 
-// Analysis Pages
-import { DashboardPage as AnalysisDashboardPage } from '@/analysis/pages/DashboardPage';
-import { AnalysisPage } from '@/analysis/pages/AnalysisPage';
-// DataSource Pages
-import { DataSourcesPage } from '../dataSource/pages';
-
-// Decisions Pages
-import { DecisionsPage, DashboardPage as DecisionDashboardPage } from '../decisions/pages';
-
-// Monitoring Pages
-import MonitoringPage from '@/monitoring/pages/MonitoringPage';
-
-// Pipeline Pages
-import { DashboardPage as PipelineDashboardPage 
-} from '../pipeline/pages/DashboardPage';
-import { PipelineDetailsPage
-} from '../pipeline/pages/PipelineDetailsPage';
-import { PipelinesPage } from '../pipeline/pages/PipelinesPage';
-
-// Reports Pages
-import { 
-  ReportsPage, 
-  ReportDetailsPage, 
-  ReportGenerationPage, 
-  ScheduledReportsPage 
-} from '../reports/pages';
-
-// Recommendations Pages
-import { RecommendationsPage } from '../recommendations/pages';
-
-// Settings Pages
-import { SettingsPage } from '../settings/pages/SettingsPage';
+// Lazy load all page components
+const LoginPage = lazy(() => import("../auth/pages/LoginPage"));
+const RegisterPage = lazy(() => import("../auth/pages/RegisterPage"));
+const ForgotPasswordPage = lazy(
+  () => import("../auth/pages/ForgotPasswordPage")
+);
+const ProfilePage = lazy(() => import("../auth/pages/ProfilePage"));
+const AnalysisDashboardPage = lazy(
+  () => import("@/analysis/pages/AnalysisDashboardPage")
+);
+const AnalysisPage = lazy(() => import("@/analysis/pages/AnalysisPage"));
+const DataSourcesPage = lazy(
+  () => import("../dataSource/pages/DataSourcesPage")
+);
+const DecisionsPage = lazy(() => import("../decisions/pages/DecisionsPage"));
+const DecisionDashboardPage = lazy(
+  () => import("../decisions/pages/DecisionDashboardPage")
+);
+const MonitoringPage = lazy(() => import("@/monitoring/pages/MonitoringPage"));
+const PipelineDashboardPage = lazy(
+  () => import("../pipeline/pages/PipelineDashboardPage")
+);
+const PipelineDetailsPage = lazy(
+  () => import("../pipeline/pages/PipelineDetailsPage")
+);
+const PipelinesPage = lazy(() => import("../pipeline/pages/PipelinesPage"));
+const ReportsPage = lazy(() => import("../reports/pages/ReportsPage"));
+const ReportDetailsPage = lazy(
+  () => import("../reports/pages/ReportDetailsPage")
+);
+const ReportGenerationPage = lazy(
+  () => import("../reports/pages/ReportGenerationPage")
+);
+const ScheduledReportsPage = lazy(
+  () => import("../reports/pages/ScheduledReportsPage")
+);
+const RecommendationsPage = lazy(
+  () => import("../recommendations/pages/RecommendationsPage")
+);
+const SettingsPage = lazy(() => import("../settings/pages/SettingsPage"));
 
 export const AppRoutes = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, isLoggingIn } = useAuth();
+
+  useEffect(() => {
+    if (
+      !isLoggingIn &&
+      !isAuthenticated &&
+      !location.pathname.startsWith("/auth")
+    ) {
+      navigate(ROUTES.LOGIN, {
+        replace: true,
+        state: { from: location.pathname },
+      });
+    } else if (isAuthenticated && location.pathname === ROUTES.HOME) {
+      navigate(ROUTES.DASHBOARD, { replace: true });
+    }
+  }, [isAuthenticated, isLoggingIn, location.pathname, navigate]);
+
+  if (isLoggingIn) {
+    return null;
+  }
+
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      
+      <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+      <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
+      <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
+
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
-        {/* Dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<AnalysisDashboardPage />} />
+        {/* Home/Dashboard */}
+        <Route path={ROUTES.HOME} element={<AnalysisDashboardPage />} />
+        <Route path={ROUTES.DASHBOARD} element={<AnalysisDashboardPage />} />
 
         {/* Profile & Settings */}
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
+        <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
 
-        {/* Analysis */}
-        <Route path="/analysis" element={<AnalysisPage />} />
-        <Route path="/analysis/dashboard" element={<AnalysisDashboardPage />} />
+        {/* Analysis Routes */}
+        <Route path={ROUTES.ANALYSIS}>
+          <Route index element={<AnalysisPage />} />
+          <Route path="dashboard" element={<AnalysisDashboardPage />} />
+        </Route>
 
-        {/* Data Sources */}
-        <Route path="/data-sources" element={<DataSourcesPage />} />
-
-        {/* Decisions */}
-        <Route path="/decisions" element={<DecisionsPage />} />
-        <Route path="/decisions/dashboard" element={<DecisionDashboardPage />} />
-
-        {/* Monitoring */}
-        <Route path="/monitoring" element={<MonitoringPage />} />
-
-        {/* Pipeline */}
-        <Route path="/pipelines">
+        {/* Pipeline Routes */}
+        <Route path={ROUTES.PIPELINES}>
           <Route index element={<PipelinesPage />} />
           <Route path=":id" element={<PipelineDetailsPage />} />
           <Route path="dashboard" element={<PipelineDashboardPage />} />
         </Route>
 
-        {/* Reports */}
-        <Route path="/reports">
+        {/* Reports Routes */}
+        <Route path={ROUTES.REPORTS}>
           <Route index element={<ReportsPage />} />
           <Route path=":id" element={<ReportDetailsPage />} />
           <Route path="generate" element={<ReportGenerationPage />} />
           <Route path="scheduled" element={<ScheduledReportsPage />} />
         </Route>
 
-        {/* Recommendations */}
-        <Route path="/recommendations" element={<RecommendationsPage />} />
+        {/* Decisions Routes */}
+        <Route path={ROUTES.DECISIONS}>
+          <Route index element={<DecisionsPage />} />
+          <Route path="dashboard" element={<DecisionDashboardPage />} />
+        </Route>
+
+        {/* Standalone Routes */}
+        <Route path={ROUTES.DATA_SOURCES} element={<DataSourcesPage />} />
+        <Route path={ROUTES.MONITORING} element={<MonitoringPage />} />
+        <Route
+          path={ROUTES.RECOMMENDATIONS}
+          element={<RecommendationsPage />}
+        />
       </Route>
 
       {/* Catch all - 404 */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={ROUTES.HOME} replace />} />
     </Routes>
   );
 };

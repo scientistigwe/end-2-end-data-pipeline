@@ -1,15 +1,19 @@
 // src/recommendations/pages/RecommendationsPage.tsx
-import React, { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { RecommendationList } from '../components/RecommendationList';
-import { RecommendationFilters } from '../components/RecommendationFilter';
-import { useRecommendations } from '../hooks/useRecommendations';
-import { Alert, AlertTitle, AlertDescription } from '../../common/components/ui/alert';
-import { Loader } from '../../common/components/feedback/Loader';
-import { Button } from '../../common/components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import React, { useEffect } from "react";
+import { useParams } from "react-router-dom";
+import { RecommendationList } from "../components/RecommendationList";
+import { RecommendationFilters } from "../components/RecommendationFilter";
+import { useRecommendations } from "../hooks/useRecommendations";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "../../common/components/ui/alert";
+import { Loader } from "../../common/components/feedback/Loader";
+import { Button } from "../../common/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
-export const RecommendationsPage: React.FC = () => {
+const RecommendationsPage: React.FC = () => {
   const { pipelineId } = useParams<{ pipelineId: string }>();
   const {
     recommendations,
@@ -17,7 +21,7 @@ export const RecommendationsPage: React.FC = () => {
     error,
     applyRecommendation,
     dismissRecommendation,
-    refreshRecommendations
+    refreshRecommendations,
   } = useRecommendations(pipelineId!);
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export const RecommendationsPage: React.FC = () => {
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Recommendations</h1>
-        <Button 
+        <Button
           onClick={() => refreshRecommendations()}
           variant="outline"
           className="gap-2"
@@ -88,4 +92,4 @@ export const RecommendationsPage: React.FC = () => {
   );
 };
 
-
+export default RecommendationsPage;

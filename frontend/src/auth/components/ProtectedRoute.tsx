@@ -1,8 +1,7 @@
 // src/auth/components/ProtectedRoute.tsx
-import React from "react";
-import { Navigate, useLocation, Outlet } from "react-router-dom";
+import React, { useEffect } from "react";
+import { useLocation, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { AUTH_ROUTES } from "../constants";
 import type { Permission } from "../types/permissions";
 import { PermissionGuard } from "./PermissionGuard";
 
@@ -15,13 +14,21 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   permissions = [],
   requireAll = true,
 }) => {
+  const { isAuthenticated, isLoggingIn } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
 
-  if (!isAuthenticated) {
-    return (
-      <Navigate to={AUTH_ROUTES.LOGIN} state={{ from: location }} replace />
-    );
+  useEffect(() => {
+    if (!isLoggingIn && !isAuthenticated) {
+      navigate("/login", {
+        replace: true,
+        state: { from: location.pathname },
+      });
+    }
+  }, [isAuthenticated, isLoggingIn, navigate, location.pathname]);
+
+  if (isLoggingIn || !isAuthenticated) {
+    return null;
   }
 
   if (permissions.length > 0) {
@@ -29,7 +36,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       <PermissionGuard
         permissions={permissions}
         requireAll={requireAll}
-        fallback={<Navigate to="/" replace />}
+        fallback={null}
       >
         <Outlet />
       </PermissionGuard>

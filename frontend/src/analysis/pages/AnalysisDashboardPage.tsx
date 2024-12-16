@@ -7,7 +7,7 @@ import { Badge } from "@/common/components/ui/badge";
 import { dateUtils } from "@/common";
 import type { Correlation, Anomaly, Pattern, Trend } from "../types/analysis";
 
-const DashboardPage: React.FC = () => {
+const AnalysisDashboardPage: React.FC = () => {
   const {
     selectedAnalysis,
     selectedQualityReport,
@@ -288,4 +288,4 @@ const TrendSection: React.FC<{ trends: Trend[] }> = ({ trends }) => (
   </section>
 );
 
-export default DashboardPage;
+export default AnalysisDashboardPage;

@@ -1,7 +1,7 @@
 // src/pipeline/hooks/usePipelineMetrics.ts
 import { useQuery } from 'react-query';
 import { useDispatch } from 'react-redux';
-import { PipelineApi } from '../api/pipelineApi';
+import { pipelineApi } from '../api/pipelineApi';
 import { setPipelineMetrics } from '../store/pipelineSlice';
 import { PIPELINE_CONSTANTS } from '../constants';
 import type { PipelineMetrics } from '../types/pipeline';
@@ -18,7 +18,6 @@ export function usePipelineMetrics(
   options?: UsePipelineMetricsOptions
 ) {
   const dispatch = useDispatch();
-  const pipelineApi = new PipelineApi();
 
   const { data, isLoading, error, refetch } = useQuery<PipelineMetrics[]>(
     ['pipelineMetrics', pipelineId, options?.timeRange],

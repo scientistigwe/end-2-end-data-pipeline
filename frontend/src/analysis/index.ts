@@ -8,7 +8,7 @@ export { AnalysisStatus } from './components/status/AnalysisStatus';
 
 // Pages
 export * from './pages/AnalysisPage';
-export * from './pages/DashboardPage';
+export * from './pages/AnalysisDashboardPage';
 
 // Hooks
 export { useAnalysis } from './hooks/useAnalysis';

@@ -6,7 +6,7 @@ import { AuthLayout } from '../components/AuthLayout';
 import { useAuth } from '../hooks/useAuth';
 import type { RegisterData } from '../types/auth';
 
-export const RegisterPage: React.FC = () => {
+const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
 
@@ -40,3 +40,4 @@ export const RegisterPage: React.FC = () => {
   );
 };
 
+export default RegisterPage

@@ -1,72 +1,118 @@
 // src/pipeline/providers/PipelineProvider.tsx
-import React, { useState, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { PipelineContext } from '../context/PipelineContext';
-import { usePipeline } from '../hooks/usePipeline';
-import { usePipelineExecution } from '../hooks/usePipelineExecution';
-import { selectPipelines } from '../store/selectors';
-import type { Pipeline, PipelineConfig } from '../types/pipeline';
+import React, { useCallback, useMemo, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { PipelineContext } from "../context/PipelineContext";
+import { usePipeline } from "../hooks/usePipeline";
+import { usePipelineExecution } from "../hooks/usePipelineExecution";
+import { selectPipelines } from "../store/selectors";
+import type { Pipeline, PipelineConfig } from "../types/pipeline";
 
 interface PipelineProviderProps {
   children: React.ReactNode;
 }
 
-export const PipelineProvider: React.FC<PipelineProviderProps> = ({ children }) => {
+export const PipelineProvider: React.FC<PipelineProviderProps> = ({
+  children,
+}) => {
   const dispatch = useDispatch();
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const pipelines = useSelector(selectPipelines);
-  
+
+  // Use ref for selected pipeline ID
+  const selectedPipelineIdRef = useRef<string | null>(null);
+
+  // Initialize hooks
   const {
     createPipeline,
     updatePipelineConfig,
     deletePipeline,
     isLoading,
-    error
+    error,
+    refetchPipelines,
   } = usePipeline();
 
-  const {
-    startPipeline: startPipelineExecution,
-    stopPipeline: stopPipelineExecution,
-    retryPipeline: retryPipelineExecution
-  } = usePipelineExecution(selectedPipelineId || '');
+  const pipelineExecution = usePipelineExecution(
+    selectedPipelineIdRef.current || ""
+  );
 
-  const isPipelineRunning = useCallback((id: string) => {
-    return pipelines[id]?.status === 'running';
-  }, [pipelines]);
+  // Memoized callbacks
+  const isPipelineRunning = useCallback(
+    (id: string) => {
+      return pipelines[id]?.status === "running";
+    },
+    [pipelines]
+  );
 
-  const getPipelineStatus = useCallback((id: string) => {
-    return pipelines[id]?.status;
-  }, [pipelines]);
+  const getPipelineStatus = useCallback(
+    (id: string) => {
+      return pipelines[id]?.status;
+    },
+    [pipelines]
+  );
 
-  const startPipeline = useCallback(async (id: string, options?: { mode?: string }) => {
-    setSelectedPipelineId(id);
-    await startPipelineExecution.mutateAsync(options);
-  }, [startPipelineExecution]);
+  const setSelectedPipelineId = useCallback((id: string | null) => {
+    selectedPipelineIdRef.current = id;
+  }, []);
 
-  const stopPipeline = useCallback(async (id: string) => {
-    setSelectedPipelineId(id);
-    await stopPipelineExecution.mutateAsync();
-  }, [stopPipelineExecution]);
+  const startPipeline = useCallback(
+    async (id: string, options?: { mode?: string }) => {
+      setSelectedPipelineId(id);
+      await pipelineExecution.startPipeline.mutateAsync({
+        mode: options?.mode,
+      });
+      await refetchPipelines();
+    },
+    [pipelineExecution.startPipeline, refetchPipelines]
+  );
 
-  const retryPipeline = useCallback(async (id: string) => {
-    setSelectedPipelineId(id);
-    await retryPipelineExecution.mutateAsync();
-  }, [retryPipelineExecution]);
+  const stopPipeline = useCallback(
+    async (id: string) => {
+      setSelectedPipelineId(id);
+      await pipelineExecution.stopPipeline.mutateAsync();
+      await refetchPipelines();
+    },
+    [pipelineExecution.stopPipeline, refetchPipelines]
+  );
 
-  const value = {
-    selectedPipelineId,
-    setSelectedPipelineId,
-    createPipeline: createPipeline.mutateAsync,
-    updatePipeline: updatePipelineConfig.mutateAsync,
-    deletePipeline: deletePipeline.mutateAsync,
-    startPipeline,
-    stopPipeline,
-    retryPipeline,
-    isPipelineRunning,
-    getPipelineStatus,
-    isLoading,
-    error
-  };
+  const retryPipeline = useCallback(
+    async (id: string) => {
+      setSelectedPipelineId(id);
+      await pipelineExecution.retryPipeline.mutateAsync();
+      await refetchPipelines();
+    },
+    [pipelineExecution.retryPipeline, refetchPipelines]
+  );
+
+  // Memoized context value
+  const value = useMemo(
+    () => ({
+      selectedPipelineId: selectedPipelineIdRef.current,
+      setSelectedPipelineId,
+      createPipeline: createPipeline.mutateAsync,
+      updatePipeline: updatePipelineConfig.mutateAsync,
+      deletePipeline: deletePipeline.mutateAsync,
+      startPipeline,
+      stopPipeline,
+      retryPipeline,
+      isPipelineRunning,
+      getPipelineStatus,
+      isLoading: isLoading || pipelineExecution.isExecuting,
+      error,
+    }),
+    [
+      setSelectedPipelineId,
+      createPipeline.mutateAsync,
+      updatePipelineConfig.mutateAsync,
+      deletePipeline.mutateAsync,
+      startPipeline,
+      stopPipeline,
+      retryPipeline,
+      isPipelineRunning,
+      getPipelineStatus,
+      isLoading,
+      pipelineExecution.isExecuting,
+      error,
+    ]
+  );
 
   return (
     <PipelineContext.Provider value={value}>

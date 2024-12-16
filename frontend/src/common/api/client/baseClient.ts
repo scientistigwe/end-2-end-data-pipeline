@@ -1,4 +1,4 @@
-// common/api/client/baseClient.ts
+// src/common/api/client/baseClient.ts
 import axios, { 
   AxiosInstance, 
   AxiosRequestConfig, 
@@ -7,20 +7,22 @@ import axios, {
   AxiosHeaders,
   InternalAxiosRequestConfig
 } from 'axios';
-import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
+import {
+  API_CONFIG,
+  ApiRequestConfig,
+  ApiResponse, 
+  EndpointParams } from '@/common/api/client/config';
 import { handleApiError } from '../../utils/errorHandlers';
-import { formatEndpoint } from '../../utils/formatters/formatters';
 
 export class BaseClient {
   protected client: AxiosInstance;
+  private cache = new Map<string, { data: any; timestamp: number }>();
 
   constructor(config?: CreateAxiosDefaults) {
     this.client = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || '/api/v1',
-      timeout: 30000,
-      headers: new AxiosHeaders({
-        'Content-Type': 'application/json'
-      }),
+      baseURL: import.meta.env.VITE_API_URL || API_CONFIG.BASE_URL,
+      timeout: API_CONFIG.TIMEOUT,
+      headers: new AxiosHeaders(API_CONFIG.DEFAULT_HEADERS),
       ...config
     } as CreateAxiosDefaults);
 
@@ -28,27 +30,70 @@ export class BaseClient {
   }
 
   protected setupInterceptors() {
+    // Request interceptor
     this.client.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => config,
+      (config: InternalAxiosRequestConfig) => {
+        // Add auth token if available
+        const token = localStorage.getItem('token');
+        if (token && config.headers) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
       (error) => Promise.reject(error)
     );
 
+    // Response interceptor
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => Promise.reject(handleApiError(error))
+      async (error) => {
+        // Handle token refresh
+        if (error.response?.status === 401 && !error.config?._retry) {
+          error.config._retry = true;
+          try {
+            const refreshToken = localStorage.getItem('refreshToken');
+            const response = await this.client.post(API_CONFIG.ENDPOINTS.AUTH.REFRESH, {
+              refreshToken
+            });
+            
+            const { token } = response.data;
+            localStorage.setItem('token', token);
+            
+            error.config.headers['Authorization'] = `Bearer ${token}`;
+            return this.client(error.config);
+          } catch (refreshError) {
+            // Handle refresh token failure
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+            window.location.href = '/login';
+            return Promise.reject(refreshError);
+          }
+        }
+        return Promise.reject(handleApiError(error));
+      }
     );
+  }
+
+  protected formatEndpoint(endpoint: string, params?: EndpointParams): string {
+    if (!params) return endpoint;
+    
+    let formattedEndpoint = endpoint;
+    Object.entries(params).forEach(([key, value]) => {
+      formattedEndpoint = formattedEndpoint.replace(`:${key}`, encodeURIComponent(value));
+    });
+    return formattedEndpoint;
   }
 
   protected async request<T>(
     method: 'get' | 'post' | 'put' | 'delete',
-    url: string,
+    endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
   ): Promise<ApiResponse<T>> {
     try {
       const finalUrl = config?.routeParams ? 
-        formatEndpoint(url, config.routeParams) : 
-        url;
+        this.formatEndpoint(endpoint, config.routeParams) : 
+        endpoint;
 
       const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
 
@@ -67,21 +112,60 @@ export class BaseClient {
     }
   }
 
-  // Convenience methods
-  protected async get<T>(url: string, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
-    return this.request<T>('get', url, config);
+  // Convenience methods with caching support
+  protected async get<T>(
+    endpoint: string, 
+    config?: ApiRequestConfig & { cacheDuration?: number }
+  ): Promise<ApiResponse<T>> {
+    const { cacheDuration, ...restConfig } = config ?? {};
+    
+    if (cacheDuration) {
+      const cacheKey = `${endpoint}-${JSON.stringify(restConfig)}`;
+      const cached = this.cache.get(cacheKey);
+      
+      if (cached && Date.now() - cached.timestamp < cacheDuration) {
+        return cached.data;
+      }
+      
+      const response = await this.request<T>('get', endpoint, restConfig);
+      this.cache.set(cacheKey, { data: response, timestamp: Date.now() });
+      return response;
+    }
+    
+    return this.request<T>('get', endpoint, restConfig);
   }
 
-  protected async post<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
-    return this.request<T>('post', url, config, data);
+  protected async post<T>(
+    endpoint: string, 
+    data?: unknown, 
+    config?: ApiRequestConfig
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>('post', endpoint, config, data);
   }
 
-  protected async put<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
-    return this.request<T>('put', url, config, data);
+  protected async put<T>(
+    endpoint: string, 
+    data?: unknown, 
+    config?: ApiRequestConfig
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>('put', endpoint, config, data);
   }
 
-  protected async delete<T>(url: string, config?: ApiRequestConfig): Promise<ApiResponse<T>> {
-    return this.request<T>('delete', url, config);
+  protected async delete<T>(
+    endpoint: string, 
+    config?: ApiRequestConfig
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>('delete', endpoint, config);
+  }
+
+  // Cache management methods
+  protected clearCache(): void {
+    this.cache.clear();
+  }
+
+  protected clearCacheEntry(endpoint: string, config?: ApiRequestConfig): void {
+    const cacheKey = `${endpoint}-${JSON.stringify(config)}`;
+    this.cache.delete(cacheKey);
   }
 }
 

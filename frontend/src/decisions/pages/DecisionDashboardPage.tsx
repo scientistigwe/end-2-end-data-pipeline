@@ -8,7 +8,7 @@ import { Alert } from "../../common/components/ui/alert";
 import { Loader } from "../../common/components/feedback/Loader";
 import { useAuth } from "../../auth/hooks/useAuth";
 
-export const DashboardPage: React.FC = () => {
+const DecisionDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { decisions, isLoading, error } = useDecisions(user?.id || "");
 
@@ -83,3 +83,5 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+
+export default DecisionDashboardPage

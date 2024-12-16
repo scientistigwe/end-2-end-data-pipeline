@@ -1,2 +1,2 @@
 export * from './AnalysisPage';
-export * from './DashboardPage'
+export * from './AnalysisDashboardPage'

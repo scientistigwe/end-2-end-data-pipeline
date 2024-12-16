@@ -10,7 +10,7 @@ import { useReportNavigation } from "../routes/navigationUtils";
 import { REPORT_CONSTANTS } from "../constants";
 import type { ReportType, ReportStatus } from "../types/report";
 
-export const ReportsPage: React.FC = () => {
+const ReportsPage: React.FC = () => {
   const { reports, isLoading, exportReport, deleteReport } = useReport();
   const navigation = useReportNavigation();
   const [filters, setFilters] = useState({
@@ -86,3 +86,5 @@ export const ReportsPage: React.FC = () => {
     </div>
   );
 };
+
+export default ReportsPage;

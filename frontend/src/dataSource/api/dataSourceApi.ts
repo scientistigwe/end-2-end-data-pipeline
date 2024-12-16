@@ -1,7 +1,8 @@
-// src/services/api/dataSourceApi.ts
-import { DataSourceApiClient } from './client';
-import { API_CONFIG } from './config';
+// src/dataSource/api/dataSourceApi.ts
+import { BaseClient } from '@/common/api/client/baseClient';
+import { API_CONFIG } from '@/common/api/client/config';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
+import type { AxiosProgressEvent } from 'axios';
 import type {
   DataSourceConfig,
   DataSourceMetadata,
@@ -13,299 +14,307 @@ import type {
   SchemaInfo,
   S3BucketInfo,
   StreamMetrics,
-} from '../../dataSource/types/dataSources';
+} from '../types/dataSources';
 
-// Interface segregation - breaking down by domain
-interface CoreDataSourceOperations {
-  listDataSources(filters?: DataSourceFilters): Promise<ApiResponse<DataSourceMetadata[]>>;
-  getDataSource(id: string): Promise<ApiResponse<{config: DataSourceConfig; metadata: DataSourceMetadata}>>;
-  createDataSource(config: DataSourceConfig): Promise<ApiResponse<DataSourceMetadata>>;
-  updateDataSource(id: string, updates: Partial<DataSourceConfig>): Promise<ApiResponse<DataSourceMetadata>>;
-  deleteDataSource(id: string): Promise<ApiResponse<void>>;
-}
-
-interface ValidationOperations {
-  validateDataSource(id: string): Promise<ApiResponse<ValidationResult>>;
-  testConnection(id: string): Promise<ApiResponse<{success: boolean; error?: string}>>;
-}
-
-interface DataSyncOperations {
-  previewData(id: string, options?: {limit?: number; offset?: number}): Promise<ApiResponse<PreviewData>>;
-  syncData(id: string): Promise<ApiResponse<{jobId: string; status: string}>>;
-}
-
-interface FileOperations {
-  uploadFile(files: File[], options?: { onProgress?: (progress: number) => void }): Promise<ApiResponse<{ fileId: string }>>;
-  parseFile(fileId: string, config: DataSourceConfig['config']): Promise<ApiResponse<PreviewData>>;
-}
-
-interface DatabaseOperations {
-  executeDatabaseQuery(
-    id: string, 
-    query: string, 
-    params?: unknown[]
-  ): Promise<ApiResponse<{
-    rows: unknown[];
-    rowCount: number;
-    fields: Array<{ name: string; type: string }>;
-  }>>;
-  getDatabaseSchema(connectionId: string): Promise<ApiResponse<SchemaInfo>>;
-  testDatabaseConnection(connectionId: string): Promise<ApiResponse<ConnectionTestResponse>>;
-  connectDatabase(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>>;
-}
-
-interface S3Operations {
-  listS3Objects(id: string, prefix?: string): Promise<ApiResponse<{
-    objects: Array<{
-      key: string;
-      size: number;
-      lastModified: string;
-      isDirectory: boolean;
-    }>;
-  }>>;
-  getBucketInfo(connectionId: string): Promise<ApiResponse<S3BucketInfo>>;
-  downloadS3Object(connectionId: string, key: string): Promise<ApiResponse<Blob>>;
-  connectS3(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>>;
-}
-
-interface StreamOperations {
-  getStreamStatus(id: string): Promise<ApiResponse<{
-    status: string;
-    metrics: {
-      messagesPerSecond: number;
-      bytesPerSecond: number;
-      lastMessage: string;
-    };
-  }>>;
-  getStreamMetrics(connectionId: string): Promise<ApiResponse<StreamMetrics>>;
-  connectStream(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>>;
-}
-
-interface ApiOperations {
-  testApiEndpoint(url: string): Promise<ApiResponse<ConnectionTestResponse>>;
-  executeApiRequest(
-    connectionId: string,
-    params: { method: string; url: string; body?: unknown }
-  ): Promise<ApiResponse<unknown>>;
-  connectApi(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>>;
-}
-
-interface ConnectionOperations {
-  disconnectSource(connectionId: string): Promise<ApiResponse<void>>;
-}
-
-class DataSourceApi implements 
-  CoreDataSourceOperations,
-  ValidationOperations,
-  DataSyncOperations,
-  FileOperations,
-  DatabaseOperations,
-  S3Operations,
-  StreamOperations,
-  ApiOperations,
-  ConnectionOperations {
-
-  private client: DataSourceApiClient;
-
+class DataSourceApi extends BaseClient {
   constructor() {
-    this.client = new DataSourceApiClient();
-  }
-
-  private buildEndpoint(endpoint: string, params: Record<string, string> = {}): string {
-    let result = endpoint;
-    Object.entries(params).forEach(([key, value]) => {
-      result = result.replace(`:${key}`, value);
+    super({
+      baseURL: import.meta.env.VITE_DATASOURCE_API_URL || API_CONFIG.BASE_URL,
+      timeout: API_CONFIG.TIMEOUT,
+      headers: {
+        ...API_CONFIG.DEFAULT_HEADERS,
+        'X-Service': 'datasource'
+      }
     });
-    return result;
   }
 
-  // CoreDataSourceOperations
-  async listDataSources(filters?: DataSourceFilters): Promise<ApiResponse<DataSourceMetadata[]>> {
-    return this.client.request('get', API_CONFIG.ENDPOINTS.DATA_SOURCES.LIST, { params: filters });
+  // Progress Tracking Methods
+  private async requestWithProgress<T>(
+    method: 'get' | 'post' | 'put' | 'delete',
+    endpoint: string,
+    config?: ApiRequestConfig & { onProgress?: (progress: number) => void },
+    data?: unknown
+  ): Promise<ApiResponse<T>> {
+    const { onProgress, ...restConfig } = config ?? {};
+    
+    const requestConfig: ApiRequestConfig = {
+      ...restConfig,
+      onUploadProgress: onProgress 
+        ? (e: AxiosProgressEvent) => {
+            if (e.total) {
+              const progress = (e.loaded / e.total) * 100;
+              onProgress(Math.round(progress));
+            }
+          }
+        : undefined
+    };
+
+    return this.request(method, endpoint, requestConfig, data);
   }
 
-  async getDataSource(id: string): Promise<ApiResponse<{
-    config: DataSourceConfig;
-    metadata: DataSourceMetadata;
-  }>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.GET, { id }));
+  private async uploadWithProgress<T>(
+    endpoint: string,
+    data: unknown,
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<T>> {
+    return this.requestWithProgress('post', endpoint, { onProgress }, data);
   }
 
-  async createDataSource(config: DataSourceConfig): Promise<ApiResponse<DataSourceMetadata>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.CREATE, {}, config);
+  private async downloadWithProgress<T>(
+    endpoint: string,
+    config?: ApiRequestConfig,
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<T>> {
+    return this.requestWithProgress('get', endpoint, { ...config, onProgress });
   }
 
-  async updateDataSource(
-    id: string,
-    updates: Partial<DataSourceConfig>
-  ): Promise<ApiResponse<DataSourceMetadata>> {
-    return this.client.request(
-      'put',
-      this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.UPDATE, { id }),
-      {},
-      updates
+  // Core Operations
+  async listDataSources(filters?: DataSourceFilters) {
+    return this.get<DataSourceMetadata[]>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.LIST,
+      { params: filters }
     );
   }
 
-  async deleteDataSource(id: string): Promise<ApiResponse<void>> {
-    return this.client.request('delete', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.DELETE, { id }));
+  async getDataSource(id: string) {
+    return this.get<{ config: DataSourceConfig; metadata: DataSourceMetadata }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.GET,
+      { routeParams: { id } }
+    );
   }
 
-  async disconnectSource(connectionId: string): Promise<ApiResponse<void>> {
-    return this.client.request(
-      'post',
-      this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.DISCONNECT, { connectionId })
+  async createDataSource(config: DataSourceConfig) {
+    return this.post<DataSourceMetadata>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.CREATE,
+      config
+    );
+  }
+
+  async updateDataSource(id: string, updates: Partial<DataSourceConfig>) {
+    return this.put<DataSourceMetadata>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.UPDATE,
+      updates,
+      { routeParams: { id } }
+    );
+  }
+
+  async deleteDataSource(id: string) {
+    return this.delete(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DELETE,
+      { routeParams: { id } }
     );
   }
 
   // Validation Operations
-  async validateDataSource(id: string): Promise<ApiResponse<ValidationResult>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.VALIDATE, { id }));
-  }
-
-  async testConnection(id: string): Promise<ApiResponse<{ success: boolean; error?: string }>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.API.TEST, { id }));
-  }
-
-  // Data Sync Operations
-  async previewData(
-    id: string,
-    options?: { limit?: number; offset?: number }
-  ): Promise<ApiResponse<PreviewData>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.PREVIEW, { id }), {
-      params: options
-    });
-  }
-
-  async syncData(id: string): Promise<ApiResponse<{ jobId: string; status: string }>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.SYNC, { id }));
-  }
-
-  // For file uploads with progress
-  async uploadFile(
-    files: File[],
-    options?: { onProgress?: (progress: number) => void }
-  ): Promise<ApiResponse<{ fileId: string }>> {
-    const formData = new FormData();
-    files.forEach(file => formData.append('files', file));
-  
-    const config: ApiRequestConfig = {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: options?.onProgress
-    };
-  
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.UPLOAD, config, formData);
-  }
-
-  async parseFile(
-    fileId: string,
-    config: DataSourceConfig['config']
-  ): Promise<ApiResponse<PreviewData>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.PARSE, { fileId }), {}, config);
-  }
-
-  // Database Operations Implementation
-  async executeDatabaseQuery(
-    id: string,
-    query: string,
-    params?: unknown[]
-  ): Promise<ApiResponse<{
-    rows: unknown[];
-    rowCount: number;
-    fields: Array<{ name: string; type: string }>;
-  }>> {
-    return this.client.request(
-      'post',
-      this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.QUERY, { id }),
-      {},
-      { query, params }
+  async validateDataSource(id: string) {
+    return this.post<ValidationResult>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.VALIDATE,
+      null,
+      { routeParams: { id } }
     );
   }
 
-  async getDatabaseSchema(connectionId: string): Promise<ApiResponse<SchemaInfo>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.SCHEMA, { connectionId }));
+  async testConnection(id: string) {
+    return this.post<{ success: boolean; error?: string }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.TEST,
+      null,
+      { routeParams: { id } }
+    );
   }
 
-  async testDatabaseConnection(connectionId: string): Promise<ApiResponse<ConnectionTestResponse>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.TEST, { connectionId }));
+  // Data Sync Operations
+  async previewData(id: string, options?: { limit?: number; offset?: number }) {
+    return this.get<PreviewData>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.PREVIEW,
+      {
+        routeParams: { id },
+        params: options
+      }
+    );
   }
 
-  async connectDatabase(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.CONNECT, {}, config);
+  async syncData(id: string) {
+    return this.post<{ jobId: string; status: string }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.SYNC,
+      null,
+      { routeParams: { id } }
+    );
   }
 
-  // S3 Operations Implementation
-  async listS3Objects(
-    id: string,
-    prefix?: string
-  ): Promise<ApiResponse<{
-    objects: Array<{
-      key: string;
-      size: number;
-      lastModified: string;
-      isDirectory: boolean;
-    }>;
-  }>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.LIST, { id }), {
-      params: { prefix }
-    });
+  // File Operations
+  async uploadFile(files: File[], onProgress?: (progress: number) => void) {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+
+    return this.uploadWithProgress<{ fileId: string }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.UPLOAD,
+      formData,
+      onProgress
+    );
   }
 
-  async getBucketInfo(connectionId: string): Promise<ApiResponse<S3BucketInfo>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.INFO, { connectionId }));
+  async parseFile(fileId: string, config: DataSourceConfig['config']) {
+    return this.post<PreviewData>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.PARSE,
+      config,
+      { routeParams: { fileId } }
+    );
   }
 
-  async downloadS3Object(connectionId: string, key: string): Promise<ApiResponse<Blob>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.DOWNLOAD, { connectionId }), {
-      params: { key },
-      responseType: 'blob'
-    });
+  // Database Operations
+  async executeDatabaseQuery(id: string, query: string, params?: unknown[]) {
+    return this.post<{
+      rows: unknown[];
+      rowCount: number;
+      fields: Array<{ name: string; type: string }>;
+    }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.QUERY,
+      { query, params },
+      { routeParams: { id } }
+    );
   }
 
-  async connectS3(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.CONNECT, {}, config);
+  async getDatabaseSchema(connectionId: string) {
+    return this.get<SchemaInfo>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.SCHEMA,
+      { routeParams: { connectionId } }
+    );
   }
 
-  // Stream Operations Implementation
-  async getStreamStatus(
-    id: string
-  ): Promise<ApiResponse<{
-    status: string;
-    metrics: {
-      messagesPerSecond: number;
-      bytesPerSecond: number;
-      lastMessage: string;
-    };
-  }>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.STATUS, { id }));
+  async testDatabaseConnection(connectionId: string) {
+    return this.post<ConnectionTestResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.TEST,
+      null,
+      { routeParams: { connectionId } }
+    );
   }
 
-  async getStreamMetrics(connectionId: string): Promise<ApiResponse<StreamMetrics>> {
-    return this.client.request('get', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.METRICS, { connectionId }));
+  async connectDatabase(config: DataSourceConfig['config']) {
+    return this.post<SourceConnectionResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.CONNECT,
+      config
+    );
   }
 
-  async connectStream(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.CONNECT, {}, config);
+  // S3 Operations
+  async listS3Objects(id: string, prefix?: string) {
+    return this.get<{
+      objects: Array<{
+        key: string;
+        size: number;
+        lastModified: string;
+        isDirectory: boolean;
+      }>;
+    }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.LIST,
+      {
+        routeParams: { id },
+        params: { prefix }
+      }
+    );
   }
 
-  // API Operations Implementation
-  async testApiEndpoint(url: string): Promise<ApiResponse<ConnectionTestResponse>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.API.TEST, {}, { url });
+  async getBucketInfo(connectionId: string) {
+    return this.get<S3BucketInfo>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.INFO,
+      { routeParams: { connectionId } }
+    );
+  }
+
+  async downloadS3Object(
+    connectionId: string, 
+    key: string, 
+    onProgress?: (progress: number) => void
+  ) {
+    return this.downloadWithProgress<Blob>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.DOWNLOAD,
+      {
+        routeParams: { connectionId },
+        params: { key },
+        responseType: 'blob'
+      },
+      onProgress
+    );
+  }
+
+  async connectS3(config: DataSourceConfig['config']) {
+    return this.post<SourceConnectionResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.CONNECT,
+      config
+    );
+  }
+
+  // Stream Operations
+  async getStreamStatus(id: string) {
+    return this.get<{
+      status: string;
+      metrics: {
+        messagesPerSecond: number;
+        bytesPerSecond: number;
+        lastMessage: string;
+      };
+    }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.STATUS,
+      { routeParams: { id } }
+    );
+  }
+
+  async getStreamMetrics(connectionId: string) {
+    return this.get<StreamMetrics>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.METRICS,
+      { routeParams: { connectionId } }
+    );
+  }
+
+  async connectStream(config: DataSourceConfig['config']) {
+    return this.post<SourceConnectionResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.CONNECT,
+      config
+    );
+  }
+
+  // API Operations
+  async testApiEndpoint(url: string) {
+    return this.post<ConnectionTestResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.TEST,
+      { url }
+    );
   }
 
   async executeApiRequest(
     connectionId: string,
     params: { method: string; url: string; body?: unknown }
-  ): Promise<ApiResponse<unknown>> {
-    return this.client.request('post', this.buildEndpoint(API_CONFIG.ENDPOINTS.DATA_SOURCES.API.EXECUTE, { connectionId }), {}, params);
+  ) {
+    return this.post<unknown>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.EXECUTE,
+      params,
+      { routeParams: { connectionId } }
+    );
   }
 
-  async connectApi(config: DataSourceConfig['config']): Promise<ApiResponse<SourceConnectionResponse>> {
-    return this.client.request('post', API_CONFIG.ENDPOINTS.DATA_SOURCES.API.CONNECT, {}, config);
+  async connectApi(config: DataSourceConfig['config']) {
+    return this.post<SourceConnectionResponse>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.CONNECT,
+      config
+    );
+  }
+
+  // Connection Operations
+  async disconnectSource(connectionId: string) {
+    return this.post<void>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.DISCONNECT,
+      null,
+      { routeParams: { connectionId } }
+    );
+  }
+
+  async getConnectionStatus(connectionId: string) {
+    return this.get<{ status: string; lastSync?: string; error?: string }>(
+      API_CONFIG.ENDPOINTS.DATA_SOURCES.STATUS,
+      { routeParams: { connectionId } }
+    );
   }
 }
 
-// Export a singleton instance
+// Export singleton instance
 export const dataSourceApi = new DataSourceApi();
-
-

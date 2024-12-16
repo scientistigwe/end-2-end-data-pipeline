@@ -7,7 +7,7 @@ import { PipelineBreadcrumbs } from "../components/PipelineBreadcrumbs";
 import { usePipeline } from "../hooks/usePipeline";
 import { usePipelineExecution } from "../hooks/usePipelineExecution";
 
-export const PipelineDetailsPage: React.FC = () => {
+const PipelineDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { pipeline, isLoading } = usePipeline(id);
   const execution = usePipelineExecution(id!);
@@ -35,3 +35,5 @@ export const PipelineDetailsPage: React.FC = () => {
     </div>
   );
 };
+
+export default PipelineDetailsPage;

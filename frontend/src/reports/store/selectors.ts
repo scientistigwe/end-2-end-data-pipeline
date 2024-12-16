@@ -1,16 +1,33 @@
 // src/report/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from '../../store';
-import type { Report, ReportMetadata, ReportStatus } from '../types/report';
+import type { RootState } from '../../store/rootReducer';
+import type { Report, ReportMetadata, ReportStatus, ScheduleConfig } from '../types/report';
+import type { reportState } from './reportSlice';
 
-// Base selectors
-export const selectReportState = (state: RootState) => state.report;
-export const selectReports = (state: RootState) => state.report.reports;
-export const selectMetadata = (state: RootState) => state.report.metadata;
-export const selectSchedules = (state: RootState) => state.report.schedules;
-export const selectSelectedReportId = (state: RootState) => 
-  state.report.selectedReportId;
-export const selectFilters = (state: RootState) => state.report.filters;
+// Base selectors with proper state path and typing
+export const selectReportState = (state: RootState): reportState => 
+  state.reports;
+
+export const selectReports = (state: RootState): Record<string, Report> => 
+  state.reports?.reports || {};
+
+export const selectMetadata = (state: RootState): Record<string, ReportMetadata> => 
+  state.reports?.metadata || {};
+
+export const selectSchedules = (state: RootState): Record<string, ScheduleConfig> => 
+  state.reports?.schedules || {};
+
+export const selectSelectedReportId = (state: RootState): string | null => 
+  state.reports?.selectedReportId || null;
+
+export const selectFilters = (state: RootState): reportState['filters'] => 
+  state.reports?.filters || {};
+
+export const selectIsLoading = (state: RootState): boolean => 
+  state.reports?.isLoading || false;
+
+export const selectError = (state: RootState): string | null => 
+  state.reports?.error || null;
 
 // Derived selectors
 export const selectReportsList = createSelector(
@@ -21,18 +38,26 @@ export const selectReportsList = createSelector(
 export const selectSelectedReport = createSelector(
   [selectReports, selectSelectedReportId],
   (reports, selectedId): Report | null => 
-    selectedId ? reports[selectedId] ?? null : null
+    selectedId ? reports[selectedId] || null : null
 );
 
 export const selectSelectedReportMetadata = createSelector(
   [selectMetadata, selectSelectedReportId],
   (metadata, selectedId): ReportMetadata | null =>
-    selectedId ? metadata[selectedId] ?? null : null
+    selectedId ? metadata[selectedId] || null : null
+);
+
+export const selectSelectedReportSchedule = createSelector(
+  [selectSchedules, selectSelectedReportId],
+  (schedules, selectedId): ScheduleConfig | null =>
+    selectedId ? schedules[selectedId] || null : null
 );
 
 export const selectFilteredReports = createSelector(
   [selectReportsList, selectFilters],
-  (reports, filters) => {
+  (reports, filters): Report[] => {
+    if (!filters) return reports;
+    
     return reports.filter(report => {
       if (filters.type?.length && !filters.type.includes(report.config.type)) {
         return false;
@@ -55,7 +80,7 @@ export const selectFilteredReports = createSelector(
 
 export const selectReportsByStatus = createSelector(
   selectReportsList,
-  (reports) => {
+  (reports): Record<ReportStatus, Report[]> => {
     return reports.reduce((acc, report) => {
       if (!acc[report.status]) {
         acc[report.status] = [];
@@ -68,7 +93,13 @@ export const selectReportsByStatus = createSelector(
 
 export const selectReportStats = createSelector(
   selectReportsList,
-  (reports) => ({
+  (reports): {
+    total: number;
+    completed: number;
+    failed: number;
+    generating: number;
+    success_rate: number;
+  } => ({
     total: reports.length,
     completed: reports.filter(r => r.status === 'completed').length,
     failed: reports.filter(r => r.status === 'failed').length,
@@ -77,4 +108,20 @@ export const selectReportStats = createSelector(
       ? (reports.filter(r => r.status === 'completed').length / reports.length) * 100
       : 0
   })
+);
+
+// Additional useful selectors
+export const selectReportById = (id: string) => createSelector(
+  selectReports,
+  (reports): Report | null => reports[id] || null
+);
+
+export const selectReportMetadataById = (id: string) => createSelector(
+  selectMetadata,
+  (metadata): ReportMetadata | null => metadata[id] || null
+);
+
+export const selectReportScheduleById = (id: string) => createSelector(
+  selectSchedules,
+  (schedules): ScheduleConfig | null => schedules[id] || null
 );

@@ -8,7 +8,7 @@ import type {
   PipelineStatus
 } from '../types/pipeline';
 
-interface PipelineState {
+export interface PipelineState {
   pipelines: Record<string, Pipeline>;
   runs: Record<string, PipelineRun[]>;
   logs: Record<string, PipelineLogs>;

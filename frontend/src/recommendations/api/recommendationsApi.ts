@@ -5,16 +5,19 @@ import type { ApiResponse } from '@/common/types/api';
 import type {
   Recommendation,
   RecommendationHistory,
-  RecommendationFilters
+  RecommendationFilters,
+  RecommendationError,
+  RecommendationEventMap,
+  RecommendationEventName,
+  RecommendationAppliedDetail,
+  RecommendationDismissedDetail,
+  RecommendationStatusChangeDetail,
+  RecommendationErrorDetail
 } from '../types/recommendations';
+import { RECOMMENDATION_EVENTS } from '../types/recommendations';
 
 class RecommendationsApi extends BaseClient {
-  private readonly RECOMMENDATION_EVENTS = {
-    APPLIED: 'recommendation:applied',
-    DISMISSED: 'recommendation:dismissed',
-    STATUS_CHANGE: 'recommendation:statusChange',
-    ERROR: 'recommendation:error'
-  };
+  private readonly RECOMMENDATION_EVENTS = RECOMMENDATION_EVENTS;
 
   constructor() {
     super({
@@ -51,34 +54,97 @@ class RecommendationsApi extends BaseClient {
     );
   }
 
-  private handleRecommendationError(error: any): Error {
-    if (error.response?.status === 409) {
-      return new Error('Recommendation has already been applied or dismissed');
+  private handleRecommendationError(error: unknown): RecommendationError {
+    const baseError: RecommendationError = {
+      name: 'RecommendationError',
+      message: 'Unknown recommendation error',
+      timestamp: new Date().toISOString(),
+      component: 'recommendation'
+    };
+
+    if (error instanceof Error) {
+      return {
+        ...error,
+        ...baseError,
+        message: error.message
+      };
     }
-    if (error.response?.status === 404) {
-      return new Error('Recommendation not found');
+
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as Record<string, any>;
+      if (errorObj.response?.status === 409) {
+        return {
+          ...baseError,
+          message: 'Recommendation has already been applied or dismissed',
+          code: 'ALREADY_HANDLED'
+        };
+      }
+      if (errorObj.response?.status === 404) {
+        return {
+          ...baseError,
+          message: 'Recommendation not found',
+          code: 'NOT_FOUND'
+        };
+      }
     }
-    if (error.response?.status === 400) {
-      return new Error(`Invalid recommendation action: ${error.response.data?.message}`);
-    }
-    return error;
+
+    return baseError;
   }
 
   private handleRecommendationEvents(response: any) {
     const url = response.config.url;
     if (url?.includes('/apply')) {
-      this.dispatchEvent(this.RECOMMENDATION_EVENTS.APPLIED, response.data);
+      this.notifyApplied(response.data.recommendationId, response.data.actionId, response.data);
     } else if (url?.includes('/dismiss')) {
-      this.dispatchEvent(this.RECOMMENDATION_EVENTS.DISMISSED, response.data);
+      this.notifyDismissed(response.data.recommendationId, response.data.reason);
     }
   }
 
-  private notifyError(error: Error): void {
-    this.dispatchEvent(this.RECOMMENDATION_EVENTS.ERROR, { error: error.message });
+  // Event Notification Methods
+  private notifyError(error: RecommendationError): void {
+    window.dispatchEvent(
+      new CustomEvent<RecommendationErrorDetail>(this.RECOMMENDATION_EVENTS.ERROR, {
+        detail: {
+          error: error.message,
+          code: error.code
+        }
+      })
+    );
   }
 
-  private dispatchEvent(eventName: string, detail: unknown): void {
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  private notifyApplied(
+    recommendationId: string,
+    actionId: string,
+    result: RecommendationHistory
+  ): void {
+    window.dispatchEvent(
+      new CustomEvent<RecommendationAppliedDetail>(this.RECOMMENDATION_EVENTS.APPLIED, {
+        detail: { recommendationId, actionId, result }
+      })
+    );
+  }
+
+  private notifyDismissed(recommendationId: string, reason?: string): void {
+    window.dispatchEvent(
+      new CustomEvent<RecommendationDismissedDetail>(this.RECOMMENDATION_EVENTS.DISMISSED, {
+        detail: { recommendationId, reason }
+      })
+    );
+  }
+
+  private notifyStatusChange(
+    recommendationId: string,
+    status: string,
+    previousStatus?: string
+  ): void {
+    window.dispatchEvent(
+      new CustomEvent<RecommendationStatusChangeDetail>(
+        this.RECOMMENDATION_EVENTS.STATUS_CHANGE,
+        {
+          detail: { recommendationId, status, previousStatus }
+        }
+      )
+    );
   }
 
   // Core Recommendation Methods
@@ -87,7 +153,7 @@ class RecommendationsApi extends BaseClient {
     filters?: RecommendationFilters
   ): Promise<ApiResponse<Recommendation[]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.LIST,
+      this.getRoute('RECOMMENDATIONS', 'LIST'),
       { 
         routeParams: { id: pipelineId },
         params: filters 
@@ -99,8 +165,7 @@ class RecommendationsApi extends BaseClient {
     recommendationId: string
   ): Promise<ApiResponse<Recommendation>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.DETAILS,
-      { routeParams: { id: recommendationId } }
+      this.getRoute('RECOMMENDATIONS', 'DETAILS', { id: recommendationId })
     );
   }
 
@@ -110,9 +175,8 @@ class RecommendationsApi extends BaseClient {
     parameters?: Record<string, unknown>
   ): Promise<ApiResponse<RecommendationHistory>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.APPLY,
-      { actionId, parameters },
-      { routeParams: { id: recommendationId } }
+      this.getRoute('RECOMMENDATIONS', 'APPLY', { id: recommendationId }),
+      { actionId, parameters }
     );
   }
 
@@ -121,9 +185,8 @@ class RecommendationsApi extends BaseClient {
     reason?: string
   ): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.DISMISS,
-      { reason },
-      { routeParams: { id: recommendationId } }
+      this.getRoute('RECOMMENDATIONS', 'DISMISS', { id: recommendationId }),
+      { reason }
     );
   }
 
@@ -131,8 +194,7 @@ class RecommendationsApi extends BaseClient {
     recommendationId: string
   ): Promise<ApiResponse<RecommendationHistory>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.STATUS,
-      { routeParams: { id: recommendationId } }
+      this.getRoute('RECOMMENDATIONS', 'STATUS', { id: recommendationId })
     );
   }
 
@@ -140,8 +202,7 @@ class RecommendationsApi extends BaseClient {
     pipelineId: string
   ): Promise<ApiResponse<RecommendationHistory[]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.RECOMMENDATIONS.HISTORY,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('RECOMMENDATIONS', 'HISTORY', { id: pipelineId })
     );
   }
 
@@ -157,22 +218,27 @@ class RecommendationsApi extends BaseClient {
     const timeout = options?.timeout || 60000;
     const startTime = Date.now();
 
-    while (Date.now() - startTime < timeout) {
+    const checkStatus = async (): Promise<RecommendationHistory> => {
+      if (Date.now() - startTime >= timeout) {
+        throw this.handleRecommendationError({
+          message: 'Recommendation application timeout',
+          code: 'TIMEOUT'
+        });
+      }
+
       const response = await this.getApplicationStatus(recommendationId);
       const status = response.data.status;
 
-      if (status === 'completed' || status === 'failed') {
-        this.dispatchEvent(
-          this.RECOMMENDATION_EVENTS.STATUS_CHANGE,
-          { recommendationId, status }
-        );
+      if (status === 'success' || status === 'failed') {
+        this.notifyStatusChange(recommendationId, status);
         return response.data;
       }
 
       await new Promise(resolve => setTimeout(resolve, interval));
-    }
+      return checkStatus();
+    };
 
-    throw new Error('Recommendation application timeout');
+    return checkStatus();
   }
 
   async batchApplyRecommendations(
@@ -189,11 +255,7 @@ class RecommendationsApi extends BaseClient {
     );
   }
 
-  async getRecommendationSummary(pipelineId: string): Promise<{
-    pending: Recommendation[];
-    applied: RecommendationHistory[];
-    dismissed: RecommendationHistory[];
-  }> {
+  async getRecommendationSummary(pipelineId: string) {
     const [recommendations, history] = await Promise.all([
       this.getRecommendations(pipelineId),
       this.getRecommendationHistory(pipelineId)
@@ -201,21 +263,20 @@ class RecommendationsApi extends BaseClient {
 
     return {
       pending: recommendations.data,
-      applied: history.data.filter(h => h.status === 'completed'),
-      dismissed: history.data.filter(h => h.status === 'dismissed')
+      applied: history.data.filter(h => h.status === 'success'),
+      dismissed: history.data.filter(h => h.status === 'failed')
     };
   }
 
   // Event Subscription
-  subscribeToEvents(
-    event: keyof typeof this.RECOMMENDATION_EVENTS,
-    callback: (event: CustomEvent) => void
+  subscribeToEvents<E extends RecommendationEventName>(
+    event: E,
+    callback: (event: RecommendationEventMap[E]) => void
   ): () => void {
-    const handler = (e: Event) => callback(e as CustomEvent);
-    window.addEventListener(this.RECOMMENDATION_EVENTS[event], handler);
-    return () => window.removeEventListener(this.RECOMMENDATION_EVENTS[event], handler);
+    const handler = (e: Event) => callback(e as RecommendationEventMap[E]);
+    window.addEventListener(event, handler);
+    return () => window.removeEventListener(event, handler);
   }
 }
 
-// Export singleton instance
 export const recommendationsApi = new RecommendationsApi();

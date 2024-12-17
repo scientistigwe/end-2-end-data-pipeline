@@ -1,4 +1,5 @@
 // src/pipeline/types/pipeline.ts
+export type PipelineEventType = 'statusChange' | 'runComplete' | 'error';
 export type PipelineStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type PipelineMode = 'development' | 'staging' | 'production';
 export type LogLevel = 'info' | 'warn' | 'error';
@@ -169,3 +170,64 @@ export interface PipelineState {
   isLoading: boolean;
   error: string | null;
 }
+
+export interface PipelineError extends Error {
+  name: 'PipelineError';
+  code?: string;
+  timestamp: string;
+  component: 'pipeline';
+  details?: unknown;
+}
+
+// Event constants
+export const PIPELINE_EVENTS = {
+  STATUS_CHANGE: 'pipeline:statusChange',
+  RUN_COMPLETE: 'pipeline:runComplete',
+  ERROR: 'pipeline:error'
+} as const;
+
+export interface PipelineError extends Error {
+  name: 'PipelineError';
+  code?: string;
+  timestamp: string;
+  component: 'pipeline';
+  details?: unknown;
+}
+
+// Event detail types
+export interface PipelineStatusChangeDetail {
+  pipelineId: string;
+  status: PipelineStatus;
+  previousStatus: PipelineStatus;
+}
+
+export interface PipelineRunCompleteDetail {
+  pipelineId: string;
+  status: PipelineStatus;
+}
+
+export interface PipelineErrorDetail {
+  error: string;
+  code?: string;
+}
+
+// Error type
+export interface PipelineError extends Error {
+  name: 'PipelineError';
+  code?: string;
+  timestamp: string;
+  component: 'pipeline';
+  details?: unknown;
+}
+
+// Event map type
+export type PipelineEventMap = {
+  'pipeline:statusChange': CustomEvent<PipelineStatusChangeDetail>;
+  'pipeline:runComplete': CustomEvent<PipelineRunCompleteDetail>;
+  'pipeline:error': CustomEvent<PipelineErrorDetail>;
+};
+
+export type PipelineEventName = keyof PipelineEventMap;
+
+
+

@@ -7,11 +7,15 @@ import axios, {
   AxiosHeaders,
   InternalAxiosRequestConfig
 } from 'axios';
-import {
-  API_CONFIG,
-  ApiRequestConfig,
-  ApiResponse, 
-  EndpointParams } from '@/common/api/client/config';
+import { API_CONFIG, ApiRequestConfig, ApiResponse } from '../client/config';
+import { 
+  APIRoutes, 
+  RouteHelper,
+  RouteKey, 
+  SubRouteKey,
+  NestedRouteKey,
+  RouteParams 
+} from '../routes';
 import { handleApiError } from '../../utils/errorHandlers';
 
 export class BaseClient {
@@ -33,7 +37,6 @@ export class BaseClient {
     // Request interceptor
     this.client.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
-        // Add auth token if available
         const token = localStorage.getItem('token');
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
@@ -52,9 +55,10 @@ export class BaseClient {
           error.config._retry = true;
           try {
             const refreshToken = localStorage.getItem('refreshToken');
-            const response = await this.client.post(API_CONFIG.ENDPOINTS.AUTH.REFRESH, {
-              refreshToken
-            });
+            const response = await this.client.post(
+              RouteHelper.getRoute('AUTH', 'REFRESH'),
+              { refreshToken }
+            );
             
             const { token } = response.data;
             localStorage.setItem('token', token);
@@ -62,7 +66,6 @@ export class BaseClient {
             error.config.headers['Authorization'] = `Bearer ${token}`;
             return this.client(error.config);
           } catch (refreshError) {
-            // Handle refresh token failure
             localStorage.removeItem('token');
             localStorage.removeItem('refreshToken');
             window.location.href = '/login';
@@ -74,14 +77,26 @@ export class BaseClient {
     );
   }
 
-  protected formatEndpoint(endpoint: string, params?: EndpointParams): string {
-    if (!params) return endpoint;
-    
-    let formattedEndpoint = endpoint;
-    Object.entries(params).forEach(([key, value]) => {
-      formattedEndpoint = formattedEndpoint.replace(`:${key}`, encodeURIComponent(value));
-    });
-    return formattedEndpoint;
+  // Route helpers with proper typing
+  protected getRoute<T extends RouteKey>(
+    module: T,
+    route: SubRouteKey<T>,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getRoute(module, route, params);
+  }
+
+  protected getNestedRoute<
+    T extends RouteKey,
+    S extends keyof typeof APIRoutes[T],
+    R extends NestedRouteKey<T, S>
+  >(
+    module: T,
+    section: S,
+    route: R,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getNestedRoute(module, section, route, params);
   }
 
   protected async request<T>(
@@ -91,15 +106,11 @@ export class BaseClient {
     data?: unknown
   ): Promise<ApiResponse<T>> {
     try {
-      const finalUrl = config?.routeParams ? 
-        this.formatEndpoint(endpoint, config.routeParams) : 
-        endpoint;
-
       const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
 
       const requestConfig: AxiosRequestConfig = {
         method,
-        url: finalUrl,
+        url: endpoint,
         data,
         ...axiosConfig,
         onUploadProgress: onUploadProgress as ((progressEvent: AxiosProgressEvent) => void) | undefined
@@ -112,7 +123,7 @@ export class BaseClient {
     }
   }
 
-  // Convenience methods with caching support
+  // HTTP methods with caching support
   protected async get<T>(
     endpoint: string, 
     config?: ApiRequestConfig & { cacheDuration?: number }
@@ -158,7 +169,7 @@ export class BaseClient {
     return this.request<T>('delete', endpoint, config);
   }
 
-  // Cache management methods
+  // Cache management
   protected clearCache(): void {
     this.cache.clear();
   }

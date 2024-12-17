@@ -7,15 +7,19 @@ import type {
   PipelineConfig,
   PipelineRun,
   PipelineLogs,
-  PipelineMetrics
+  PipelineMetrics,
+  PipelineError,
+  PipelineEventMap,
+  PipelineEventName,
+  PipelineStatus,
+  PipelineStatusChangeDetail,
+  PipelineRunCompleteDetail,
+  PipelineErrorDetail
 } from '../types/pipeline';
+import { PIPELINE_EVENTS } from '../types/pipeline';
 
 class PipelineApi extends BaseClient {
-  private readonly PIPELINE_EVENTS = {
-    STATUS_CHANGE: 'pipeline:statusChange',
-    RUN_COMPLETE: 'pipeline:runComplete',
-    ERROR: 'pipeline:error'
-  };
+  private readonly PIPELINE_EVENTS = PIPELINE_EVENTS;
 
   constructor() {
     super({
@@ -49,23 +53,85 @@ class PipelineApi extends BaseClient {
     );
   }
 
-  private handlePipelineError(error: any): Error {
-    if (error.response?.status === 409) {
-      return new Error('Pipeline is already running');
+  private handlePipelineError(error: unknown): PipelineError {
+    const baseError: PipelineError = {
+      name: 'PipelineError',
+      message: 'Unknown pipeline error',
+      timestamp: new Date().toISOString(),
+      component: 'pipeline'
+    };
+
+    if (error instanceof Error) {
+      return {
+        ...error,
+        ...baseError,
+        message: error.message
+      };
     }
-    if (error.response?.status === 404) {
-      return new Error('Pipeline not found');
+
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as Record<string, any>;
+      if (errorObj.response?.status === 409) {
+        return {
+          ...baseError,
+          message: 'Pipeline is already running',
+          code: 'PIPELINE_RUNNING'
+        };
+      }
+      if (errorObj.response?.status === 404) {
+        return {
+          ...baseError,
+          message: 'Pipeline not found',
+          code: 'PIPELINE_NOT_FOUND'
+        };
+      }
+      if (errorObj.response?.status === 400) {
+        return {
+          ...baseError,
+          message: `Invalid pipeline configuration: ${errorObj.response.data?.message}`,
+          code: 'INVALID_CONFIG'
+        };
+      }
     }
-    if (error.response?.status === 400) {
-      return new Error(`Invalid pipeline configuration: ${error.response.data?.message}`);
-    }
-    return error;
+
+    return baseError;
   }
 
-  private notifyError(error: Error): void {
+  // Event Notification Methods
+  private notifyError(error: PipelineError): void {
     window.dispatchEvent(
-      new CustomEvent(this.PIPELINE_EVENTS.ERROR, {
-        detail: { error: error.message }
+      new CustomEvent<PipelineErrorDetail>(this.PIPELINE_EVENTS.ERROR, {
+        detail: {
+          error: error.message,
+          code: error.code
+        }
+      })
+    );
+  }
+
+  private notifyStatusChange(
+    pipelineId: string,
+    status: PipelineStatus,
+    previousStatus: PipelineStatus
+  ): void {
+    window.dispatchEvent(
+      new CustomEvent<PipelineStatusChangeDetail>(this.PIPELINE_EVENTS.STATUS_CHANGE, {
+        detail: {
+          pipelineId,
+          status,
+          previousStatus
+        }
+      })
+    );
+  }
+
+  private notifyRunComplete(pipelineId: string, status: PipelineStatus): void {
+    window.dispatchEvent(
+      new CustomEvent<PipelineRunCompleteDetail>(this.PIPELINE_EVENTS.RUN_COMPLETE, {
+        detail: {
+          pipelineId,
+          status
+        }
       })
     );
   }
@@ -77,20 +143,22 @@ class PipelineApi extends BaseClient {
     status?: string[];
     mode?: string[];
   }): Promise<ApiResponse<Pipeline[]>> {
-    return this.get(API_CONFIG.ENDPOINTS.PIPELINES.LIST, { params });
+    return this.get(
+      this.getRoute('PIPELINES', 'LIST'),
+      { params }
+    );
   }
 
   async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.CREATE,
+      this.getRoute('PIPELINES', 'CREATE'),
       config
     );
   }
 
   async getPipeline(id: string): Promise<ApiResponse<Pipeline>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.PIPELINES.GET,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'DETAIL', { id })
     );
   }
 
@@ -99,16 +167,14 @@ class PipelineApi extends BaseClient {
     updates: Partial<PipelineConfig>
   ): Promise<ApiResponse<Pipeline>> {
     return this.put(
-      API_CONFIG.ENDPOINTS.PIPELINES.UPDATE,
-      updates,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'UPDATE', { id }),
+      updates
     );
   }
 
   async deletePipeline(id: string): Promise<ApiResponse<void>> {
     return this.delete(
-      API_CONFIG.ENDPOINTS.PIPELINES.DELETE,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'DELETE', { id })
     );
   }
 
@@ -121,41 +187,32 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineRun>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.START,
-      options,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'START', { id }),
+      options
     );
   }
 
   async stopPipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.STOP,
-      null,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'STOP', { id })
     );
   }
 
   async pausePipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.PAUSE,
-      null,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'PAUSE', { id })
     );
   }
 
   async resumePipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.RESUME,
-      null,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'RESUME', { id })
     );
   }
 
   async retryPipeline(id: string): Promise<ApiResponse<PipelineRun>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.RETRY,
-      null,
-      { routeParams: { id } }
+      this.getRoute('PIPELINES', 'RETRY', { id })
     );
   }
 
@@ -171,11 +228,8 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineLogs>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.PIPELINES.LOGS,
-      {
-        routeParams: { id },
-        params: options
-      }
+      this.getRoute('PIPELINES', 'LOGS', { id }),
+      { params: options }
     );
   }
 
@@ -187,11 +241,8 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineMetrics[]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.PIPELINES.METRICS,
-      {
-        routeParams: { id },
-        params: timeRange
-      }
+      this.getRoute('PIPELINES', 'METRICS', { id }),
+      { params: timeRange }
     );
   }
 
@@ -205,11 +256,8 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineRun[]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.PIPELINES.RUNS,
-      {
-        routeParams: { id },
-        params: options
-      }
+      this.getRoute('PIPELINES', 'RUNS', { id }),
+      { params: options }
     );
   }
 
@@ -219,12 +267,41 @@ class PipelineApi extends BaseClient {
     errors?: string[];
   }>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.PIPELINES.VALIDATE,
+      this.getRoute('PIPELINES', 'VALIDATE'),
       config
     );
   }
 
   // Helper Methods
+  private async checkCompletion(
+    id: string,
+    startTime: number,
+    interval: number,
+    timeout: number
+  ): Promise<ApiResponse<PipelineRun>> {
+    if (Date.now() - startTime >= timeout) {
+      throw this.handlePipelineError({
+        message: 'Pipeline execution timeout',
+        code: 'EXECUTION_TIMEOUT'
+      });
+    }
+
+    const response = await this.getPipeline(id);
+    const status = response.data.status;
+
+    if (status === 'completed' || status === 'failed') {
+      this.notifyRunComplete(id, status);
+      const runsResponse = await this.getPipelineRuns(id, { limit: 1 });
+      return {
+        ...runsResponse,
+        data: runsResponse.data[0]
+      };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, interval));
+    return this.checkCompletion(id, startTime, interval, timeout);
+  }
+
   async waitForPipelineCompletion(
     id: string,
     options?: {
@@ -234,33 +311,10 @@ class PipelineApi extends BaseClient {
   ): Promise<ApiResponse<PipelineRun>> {
     const interval = options?.pollingInterval || 5000;
     const timeout = options?.timeout || 300000;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const response = await this.getPipeline(id);
-      const status = response.data.status;
-
-      if (status === 'completed' || status === 'failed') {
-        window.dispatchEvent(
-          new CustomEvent(this.PIPELINE_EVENTS.RUN_COMPLETE, {
-            detail: { pipelineId: id, status }
-          })
-        );
-        return this.getPipelineRuns(id, { limit: 1 });
-      }
-
-      await new Promise(resolve => setTimeout(resolve, interval));
-    }
-
-    throw new Error('Pipeline execution timeout');
+    return this.checkCompletion(id, Date.now(), interval, timeout);
   }
 
-  async getPipelineDashboard(id: string): Promise<{
-    pipeline: Pipeline;
-    metrics: PipelineMetrics[];
-    runs: PipelineRun[];
-    logs: PipelineLogs;
-  }> {
+  async getPipelineDashboard(id: string) {
     const [pipeline, metrics, runs, logs] = await Promise.all([
       this.getPipeline(id),
       this.getPipelineMetrics(id),
@@ -277,15 +331,14 @@ class PipelineApi extends BaseClient {
   }
 
   // Event Subscription
-  subscribeToEvents(
-    event: keyof typeof this.PIPELINE_EVENTS,
-    callback: (event: CustomEvent) => void
+  subscribeToEvents<E extends PipelineEventName>(
+    event: E,
+    callback: (event: PipelineEventMap[E]) => void
   ): () => void {
-    const handler = (e: Event) => callback(e as CustomEvent);
-    window.addEventListener(this.PIPELINE_EVENTS[event], handler);
-    return () => window.removeEventListener(this.PIPELINE_EVENTS[event], handler);
+    const handler = (e: Event) => callback(e as PipelineEventMap[E]);
+    window.addEventListener(event, handler);
+    return () => window.removeEventListener(event, handler);
   }
 }
 
-// Export singleton instance
 export const pipelineApi = new PipelineApi();

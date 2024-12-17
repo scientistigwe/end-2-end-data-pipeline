@@ -1,16 +1,46 @@
-// src/components/auth/AuthLayout.tsx
-export const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="text-center text-3xl font-extrabold text-gray-900">
-          Data Pipeline Manager
-        </h2>
-      </div>
+import React from "react";
+import { Link } from "react-router-dom";
+import PipelineLogo from "@/assets/PipelineLogo";
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {children}
+interface AuthLayoutProps {
+  children: React.ReactNode;
+}
+
+export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <nav className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <Link to="/" className="flex items-center space-x-2">
+              <PipelineLogo className="h-8 w-8" />
+              <span className="text-xl font-semibold text-foreground">
+                Data Pipeline Manager
+              </span>
+            </Link>
+            <div className="space-x-4">
+              <Link
+                to="/login"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Sign In
+              </Link>
+              <Link
+                to="/register"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                Register
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="flex min-h-[calc(100vh-4rem)] bg-muted/10">
+        <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+          <div className="sm:mx-auto sm:w-full sm:max-w-md">{children}</div>
         </div>
       </div>
     </div>

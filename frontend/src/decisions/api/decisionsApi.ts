@@ -1,6 +1,7 @@
 // src/decisions/api/decisionsApi.ts
 import { BaseClient } from '@/common/api/client/baseClient';
 import { API_CONFIG } from '@/common/api/client/config';
+import { RouteHelper } from '@/common/api/routes';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
 import type {
   Decision,
@@ -84,19 +85,14 @@ class DecisionsApi extends BaseClient {
   // Core Decision Methods
   async listDecisions(pipelineId: string, filters?: DecisionFilters) {
     return this.get<Decision[]>(
-      API_CONFIG.ENDPOINTS.DECISIONS.LIST,
-      {
-        params: { pipelineId, ...filters }
-      }
+      this.getRoute('DECISIONS', 'LIST'),
+      { params: { pipelineId, ...filters } }
     );
   }
 
   async getDecisionDetails(id: string) {
     return this.get<DecisionDetails>(
-      API_CONFIG.ENDPOINTS.DECISIONS.DETAILS,
-      {
-        routeParams: { id }
-      }
+      this.getRoute('DECISIONS', 'DETAILS', { id })
     );
   }
 
@@ -104,9 +100,8 @@ class DecisionsApi extends BaseClient {
     await this.acquireDecisionLock(id);
     try {
       return await this.post<Decision>(
-        API_CONFIG.ENDPOINTS.DECISIONS.MAKE,
-        { optionId, comment },
-        { routeParams: { id } }
+        this.getRoute('DECISIONS', 'MAKE', { id }),
+        { optionId, comment }
       );
     } finally {
       await this.releaseDecisionLock(id);
@@ -117,54 +112,34 @@ class DecisionsApi extends BaseClient {
     await this.acquireDecisionLock(id);
     try {
       return await this.post<Decision>(
-        API_CONFIG.ENDPOINTS.DECISIONS.DEFER,
-        { reason, deferUntil },
-        { routeParams: { id } }
+        this.getRoute('DECISIONS', 'DEFER', { id }),
+        { reason, deferUntil }
       );
     } finally {
       await this.releaseDecisionLock(id);
     }
   }
 
-  // Voting and Comments
-  async addVote(id: string, vote: DecisionVote, comment?: string) {
-    return this.post<DecisionHistoryEntry>(
-      API_CONFIG.ENDPOINTS.DECISIONS.VOTE,
-      { vote, comment },
-      { routeParams: { id } }
-    );
-  }
-
-  async addComment(id: string, content: string, replyTo?: string) {
-    return this.post<DecisionComment>(
-      API_CONFIG.ENDPOINTS.DECISIONS.COMMENT,
-      { content, replyTo },
-      { routeParams: { id } }
-    );
-  }
-
-  async getDecisionHistory(id: string) {
+  // Pipeline History Methods
+  async getDecisionHistory(pipelineId: string) {
     return this.get<DecisionHistoryEntry[]>(
-      API_CONFIG.ENDPOINTS.DECISIONS.HISTORY,
-      { routeParams: { id } }
+      this.getRoute('DECISIONS', 'HISTORY', { id: pipelineId })
     );
   }
 
   // Analysis Methods
   async analyzeImpact(id: string, optionId: string) {
     return this.get<DecisionImpactAnalysis>(
-      API_CONFIG.ENDPOINTS.DECISIONS.ANALYZE,
-      {
-        routeParams: { id },
-        params: { optionId }
-      }
+      this.getRoute('DECISIONS', 'ANALYZE_IMPACT', { id, optionId })
     );
   }
 
   // Lock Management
   private async acquireDecisionLock(id: string) {
     try {
-      await this.post(`/decisions/${id}/lock`);
+      await this.post(
+        this.getRoute('DECISIONS', 'LOCK', { id })
+      );
     } catch (error) {
       throw this.handleDecisionError(error);
     }
@@ -172,7 +147,9 @@ class DecisionsApi extends BaseClient {
 
   private async releaseDecisionLock(id: string) {
     try {
-      await this.delete(`/decisions/${id}/lock`);
+      await this.delete(
+        this.getRoute('DECISIONS', 'LOCK', { id })
+      );
     } catch (error) {
       console.error('Failed to release decision lock:', error);
     }
@@ -181,8 +158,9 @@ class DecisionsApi extends BaseClient {
   // State Management
   private async validateDecisionState(id: string): Promise<DecisionState> {
     try {
-      const response = await this.get<DecisionState>(`/decisions/${id}/state`);
-      return response.data;
+      return (await this.get<DecisionState>(
+        this.getRoute('DECISIONS', 'STATE', { id })
+      )).data;
     } catch (error) {
       throw this.handleDecisionError(error);
     }
@@ -191,22 +169,8 @@ class DecisionsApi extends BaseClient {
   // Helper Methods
   async getPipelineDecisions(pipelineId: string) {
     return this.get<Decision[]>(
-      API_CONFIG.ENDPOINTS.DECISIONS.LIST,
+      this.getRoute('DECISIONS', 'LIST'),
       { params: { pipelineId } }
-    );
-  }
-
-  async getDecisionVotes(id: string) {
-    return this.get<DecisionVote[]>(
-      API_CONFIG.ENDPOINTS.DECISIONS.VOTE,
-      { routeParams: { id } }
-    );
-  }
-
-  async getDecisionComments(id: string) {
-    return this.get<DecisionComment[]>(
-      API_CONFIG.ENDPOINTS.DECISIONS.COMMENT,
-      { routeParams: { id } }
     );
   }
 
@@ -214,9 +178,8 @@ class DecisionsApi extends BaseClient {
     await this.acquireDecisionLock(id);
     try {
       return await this.put<Decision>(
-        API_CONFIG.ENDPOINTS.DECISIONS.DETAILS,
-        updates,
-        { routeParams: { id } }
+        this.getRoute('DECISIONS', 'DETAILS', { id }),
+        updates
       );
     } finally {
       await this.releaseDecisionLock(id);

@@ -4,6 +4,63 @@ export type ReportFormat = 'pdf' | 'csv' | 'json';
 export type ReportScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 export type MetricStatus = 'healthy' | 'warning' | 'critical';
 
+// Event Constants
+export const REPORT_EVENTS = {
+  GENERATION_COMPLETE: 'report:generationComplete',
+  EXPORT_READY: 'report:exportReady',
+  STATUS_CHANGE: 'report:statusChange',
+  ERROR: 'report:error'
+} as const;
+
+// Error Type
+export interface ReportError extends Error {
+  name: 'ReportError';
+  code?: string;
+  timestamp: string;
+  component: 'report';
+  details: {
+    reportId?: string;
+    [key: string]: unknown;
+  };
+}
+
+// Event Detail Types
+export interface ReportGenerationCompleteDetail {
+  reportId: string;
+  status: string;
+  metadata: ReportMetadata;
+}
+
+export interface ReportExportReadyDetail {
+  exports: Array<{
+    id: string;
+    downloadUrl: string;
+  }>;
+}
+
+export interface ReportStatusChangeDetail {
+  reportId: string;
+  status: string;
+  previousStatus?: string;
+  progress?: number;
+}
+
+export interface ReportErrorDetail {
+  error: string;
+  code?: string;
+  reportId?: string;
+}
+
+// Event Map Type
+export type ReportEventMap = {
+  'report:generationComplete': CustomEvent<ReportGenerationCompleteDetail>;
+  'report:exportReady': CustomEvent<ReportExportReadyDetail>;
+  'report:statusChange': CustomEvent<ReportStatusChangeDetail>;
+  'report:error': CustomEvent<ReportErrorDetail>;
+};
+
+export type ReportEventName = keyof ReportEventMap;
+
 export interface ReportConfig {
   name: string;
   type: ReportType;

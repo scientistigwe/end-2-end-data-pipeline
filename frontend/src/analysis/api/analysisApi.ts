@@ -1,6 +1,8 @@
 // src/analysis/api/analysisApi.ts
 import { BaseClient } from '@/common/api/client/baseClient';
 import { API_CONFIG } from '@/common/api/client/config';
+import { RouteHelper } from '@/common/api/routes';
+import type { AxiosProgressEvent } from 'axios';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   QualityConfig,
@@ -8,7 +10,8 @@ import type {
   AnalysisResult,
   QualityReport,
   InsightReport,
-  ExportOptions
+  ExportOptions,
+  AnalysisStatus
 } from '../types/analysis';
 
 class AnalysisApi extends BaseClient {
@@ -26,22 +29,20 @@ class AnalysisApi extends BaseClient {
   // Quality Analysis Methods
   async startQualityAnalysis(config: QualityConfig): Promise<ApiResponse<AnalysisResult>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.START,
+      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'START'),
       config
     );
   }
 
   async getQualityStatus(analysisId: string): Promise<ApiResponse<AnalysisResult>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.STATUS,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'STATUS', { id: analysisId })
     );
   }
 
   async getQualityReport(analysisId: string): Promise<ApiResponse<QualityReport>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.REPORT,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'REPORT', { id: analysisId })
     );
   }
 
@@ -50,34 +51,29 @@ class AnalysisApi extends BaseClient {
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.ANALYSIS.QUALITY.EXPORT,
+      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'EXPORT', { id: analysisId }),
       options,
-      {
-        routeParams: { id: analysisId },
-        responseType: 'blob'
-      }
+      { responseType: 'blob' }
     );
   }
 
   // Insight Analysis Methods
   async startInsightAnalysis(config: InsightConfig): Promise<ApiResponse<AnalysisResult>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.START,
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'START'),
       config
     );
   }
 
   async getInsightStatus(analysisId: string): Promise<ApiResponse<AnalysisResult>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.STATUS,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'STATUS', { id: analysisId })
     );
   }
 
   async getInsightReport(analysisId: string): Promise<ApiResponse<InsightReport>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.REPORT,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'REPORT', { id: analysisId })
     );
   }
 
@@ -85,8 +81,7 @@ class AnalysisApi extends BaseClient {
     analysisId: string
   ): Promise<ApiResponse<InsightReport['correlations']>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.CORRELATIONS,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'CORRELATIONS', { id: analysisId })
     );
   }
 
@@ -94,8 +89,7 @@ class AnalysisApi extends BaseClient {
     analysisId: string
   ): Promise<ApiResponse<InsightReport['anomalies']>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.ANOMALIES,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'ANOMALIES', { id: analysisId })
     );
   }
 
@@ -107,8 +101,7 @@ class AnalysisApi extends BaseClient {
     description: string;
   }>>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.TRENDS,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'TRENDS', { id: analysisId })
     );
   }
 
@@ -117,8 +110,10 @@ class AnalysisApi extends BaseClient {
     patternId: string
   ): Promise<ApiResponse<InsightReport['patterns'][0]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.PATTERN_DETAILS,
-      { routeParams: { id: analysisId, patternId } }
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'PATTERN_DETAILS', { 
+        id: analysisId, 
+        patternId 
+      })
     );
   }
 
@@ -127,12 +122,9 @@ class AnalysisApi extends BaseClient {
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.ANALYSIS.INSIGHT.EXPORT,
+      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'EXPORT', { id: analysisId }),
       options,
-      {
-        routeParams: { id: analysisId },
-        responseType: 'blob'
-      }
+      { responseType: 'blob' }
     );
   }
 
@@ -140,24 +132,23 @@ class AnalysisApi extends BaseClient {
   async uploadAnalysisData(
     data: FormData,
     onProgress?: (progress: number) => void
-  ) {
-    return this.post<{ id: string }>(
-      '/analysis/upload',
+  ): Promise<ApiResponse<{ id: string }>> {
+    return this.post(
+      RouteHelper.getRoute('ANALYSIS', 'UPLOAD'),
       data,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: onProgress ? 
-          (progressEvent: ProgressEvent) => {
-            if (progressEvent.lengthComputable) {
-              const progress = (progressEvent.loaded / progressEvent.total) * 100;
-              onProgress(Math.round(progress));
-            }
-          } : undefined
+        onUploadProgress: (progressEvent: AxiosProgressEvent) => {
+          if (progressEvent.total) {
+            const progress = (progressEvent.loaded / progressEvent.total) * 100;
+            onProgress?.(Math.round(progress));
+          }
+        }
       }
     );
   }
 
-  async checkAnalysisStatus(analysisId: string): Promise<'running' | 'completed' | 'failed'> {
+  async checkAnalysisStatus(analysisId: string): Promise<AnalysisStatus> {
     try {
       const response = await this.getQualityStatus(analysisId);
       return response.data.status;
@@ -169,9 +160,7 @@ class AnalysisApi extends BaseClient {
 
   async cancelAnalysis(analysisId: string): Promise<ApiResponse<void>> {
     return this.post(
-      `/analysis/${analysisId}/cancel`,
-      null,
-      { routeParams: { id: analysisId } }
+      RouteHelper.getRoute('ANALYSIS', 'CANCEL', { id: analysisId })
     );
   }
 }

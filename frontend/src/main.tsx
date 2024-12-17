@@ -1,32 +1,60 @@
-// src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import "./index.css";
+
+// Import global styles
+import "./styles/global/reset.css";
+import "./styles/global/base.css";
+
+// Import App and other components
 import App from "./App";
 
-// Create your theme
+// Create MUI theme
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#1976d2",
+      main: "hsl(var(--primary))",
+      contrastText: "hsl(var(--primary-foreground))",
     },
     secondary: {
-      main: "#dc004e",
+      main: "hsl(var(--secondary))",
+      contrastText: "hsl(var(--secondary-foreground))",
+    },
+    background: {
+      default: "hsl(var(--background))",
+      paper: "hsl(var(--card))",
+    },
+    text: {
+      primary: "hsl(var(--foreground))",
+      secondary: "hsl(var(--muted-foreground))",
+    },
+    error: {
+      main: "hsl(var(--destructive))",
+      contrastText: "hsl(var(--destructive-foreground))",
     },
   },
   typography: {
-    fontFamily: "Roboto, sans-serif",
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif",
   },
-  // You can add more theme customization here
+  shape: {
+    borderRadius: 8,
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          fontFeatureSettings: '"rlig" 1, "calt" 1',
+        },
+      },
+    },
+  },
 });
 
-// Use non-null assertion since we know 'root' exists
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
-      <CssBaseline /> {/* Adds MUI's CSS baseline */}
+      <CssBaseline />
       <App />
     </ThemeProvider>
   </React.StrictMode>

@@ -1,35 +1,32 @@
 import React, { useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import { Header } from "./Header";
 import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
-import { type RootState } from "../../../store/rootReducer";
 import { useAppSelector } from "@/store/store";
-import { selectIsAuthenticated } from "../../../auth/store/selectors";
+import { selectIsAuthenticated } from "@/auth/store/selectors";
 
-interface MainLayoutProps {
-  children: React.ReactNode;
-}
-
-export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  // Move all hooks to the top, before any conditionals
+export const MainLayout: React.FC = () => {
   const location = useLocation();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
-  const systemHealth = useAppSelector(
-    (state: RootState) => state.monitoring.systemHealth
-  );
+  const systemHealth = useAppSelector((state) => state.monitoring.systemHealth);
+  const user = useAppSelector((state) => state.auth.user);
+
   const authPages = useMemo(
     () => ["/login", "/register", "/forgot-password"],
     []
   );
+
   const isAuthPage = useMemo(
     () => authPages.includes(location.pathname),
     [location.pathname, authPages]
   );
+
   const healthAlert = useMemo(() => {
     if (!systemHealth || systemHealth.status === "healthy") return null;
     return (
-      <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
-        System Status: {systemHealth.status}
+      <div className="mb-4 p-4 bg-destructive/10 text-destructive rounded-md">
+        <p className="font-medium">System Status: {systemHealth.status}</p>
         {systemHealth.error && (
           <p className="mt-1 text-sm">{systemHealth.error}</p>
         )}
@@ -37,19 +34,27 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     );
   }, [systemHealth]);
 
-  // All conditionals after hooks
   if (isAuthPage) {
-    return <>{children}</>;
+    return <Outlet />;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {isAuthenticated && <Navbar />}
-      <div className="flex">
+    <div className="min-h-screen bg-background">
+      {isAuthenticated && (
+        <>
+          <Header user={user} />
+          <Navbar />
+        </>
+      )}
+      <div className="flex h-[calc(100vh-8rem)]">
+        {" "}
+        {/* Adjusted for Header + Navbar height */}
         {isAuthenticated && <Sidebar />}
-        <main className="flex-1 p-6">
-          {healthAlert}
-          <div className="container mx-auto">{children}</div>
+        <main className="flex-1 overflow-y-auto">
+          <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            {healthAlert}
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

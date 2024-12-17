@@ -8,6 +8,7 @@ export interface MonitoringConfig {
   interval?: number;
   alertThresholds?: Record<string, number>;
   timeRange?: TimeRange;
+  retention?: string;
 }
 
 export interface MetricsData {
@@ -16,6 +17,7 @@ export interface MetricsData {
   values: Record<string, number>;
   status: MetricStatus;
   labels?: Record<string, string>;
+  metadata?: Record<string, any>;
   pipelines: Record<string, {
     throughput: number;
     latency: number;
@@ -40,6 +42,30 @@ export interface SystemHealth {
     lastChecked?: string;
   }>;
   error?: string;
+  lastUpdated: string;
+}
+
+export interface PerformanceMetrics {
+  cpu: {
+    usage: number;
+    load: number;
+    threads: number;
+  };
+  memory: {
+    used: number;
+    available: number;
+    peak: number;
+  };
+  latency: {
+    p50: number;
+    p90: number;
+    p99: number;
+  };
+  throughput: {
+    current: number;
+    average: number;
+    peak: number;
+  };
 }
 
 export interface ResourceUsage {
@@ -69,10 +95,11 @@ export interface AlertConfig {
   metric: string;
   threshold: number;
   severity: AlertSeverity;
-  condition: 'above' | 'below';
+  condition: 'above' | 'below' | 'equals';
   enabled?: boolean;
   description?: string;
-}
+  name: string;
+  }
 
 export interface Alert {
   id: string;
@@ -122,4 +149,43 @@ export interface MonitoringFilters {
   search?: string;
 }
 
+export interface Alert {
+  id: string;
+  configId: string;
+  timestamp: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  condition: 'above' | 'below' | 'equals';
+  severity: AlertSeverity;
+  status: 'active' | 'acknowledged' | 'resolved';
+  acknowledgedBy?: string;
+  resolvedBy?: string;
+  resolution?: {
+    timestamp: string;
+    comment?: string;
+    action?: string;
+  };
+}
 
+export interface MetricDefinition {
+  name: string;
+  type: 'gauge' | 'counter' | 'histogram';
+  unit?: string;
+  description?: string;
+  labels?: string[];
+}
+
+export type MonitoringEventType = 'metrics' | 'error' | 'status';
+
+export interface MonitoringError extends Error {
+  code?: string;
+  component?: string;
+  timestamp?: string;
+}
+
+export interface WebSocketError extends Error {
+  type: 'websocket';
+  code?: number;
+  wasClean?: boolean;
+}

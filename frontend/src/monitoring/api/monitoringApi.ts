@@ -1,6 +1,7 @@
 // src/monitoring/api/monitoringApi.ts
 import { BaseClient } from '@/common/api/client/baseClient';
 import { API_CONFIG } from '@/common/api/client/config';
+import { RouteHelper } from '@/common/api/routes';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   MonitoringConfig,
@@ -11,7 +12,8 @@ import type {
   Alert,
   ResourceUsage,
   TimeSeriesData,
-  MetricDefinition
+  WebSocketError,
+  MonitoringError
 } from '../types/monitoring';
 
 class MonitoringApi extends BaseClient {
@@ -23,7 +25,7 @@ class MonitoringApi extends BaseClient {
     METRICS_UPDATE: 'monitoring:metricsUpdate',
     ERROR: 'monitoring:error',
     STATUS_CHANGE: 'monitoring:statusChange'
-  };
+  } as const;
 
   constructor() {
     super({
@@ -38,7 +40,7 @@ class MonitoringApi extends BaseClient {
     this.setupMonitoringInterceptors();
   }
 
-  // Interceptors and Error Handling
+  // Interceptors
   private setupMonitoringInterceptors() {
     this.client.interceptors.request.use(
       (config) => {
@@ -57,23 +59,70 @@ class MonitoringApi extends BaseClient {
     );
   }
 
-  private handleMonitoringError(error: any): Error {
-    if (error.response?.status === 429) {
-      return new Error('Monitoring rate limit exceeded. Please try again later.');
+  // Error Handling
+  private handleMonitoringError(error: unknown): MonitoringError {
+    const baseError: MonitoringError = {
+      name: 'MonitoringError',
+      message: 'Unknown monitoring error',
+      timestamp: new Date().toISOString(),
+      component: 'monitoring'
+    };
+
+    if (error instanceof Error) {
+      return {
+        ...error,
+        ...baseError,
+        message: error.message
+      };
     }
-    if (error.response?.status === 503) {
-      return new Error('Monitoring service is temporarily unavailable.');
+
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as Record<string, any>;
+      if (errorObj.response?.status === 429) {
+        return {
+          ...baseError,
+          message: 'Monitoring rate limit exceeded. Please try again later.',
+          code: 'RATE_LIMIT_EXCEEDED'
+        };
+      }
+      if (errorObj.response?.status === 503) {
+        return {
+          ...baseError,
+          message: 'Monitoring service is temporarily unavailable.',
+          code: 'SERVICE_UNAVAILABLE'
+        };
+      }
     }
-    if (error.response?.status === 404) {
-      return new Error('Requested monitoring resource not found.');
-    }
-    if (error.response?.status === 400) {
-      return new Error(`Invalid monitoring request: ${error.response.data?.message}`);
-    }
-    return error;
+
+    return baseError;
   }
 
-  // Event Handling
+  private handleWebSocketError(event: Event): WebSocketError {
+    const baseError: WebSocketError = {
+      name: 'WebSocketError',
+      message: 'Unknown WebSocket error',
+      type: 'websocket'
+    };
+
+    if (event instanceof ErrorEvent) {
+      return {
+        ...baseError,
+        message: event.message
+      };
+    }
+
+    if (event instanceof CloseEvent) {
+      return {
+        ...baseError,
+        message: 'WebSocket connection closed',
+        code: event.code,
+        wasClean: event.wasClean
+      };
+    }
+
+    return baseError;
+  }
+
   private notifyError(error: Error): void {
     window.dispatchEvent(
       new CustomEvent(this.MONITORING_EVENTS.ERROR, {
@@ -85,81 +134,26 @@ class MonitoringApi extends BaseClient {
   // Core Monitoring Operations
   async startMonitoring(pipelineId: string, config: MonitoringConfig): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.MONITORING.START,
-      config,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('MONITORING', 'START', { id: pipelineId }),
+      config
     );
   }
 
-  async pauseMonitoring(pipelineId: string): Promise<ApiResponse<void>> {
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.MONITORING.START}/pause`,
-      null,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  async resumeMonitoring(pipelineId: string): Promise<ApiResponse<void>> {
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.MONITORING.START}/resume`,
-      null,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  async stopMonitoring(pipelineId: string): Promise<ApiResponse<void>> {
-    this.stopRealtimeMonitoring();
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.MONITORING.START}/stop`,
-      null,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  // Metrics Operations
   async getMetrics(pipelineId: string): Promise<ApiResponse<MetricsData>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.METRICS,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('MONITORING', 'METRICS', { id: pipelineId })
     );
   }
 
-  async getMetricDefinitions(pipelineId: string): Promise<ApiResponse<MetricDefinition[]>> {
-    return this.get(
-      `${API_CONFIG.ENDPOINTS.MONITORING.METRICS}/definitions`,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  async getAggregatedMetrics(
-    pipelineId: string,
-    params?: {
-      metrics?: string[];
-      aggregation?: 'avg' | 'sum' | 'min' | 'max';
-      period?: string;
-    }
-  ): Promise<ApiResponse<MetricsData>> {
-    return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.AGGREGATED,
-      {
-        routeParams: { id: pipelineId },
-        params
-      }
-    );
-  }
-
-  // Health & Performance Operations
   async getHealth(pipelineId: string): Promise<ApiResponse<SystemHealth>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.HEALTH,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('MONITORING', 'HEALTH', { id: pipelineId })
     );
   }
 
   async getPerformance(pipelineId: string): Promise<ApiResponse<PerformanceMetrics>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.PERFORMANCE,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('MONITORING', 'PERFORMANCE', { id: pipelineId })
     );
   }
 
@@ -171,11 +165,8 @@ class MonitoringApi extends BaseClient {
     }
   ): Promise<ApiResponse<ResourceUsage>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.RESOURCES,
-      {
-        routeParams: { id: pipelineId },
-        params
-      }
+      this.getRoute('MONITORING', 'RESOURCES', { id: pipelineId }),
+      { params }
     );
   }
 
@@ -190,20 +181,16 @@ class MonitoringApi extends BaseClient {
     }
   ): Promise<ApiResponse<TimeSeriesData>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.TIME_SERIES,
-      {
-        routeParams: { id: pipelineId },
-        params
-      }
+      this.getRoute('MONITORING', 'TIME_SERIES', { id: pipelineId }),
+      { params }
     );
   }
 
   // Alert Operations
   async configureAlerts(pipelineId: string, config: AlertConfig): Promise<ApiResponse<void>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.MONITORING.ALERTS_CONFIG,
-      config,
-      { routeParams: { id: pipelineId } }
+      this.getRoute('MONITORING', 'ALERTS_CONFIG', { id: pipelineId }),
+      config
     );
   }
 
@@ -217,57 +204,12 @@ class MonitoringApi extends BaseClient {
     }
   ): Promise<ApiResponse<Alert[]>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.MONITORING.ALERTS_HISTORY,
-      {
-        routeParams: { id: pipelineId },
-        params
-      }
+      this.getRoute('MONITORING', 'ALERTS_HISTORY', { id: pipelineId }),
+      { params }
     );
   }
 
-  async acknowledgeAlert(pipelineId: string, alertId: string): Promise<ApiResponse<void>> {
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.MONITORING.ALERTS_HISTORY}/acknowledge`,
-      null,
-      { routeParams: { id: pipelineId, alertId } }
-    );
-  }
-
-  async resolveAlert(
-    pipelineId: string,
-    alertId: string,
-    resolution?: {
-      comment?: string;
-      action?: string;
-    }
-  ): Promise<ApiResponse<void>> {
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.MONITORING.ALERTS_HISTORY}/resolve`,
-      resolution,
-      { routeParams: { id: pipelineId, alertId } }
-    );
-  }
-
-  async updateAlertConfig(
-    pipelineId: string,
-    alertId: string,
-    updates: Partial<AlertConfig>
-  ): Promise<ApiResponse<void>> {
-    return this.put(
-      `${API_CONFIG.ENDPOINTS.MONITORING.ALERTS_CONFIG}/${alertId}`,
-      updates,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  async deleteAlertConfig(pipelineId: string, alertId: string): Promise<ApiResponse<void>> {
-    return this.delete(
-      `${API_CONFIG.ENDPOINTS.MONITORING.ALERTS_CONFIG}/${alertId}`,
-      { routeParams: { id: pipelineId } }
-    );
-  }
-
-  // Real-time Monitoring
+  // WebSocket Management
   startRealtimeMonitoring(
     pipelineId: string,
     onMetrics: (data: MetricsData) => void,
@@ -277,31 +219,43 @@ class MonitoringApi extends BaseClient {
     
     const connect = () => {
       this.metricsSocket = new WebSocket(wsUrl);
-
-      this.metricsSocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onMetrics(data);
-          this.dispatchMetricsUpdate(data);
-        } catch (error) {
-          const parsedError = new Error('Invalid metrics data received');
-          onError?.(parsedError);
-          this.notifyError(parsedError);
-        }
-      };
-
-      this.metricsSocket.onerror = (error) => {
-        onError?.(error as Error);
-        this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
-      };
-
-      this.metricsSocket.onclose = () => {
-        this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
-      };
+      this.setupWebSocketHandlers(pipelineId, onMetrics, onError);
     };
 
     connect();
     return () => this.stopRealtimeMonitoring();
+  }
+
+  private setupWebSocketHandlers(
+    pipelineId: string,
+    onMetrics: (data: MetricsData) => void,
+    onError?: (error: Error) => void
+  ): void {
+    if (!this.metricsSocket) return;
+
+    this.metricsSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as MetricsData;
+        onMetrics(data);
+        this.dispatchMetricsUpdate(data);
+      } catch (error) {
+        const parsedError = this.handleMonitoringError(error);
+        onError?.(parsedError);
+        this.notifyError(parsedError);
+      }
+    };
+
+    this.metricsSocket.onerror = (event) => {
+      const error = this.handleWebSocketError(event);
+      onError?.(error);
+      this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
+    };
+
+    this.metricsSocket.onclose = (event) => {
+      const error = this.handleWebSocketError(event);
+      onError?.(error);
+      this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
+    };
   }
 
   private handleWebSocketReconnect(
@@ -311,11 +265,15 @@ class MonitoringApi extends BaseClient {
   ): void {
     if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
+      const delay = this.RECONNECT_DELAY * this.reconnectAttempts;
+
       setTimeout(() => {
         this.startRealtimeMonitoring(pipelineId, onMetrics, onError);
-      }, this.RECONNECT_DELAY * this.reconnectAttempts);
+      }, delay);
+      
+      this.notifyError(new Error(`Reconnecting... Attempt ${this.reconnectAttempts}`));
     } else {
-      const error = new Error('Failed to establish real-time monitoring connection');
+      const error = new Error('Max reconnection attempts reached');
       onError?.(error);
       this.notifyError(error);
     }
@@ -337,35 +295,7 @@ class MonitoringApi extends BaseClient {
     this.reconnectAttempts = 0;
   }
 
-  // Helper Methods
-  async pollMetrics(
-    pipelineId: string,
-    interval: number = 5000,
-    onMetrics: (data: MetricsData) => void,
-    onError?: (error: Error) => void
-  ): Promise<() => void> {
-    let isPolling = true;
-
-    const poll = async () => {
-      while (isPolling) {
-        try {
-          const response = await this.getMetrics(pipelineId);
-          onMetrics(response.data);
-          this.dispatchMetricsUpdate(response.data);
-          await new Promise(resolve => setTimeout(resolve, interval));
-        } catch (error) {
-          const enhancedError = this.handleMonitoringError(error);
-          onError?.(enhancedError);
-          this.notifyError(enhancedError);
-          await new Promise(resolve => setTimeout(resolve, interval));
-        }
-      }
-    };
-
-    poll();
-    return () => { isPolling = false; };
-  }
-
+  // Dashboard Operations
   async getMonitoringDashboard(pipelineId: string) {
     const [metrics, health, performance, resources, alerts] = await Promise.all([
       this.getMetrics(pipelineId),
@@ -384,16 +314,7 @@ class MonitoringApi extends BaseClient {
     };
   }
 
-  async batchUpdateAlertConfigs(
-    pipelineId: string,
-    updates: Array<{ id: string; config: Partial<AlertConfig> }>
-  ): Promise<Array<ApiResponse<void>>> {
-    const promises = updates.map(update =>
-      this.updateAlertConfig(pipelineId, update.id, update.config)
-    );
-    return Promise.all(promises);
-  }
-
+  // Event Subscription
   subscribeToMonitoringEvents(
     event: keyof typeof this.MONITORING_EVENTS,
     callback: (event: CustomEvent) => void
@@ -404,5 +325,4 @@ class MonitoringApi extends BaseClient {
   }
 }
 
-// Export singleton instance
 export const monitoringApi = new MonitoringApi();

@@ -1,4 +1,4 @@
-// src/report/api/reportsApi.ts
+// src/reports/api/reportsApi.ts
 import { BaseClient } from '@/common/api/client/baseClient';
 import { API_CONFIG } from '@/common/api/client/config';
 import type { ApiResponse } from '@/common/types/api';
@@ -8,16 +8,19 @@ import type {
   ScheduleConfig,
   ExportOptions,
   ReportGenerationOptions,
-  ReportMetadata
+  ReportMetadata,
+  ReportError,
+  ReportEventMap,
+  ReportEventName,
+  ReportGenerationCompleteDetail,
+  ReportExportReadyDetail,
+  ReportStatusChangeDetail,
+  ReportErrorDetail
 } from '../types/report';
+import { REPORT_EVENTS } from '../types/report';
 
 class ReportsApi extends BaseClient {
-  private readonly REPORT_EVENTS = {
-    GENERATION_COMPLETE: 'report:generationComplete',
-    EXPORT_READY: 'report:exportReady',
-    STATUS_CHANGE: 'report:statusChange',
-    ERROR: 'report:error'
-  };
+  private readonly REPORT_EVENTS = REPORT_EVENTS;
 
   constructor() {
     super({
@@ -54,39 +57,131 @@ class ReportsApi extends BaseClient {
     );
   }
 
-  private handleReportError(error: any): Error {
-    if (error.response?.status === 404) {
-      return new Error('Report not found');
+  private handleReportError(error: unknown): ReportError {
+    const baseError: ReportError = {
+      name: 'ReportError',
+      message: 'Unknown report error',
+      timestamp: new Date().toISOString(),
+      component: 'report',
+      details: {}
+    };
+
+    if (error instanceof Error) {
+      return {
+        ...error,
+        ...baseError,
+        message: error.message
+      };
     }
-    if (error.response?.status === 400) {
-      return new Error(`Invalid report configuration: ${error.response.data?.message}`);
+
+    if (typeof error === 'object' && error !== null) {
+      const errorObj = error as Record<string, any>;
+      if (errorObj.config?.routeParams?.id) {
+        baseError.details.reportId = errorObj.config.routeParams.id;
+      }
+
+      if (errorObj.response?.status === 404) {
+        return {
+          ...baseError,
+          message: 'Report not found',
+          code: 'REPORT_NOT_FOUND'
+        };
+      }
+
+      if (errorObj.response?.status === 400) {
+        return {
+          ...baseError,
+          message: `Invalid report configuration: ${errorObj.response.data?.message}`,
+          code: 'INVALID_CONFIG'
+        };
+      }
     }
-    return error;
+
+    return baseError;
   }
 
+  // Event Management
   private handleReportEvents(response: any) {
     const url = response.config.url;
     if (url?.includes('/status') && response.data?.status === 'completed') {
-      this.dispatchEvent(this.REPORT_EVENTS.GENERATION_COMPLETE, response.data);
+      this.notifyGenerationComplete(
+        response.data.id,
+        response.data.status,
+        response.data.metadata
+      );
     }
   }
 
-  private notifyError(error: Error): void {
-    this.dispatchEvent(this.REPORT_EVENTS.ERROR, { error: error.message });
+  private notifyError(error: ReportError): void {
+    window.dispatchEvent(
+      new CustomEvent<ReportErrorDetail>(this.REPORT_EVENTS.ERROR, {
+        detail: {
+          error: error.message,
+          code: error.code,
+          reportId: error.details.reportId || 'unknown'
+        }
+      })
+    );
   }
 
-  private dispatchEvent(eventName: string, detail: unknown): void {
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  private notifyGenerationComplete(
+    reportId: string,
+    status: string,
+    metadata: ReportMetadata
+  ): void {
+    window.dispatchEvent(
+      new CustomEvent<ReportGenerationCompleteDetail>(
+        this.REPORT_EVENTS.GENERATION_COMPLETE,
+        {
+          detail: { reportId, status, metadata }
+        }
+      )
+    );
   }
 
-  // Report CRUD Operations
+  private notifyExportReady(exports: Array<{ id: string; downloadUrl: string }>): void {
+    window.dispatchEvent(
+      new CustomEvent<ReportExportReadyDetail>(this.REPORT_EVENTS.EXPORT_READY, {
+        detail: { exports }
+      })
+    );
+  }
+
+  private notifyStatusChange(
+    reportId: string,
+    status: string,
+    previousStatus?: string,
+    progress?: number
+  ): void {
+    window.dispatchEvent(
+      new CustomEvent<ReportStatusChangeDetail>(this.REPORT_EVENTS.STATUS_CHANGE, {
+        detail: { reportId, status, previousStatus, progress }
+      })
+    );
+  }
+
+  // Report Status
+  async getReportStatus(id: string): Promise<ApiResponse<{
+    status: string;
+    progress?: number;
+    error?: string;
+  }>> {
+    return this.get(
+      this.getRoute('REPORTS', 'STATUS', { id })
+    );
+  }
+
+  // CRUD Operations
   async listReports(params?: {
     page?: number;
     limit?: number;
     type?: string[];
     status?: string[];
   }): Promise<ApiResponse<Report[]>> {
-    return this.get(API_CONFIG.ENDPOINTS.REPORTS.LIST, { params });
+    return this.get(
+      this.getRoute('REPORTS', 'LIST'),
+      { params }
+    );
   }
 
   async createReport(
@@ -94,87 +189,42 @@ class ReportsApi extends BaseClient {
     options?: ReportGenerationOptions
   ): Promise<ApiResponse<Report>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.REPORTS.CREATE,
+      this.getRoute('REPORTS', 'CREATE'),
       { config, options }
     );
   }
 
   async getReport(id: string): Promise<ApiResponse<Report>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.REPORTS.GET,
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'DETAIL', { id })
+    );
+  }
+
+  async updateReport(
+    id: string,
+    updates: Partial<ReportConfig>
+  ): Promise<ApiResponse<Report>> {
+    return this.put(
+      this.getRoute('REPORTS', 'UPDATE', { id }),
+      updates
     );
   }
 
   async deleteReport(id: string): Promise<ApiResponse<void>> {
     return this.delete(
-      API_CONFIG.ENDPOINTS.REPORTS.DELETE,
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'DELETE', { id })
     );
   }
 
+  // Export Operations
   async exportReport(
     id: string,
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
     return this.post(
-      API_CONFIG.ENDPOINTS.REPORTS.EXPORT,
-      options,
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'EXPORT', { id }),
+      options
     );
-  }
-
-  // Report Scheduling
-  async scheduleReport(config: ScheduleConfig): Promise<ApiResponse<Report>> {
-    return this.post(API_CONFIG.ENDPOINTS.REPORTS.SCHEDULE, config);
-  }
-
-  async updateSchedule(
-    id: string,
-    updates: Partial<ScheduleConfig>
-  ): Promise<ApiResponse<Report>> {
-    return this.put(
-      `${API_CONFIG.ENDPOINTS.REPORTS.SCHEDULE}/${id}`,
-      updates
-    );
-  }
-
-  // Report Metadata and Preview
-  async getReportMetadata(id: string): Promise<ApiResponse<ReportMetadata>> {
-    return this.get(
-      API_CONFIG.ENDPOINTS.REPORTS.METADATA,
-      { routeParams: { id } }
-    );
-  }
-
-  async previewReport(
-    id: string,
-    section?: string
-  ): Promise<ApiResponse<{ content: string }>> {
-    return this.get(
-      API_CONFIG.ENDPOINTS.REPORTS.PREVIEW,
-      {
-        routeParams: { id },
-        params: { section }
-      }
-    );
-  }
-
-  // Report Templates
-  async getTemplates(): Promise<ApiResponse<Array<{
-    id: string;
-    name: string;
-    type: string;
-  }>>> {
-    return this.get(API_CONFIG.ENDPOINTS.REPORTS.TEMPLATES);
-  }
-
-  // Helper Methods
-  async downloadReport(url: string): Promise<Blob> {
-    const response = await this.client.get(url, {
-      responseType: 'blob'
-    });
-    return response.data;
   }
 
   async batchExportReports(
@@ -190,47 +240,92 @@ class ReportsApi extends BaseClient {
       )
     );
 
-    this.dispatchEvent(this.REPORT_EVENTS.EXPORT_READY, { exports });
+    this.notifyExportReady(exports);
     return exports;
   }
 
-  async cancelGeneration(id: string): Promise<ApiResponse<void>> {
+  // Schedule Operations
+  async scheduleReport(config: ScheduleConfig): Promise<ApiResponse<Report>> {
     return this.post(
-      `${API_CONFIG.ENDPOINTS.REPORTS.STATUS}/${id}/cancel`, 
-      // or use the proper endpoint from your API_CONFIG
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'SCHEDULE'),
+      config
     );
   }
 
-  async generateReport(id: string): Promise<ApiResponse<void>> {
-    return this.post(
-      `${API_CONFIG.ENDPOINTS.REPORTS.STATUS}/${id}/generate`,
-      // or use the proper endpoint from your API_CONFIG
-      { routeParams: { id } }
-    );
-  }
-
-  async updateReport(
-    id: string, 
-    updates: Partial<ReportConfig>
+  async updateSchedule(
+    id: string,
+    updates: Partial<ScheduleConfig>
   ): Promise<ApiResponse<Report>> {
     return this.put(
-      API_CONFIG.ENDPOINTS.REPORTS.UPDATE,
-      updates,
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'SCHEDULE', { id }),
+      updates
     );
   }
 
-  // Enhanced status methods
-  async getReportStatus(id: string): Promise<ApiResponse<{
-    status: Report['status'];
-    progress?: number;
-    error?: string;
-  }>> {
+  // Metadata and Preview
+  async getReportMetadata(id: string): Promise<ApiResponse<ReportMetadata>> {
     return this.get(
-      API_CONFIG.ENDPOINTS.REPORTS.STATUS,
-      { routeParams: { id } }
+      this.getRoute('REPORTS', 'METADATA', { id })
     );
+  }
+
+  async previewReport(
+    id: string,
+    section?: string
+  ): Promise<ApiResponse<{ content: string }>> {
+    return this.get(
+      this.getRoute('REPORTS', 'PREVIEW', { id }),
+      { params: { section } }
+    );
+  }
+
+  // Templates
+  async getTemplates(): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    type: string;
+  }>>> {
+    return this.get(
+      this.getRoute('REPORTS', 'TEMPLATES')
+    );
+  }
+
+  // Generation Monitoring
+  private async checkGenerationStatus(
+    id: string,
+    startTime: number,
+    interval: number,
+    timeout: number,
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<Report>> {
+    if (Date.now() - startTime >= timeout) {
+      throw this.handleReportError({
+        message: 'Report generation timeout',
+        code: 'GENERATION_TIMEOUT',
+        details: { reportId: id }
+      });
+    }
+
+    const response = await this.getReportStatus(id);
+    const { status, progress } = response.data;
+
+    if (onProgress && progress !== undefined) {
+      onProgress(progress);
+    }
+
+    this.notifyStatusChange(id, status, undefined, progress);
+
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      const report = await this.getReport(id);
+      if (status === 'completed') {
+        const metadata = await this.getReportMetadata(id);
+        this.notifyGenerationComplete(id, status, metadata.data);
+      }
+      return report;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, interval));
+    return this.checkGenerationStatus(id, startTime, interval, timeout, onProgress);
   }
 
   async waitForReportGeneration(
@@ -242,37 +337,25 @@ class ReportsApi extends BaseClient {
     }
   ): Promise<ApiResponse<Report>> {
     const interval = options?.pollingInterval || 2000;
-    const timeout = options?.timeout || 300000; // 5 minutes default
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const response = await this.getReportStatus(id);
-      const { status, progress } = response.data;
-
-      if (options?.onProgress && progress !== undefined) {
-        options.onProgress(progress);
-      }
-
-      if (status === 'completed' || status === 'failed' || status === 'cancelled') {
-        return this.getReport(id);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, interval));
-    }
-
-    throw new Error('Report generation timeout');
+    const timeout = options?.timeout || 300000;
+    return this.checkGenerationStatus(
+      id,
+      Date.now(),
+      interval,
+      timeout,
+      options?.onProgress
+    );
   }
 
   // Event Subscription
-  subscribeToEvents(
-    event: keyof typeof this.REPORT_EVENTS,
-    callback: (event: CustomEvent) => void
+  subscribeToEvents<E extends ReportEventName>(
+    event: E,
+    callback: (event: ReportEventMap[E]) => void
   ): () => void {
-    const handler = (e: Event) => callback(e as CustomEvent);
-    window.addEventListener(this.REPORT_EVENTS[event], handler);
-    return () => window.removeEventListener(this.REPORT_EVENTS[event], handler);
+    const handler = (e: Event) => callback(e as ReportEventMap[E]);
+    window.addEventListener(event, handler);
+    return () => window.removeEventListener(event, handler);
   }
 }
 
-// Export singleton instance
 export const reportsApi = new ReportsApi();

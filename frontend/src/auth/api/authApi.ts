@@ -77,7 +77,7 @@ class AuthApi extends BaseClient {
 
   public async refreshToken(token: string) {
     return this.post<AuthTokens>(
-      API_CONFIG.ENDPOINTS.AUTH.REFRESH,
+      this.getRoute('AUTH', 'REFRESH'),
       { token }
     );
   }
@@ -90,7 +90,7 @@ class AuthApi extends BaseClient {
   // Authentication Methods
   async login(credentials: LoginCredentials): Promise<ApiResponse<AuthResponse>> {
     const response = await this.post<AuthResponse>(
-      API_CONFIG.ENDPOINTS.AUTH.LOGIN,
+      this.getRoute('AUTH', 'LOGIN'),
       credentials
     );
     
@@ -103,40 +103,40 @@ class AuthApi extends BaseClient {
   }
 
   async register(data: RegisterData): Promise<ApiResponse<{ user: User }>> {
-    return this.post(API_CONFIG.ENDPOINTS.AUTH.REGISTER, data);
+    return this.post(this.getRoute('AUTH', 'REGISTER'), data);
   }
 
   async logout(): Promise<ApiResponse<void>> {
-    const response = await this.post<void>(API_CONFIG.ENDPOINTS.AUTH.LOGOUT);
+    const response = await this.post<void>(this.getRoute('AUTH', 'LOGOUT'));
     this.clearAuth();
     return response;
   }
 
   // Email Verification
   async verifyEmail(data: VerifyEmailData): Promise<ApiResponse<void>> {
-    return this.post(API_CONFIG.ENDPOINTS.AUTH.VERIFY_EMAIL, data);
+    return this.post(this.getRoute('AUTH', 'VERIFY_EMAIL'), data);
   }
 
   // Password Management
   async forgotPassword(email: string): Promise<ApiResponse<void>> {
-    return this.post(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD, { email });
+    return this.post(this.getRoute('AUTH', 'FORGOT_PASSWORD'), { email });
   }
 
   async resetPassword(data: ResetPasswordData): Promise<ApiResponse<void>> {
-    return this.post(API_CONFIG.ENDPOINTS.AUTH.RESET_PASSWORD, data);
+    return this.post(this.getRoute('AUTH', 'RESET_PASSWORD'), data);
   }
 
   async changePassword(data: ChangePasswordData): Promise<ApiResponse<void>> {
-    return this.post(API_CONFIG.ENDPOINTS.AUTH.CHANGE_PASSWORD, data);
+    return this.post(this.getRoute('AUTH', 'CHANGE_PASSWORD'), data);
   }
 
   // Profile Management
   async getProfile(): Promise<ApiResponse<User>> {
-    return this.get<User>(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
+    return this.get<User>(this.getRoute('AUTH', 'PROFILE'));
   }
 
   async updateProfile(data: Partial<User>): Promise<ApiResponse<User>> {
-    return this.put<User>(API_CONFIG.ENDPOINTS.AUTH.PROFILE, data);
+    return this.put<User>(this.getRoute('AUTH', 'PROFILE'), data);
   }
 
   // Auth State Management
@@ -182,5 +182,4 @@ class AuthApi extends BaseClient {
   }
 }
 
-// Export singleton instance
 export const authApi = new AuthApi();

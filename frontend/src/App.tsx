@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router } from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { Toaster } from "react-hot-toast";
@@ -14,16 +14,12 @@ import { PipelineProvider } from "./pipeline/providers/PipelineProvider";
 import { RecommendationsProvider } from "./recommendations/providers/RecommendationsProvider";
 import { ReportProvider } from "./reports/providers/ReportProvider";
 
-// Layout
-import { MainLayout } from "./common/components/layout/MainLayout";
-
 // Routes
 import { AppRoutes } from "./routes";
 import { store } from "./store/store";
 
 // Styles
 import "./styles/global/base.css";
-import "./styles/global/reset.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +27,6 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 1,
       staleTime: 5000,
-      cacheTime: 10 * 60 * 1000, // 10 minutes
     },
   },
 });
@@ -40,7 +35,7 @@ const App: React.FC = () => {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <Router>
+        <BrowserRouter>
           <AuthProvider>
             <DataSourceProvider>
               <PipelineProvider>
@@ -49,18 +44,18 @@ const App: React.FC = () => {
                     <MonitoringProvider>
                       <RecommendationsProvider>
                         <ReportProvider>
-                          <MainLayout>
+                          <React.Suspense fallback={<div>Loading...</div>}>
                             <AppRoutes />
-                          </MainLayout>
-                          <Toaster 
+                          </React.Suspense>
+                          <Toaster
                             position="top-right"
                             toastOptions={{
                               duration: 4000,
                               style: {
-                                background: '#333',
-                                color: '#fff',
+                                background: "#333",
+                                color: "#fff",
                               },
-                            }} 
+                            }}
                           />
                         </ReportProvider>
                       </RecommendationsProvider>
@@ -70,7 +65,7 @@ const App: React.FC = () => {
               </PipelineProvider>
             </DataSourceProvider>
           </AuthProvider>
-        </Router>
+        </BrowserRouter>
       </QueryClientProvider>
     </Provider>
   );

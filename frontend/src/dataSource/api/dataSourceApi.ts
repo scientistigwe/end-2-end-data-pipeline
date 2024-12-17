@@ -32,7 +32,9 @@ class DataSourceApi extends BaseClient {
   private async requestWithProgress<T>(
     method: 'get' | 'post' | 'put' | 'delete',
     endpoint: string,
-    config?: ApiRequestConfig & { onProgress?: (progress: number) => void },
+    config?: Omit<ApiRequestConfig, 'onUploadProgress'> & {
+      onProgress?: (progress: number) => void;
+    },
     data?: unknown
   ): Promise<ApiResponse<T>> {
     const { onProgress, ...restConfig } = config ?? {};
@@ -40,10 +42,9 @@ class DataSourceApi extends BaseClient {
     const requestConfig: ApiRequestConfig = {
       ...restConfig,
       onUploadProgress: onProgress 
-        ? (e: AxiosProgressEvent) => {
-            if (e.total) {
-              const progress = (e.loaded / e.total) * 100;
-              onProgress(Math.round(progress));
+        ? (event: AxiosProgressEvent) => {
+            if (event.total) {
+              onProgress((event.loaded / event.total) * 100);
             }
           }
         : undefined
@@ -52,92 +53,64 @@ class DataSourceApi extends BaseClient {
     return this.request(method, endpoint, requestConfig, data);
   }
 
-  private async uploadWithProgress<T>(
-    endpoint: string,
-    data: unknown,
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<T>> {
-    return this.requestWithProgress('post', endpoint, { onProgress }, data);
-  }
-
-  private async downloadWithProgress<T>(
-    endpoint: string,
-    config?: ApiRequestConfig,
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<T>> {
-    return this.requestWithProgress('get', endpoint, { ...config, onProgress });
-  }
-
   // Core Operations
   async listDataSources(filters?: DataSourceFilters) {
     return this.get<DataSourceMetadata[]>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.LIST,
+      this.getRoute('DATA_SOURCES', 'LIST'),
       { params: filters }
     );
   }
 
   async getDataSource(id: string) {
     return this.get<{ config: DataSourceConfig; metadata: DataSourceMetadata }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.GET,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'DETAIL', { id })
     );
   }
 
   async createDataSource(config: DataSourceConfig) {
     return this.post<DataSourceMetadata>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.CREATE,
+      this.getRoute('DATA_SOURCES', 'CREATE'),
       config
     );
   }
 
   async updateDataSource(id: string, updates: Partial<DataSourceConfig>) {
     return this.put<DataSourceMetadata>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.UPDATE,
-      updates,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'UPDATE', { id }),
+      updates
     );
   }
 
   async deleteDataSource(id: string) {
     return this.delete(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DELETE,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'DELETE', { id })
     );
   }
 
-  // Validation Operations
+  // Validation & Testing
   async validateDataSource(id: string) {
     return this.post<ValidationResult>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.VALIDATE,
-      null,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'VALIDATE', { id })
     );
   }
 
   async testConnection(id: string) {
     return this.post<{ success: boolean; error?: string }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.TEST,
-      null,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'TEST', { id })
     );
   }
 
-  // Data Sync Operations
+  // Preview & Sync
   async previewData(id: string, options?: { limit?: number; offset?: number }) {
     return this.get<PreviewData>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.PREVIEW,
-      {
-        routeParams: { id },
-        params: options
-      }
+      this.getRoute('DATA_SOURCES', 'PREVIEW', { id }),
+      { params: options }
     );
   }
 
   async syncData(id: string) {
     return this.post<{ jobId: string; status: string }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.SYNC,
-      null,
-      { routeParams: { id } }
+      this.getRoute('DATA_SOURCES', 'SYNC', { id })
     );
   }
 
@@ -146,18 +119,18 @@ class DataSourceApi extends BaseClient {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
 
-    return this.uploadWithProgress<{ fileId: string }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.UPLOAD,
-      formData,
-      onProgress
+    return this.requestWithProgress<{ fileId: string }>(
+      'post',
+      this.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
+      { onProgress },
+      formData
     );
   }
 
   async parseFile(fileId: string, config: DataSourceConfig['config']) {
     return this.post<PreviewData>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.FILE.PARSE,
-      config,
-      { routeParams: { fileId } }
+      this.getNestedRoute('DATA_SOURCES', 'FILE', 'PARSE', { fileId }),
+      config
     );
   }
 
@@ -168,30 +141,26 @@ class DataSourceApi extends BaseClient {
       rowCount: number;
       fields: Array<{ name: string; type: string }>;
     }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.QUERY,
-      { query, params },
-      { routeParams: { id } }
+      this.getNestedRoute('DATA_SOURCES', 'DATABASE', 'QUERY', { id }),
+      { query, params }
     );
   }
 
   async getDatabaseSchema(connectionId: string) {
     return this.get<SchemaInfo>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.SCHEMA,
-      { routeParams: { connectionId } }
+      this.getNestedRoute('DATA_SOURCES', 'DATABASE', 'SCHEMA', { connectionId })
     );
   }
 
   async testDatabaseConnection(connectionId: string) {
     return this.post<ConnectionTestResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.TEST,
-      null,
-      { routeParams: { connectionId } }
+      this.getNestedRoute('DATA_SOURCES', 'DATABASE', 'TEST', { connectionId })
     );
   }
 
   async connectDatabase(config: DataSourceConfig['config']) {
     return this.post<SourceConnectionResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DATABASE.CONNECT,
+      this.getNestedRoute('DATA_SOURCES', 'DATABASE', 'CONNECT'),
       config
     );
   }
@@ -206,18 +175,14 @@ class DataSourceApi extends BaseClient {
         isDirectory: boolean;
       }>;
     }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.LIST,
-      {
-        routeParams: { id },
-        params: { prefix }
-      }
+      this.getNestedRoute('DATA_SOURCES', 'S3', 'LIST', { id }),
+      { params: { prefix } }
     );
   }
 
   async getBucketInfo(connectionId: string) {
     return this.get<S3BucketInfo>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.INFO,
-      { routeParams: { connectionId } }
+      this.getNestedRoute('DATA_SOURCES', 'S3', 'INFO', { connectionId })
     );
   }
 
@@ -226,20 +191,20 @@ class DataSourceApi extends BaseClient {
     key: string, 
     onProgress?: (progress: number) => void
   ) {
-    return this.downloadWithProgress<Blob>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.DOWNLOAD,
+    return this.requestWithProgress<Blob>(
+      'get',
+      this.getNestedRoute('DATA_SOURCES', 'S3', 'DOWNLOAD', { connectionId }),
       {
-        routeParams: { connectionId },
         params: { key },
-        responseType: 'blob'
-      },
-      onProgress
+        responseType: 'blob',
+        onProgress
+      }
     );
   }
 
   async connectS3(config: DataSourceConfig['config']) {
     return this.post<SourceConnectionResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.S3.CONNECT,
+      this.getNestedRoute('DATA_SOURCES', 'S3', 'CONNECT'),
       config
     );
   }
@@ -254,21 +219,19 @@ class DataSourceApi extends BaseClient {
         lastMessage: string;
       };
     }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.STATUS,
-      { routeParams: { id } }
+      this.getNestedRoute('DATA_SOURCES', 'STREAM', 'STATUS', { id })
     );
   }
 
   async getStreamMetrics(connectionId: string) {
     return this.get<StreamMetrics>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.METRICS,
-      { routeParams: { connectionId } }
+      this.getNestedRoute('DATA_SOURCES', 'STREAM', 'METRICS', { connectionId })
     );
   }
 
   async connectStream(config: DataSourceConfig['config']) {
     return this.post<SourceConnectionResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.STREAM.CONNECT,
+      this.getNestedRoute('DATA_SOURCES', 'STREAM', 'CONNECT'),
       config
     );
   }
@@ -276,7 +239,7 @@ class DataSourceApi extends BaseClient {
   // API Operations
   async testApiEndpoint(url: string) {
     return this.post<ConnectionTestResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.TEST,
+      this.getNestedRoute('DATA_SOURCES', 'API', 'TEST'),
       { url }
     );
   }
@@ -286,15 +249,14 @@ class DataSourceApi extends BaseClient {
     params: { method: string; url: string; body?: unknown }
   ) {
     return this.post<unknown>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.EXECUTE,
-      params,
-      { routeParams: { connectionId } }
+      this.getNestedRoute('DATA_SOURCES', 'API', 'EXECUTE', { connectionId }),
+      params
     );
   }
 
   async connectApi(config: DataSourceConfig['config']) {
     return this.post<SourceConnectionResponse>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.API.CONNECT,
+      this.getNestedRoute('DATA_SOURCES', 'API', 'CONNECT'),
       config
     );
   }
@@ -302,16 +264,13 @@ class DataSourceApi extends BaseClient {
   // Connection Operations
   async disconnectSource(connectionId: string) {
     return this.post<void>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.DISCONNECT,
-      null,
-      { routeParams: { connectionId } }
+      this.getRoute('DATA_SOURCES', 'DISCONNECT', { connectionId })
     );
   }
 
   async getConnectionStatus(connectionId: string) {
     return this.get<{ status: string; lastSync?: string; error?: string }>(
-      API_CONFIG.ENDPOINTS.DATA_SOURCES.STATUS,
-      { routeParams: { connectionId } }
+      this.getRoute('DATA_SOURCES', 'STATUS', { connectionId })
     );
   }
 }

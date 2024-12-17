@@ -27,7 +27,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     }
   }, [isAuthenticated, isLoggingIn, navigate, location.pathname]);
 
-  if (isLoggingIn || !isAuthenticated) {
+  // Show loading state instead of null
+  if (isLoggingIn) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
     return null;
   }
 

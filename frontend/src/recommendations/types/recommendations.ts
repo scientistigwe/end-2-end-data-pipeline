@@ -4,6 +4,67 @@ import { ImpactLevel } from '../../common/types/common';
 export type RecommendationType = 'quality' | 'performance' | 'security' | 'optimization';
 export type RecommendationStatus = 'pending' | 'applied' | 'dismissed' | 'failed';
 
+// Existing types
+export interface RecommendationFilters {
+  priority?: string[];
+  startDate?: string;
+  endDate?: string;
+  types?: RecommendationType[];
+  impact?: ImpactLevel[];
+  status?: RecommendationStatus[];
+  minConfidence?: number;
+}
+
+// Add Event Constants
+export const RECOMMENDATION_EVENTS = {
+  APPLIED: 'recommendation:applied',
+  DISMISSED: 'recommendation:dismissed',
+  STATUS_CHANGE: 'recommendation:statusChange',
+  ERROR: 'recommendation:error'
+} as const;
+
+// Add Error Type
+export interface RecommendationError extends Error {
+  name: 'RecommendationError';
+  code?: string;
+  timestamp: string;
+  component: 'recommendation';
+  details?: unknown;
+}
+
+// Event Detail Types
+export interface RecommendationAppliedDetail {
+  recommendationId: string;
+  actionId: string;
+  result: RecommendationHistory;
+}
+
+export interface RecommendationDismissedDetail {
+  recommendationId: string;
+  reason?: string;
+}
+
+export interface RecommendationStatusChangeDetail {
+  recommendationId: string;
+  status: string;
+  previousStatus?: string;
+}
+
+export interface RecommendationErrorDetail {
+  error: string;
+  code?: string;
+}
+
+// Event Map Type
+export type RecommendationEventMap = {
+  'recommendation:applied': CustomEvent<RecommendationAppliedDetail>;
+  'recommendation:dismissed': CustomEvent<RecommendationDismissedDetail>;
+  'recommendation:statusChange': CustomEvent<RecommendationStatusChangeDetail>;
+  'recommendation:error': CustomEvent<RecommendationErrorDetail>;
+};
+
+export type RecommendationEventName = keyof RecommendationEventMap;
+
 export interface Recommendation {
   id: string;
   pipelineId: string;
@@ -43,12 +104,6 @@ export interface RecommendationHistory {
   result?: Record<string, unknown>;
 }
 
-export interface RecommendationFilters {
-  types?: RecommendationType[];
-  impact?: ImpactLevel[];
-  status?: RecommendationStatus[];
-  minConfidence?: number;
-}
 
 export interface RecommendationsState {
   items: Array<{

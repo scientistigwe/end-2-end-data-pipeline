@@ -1,10 +1,10 @@
 // src/common/types/api.ts
-import type { AxiosRequestConfig } from 'axios';
+import type { AxiosProgressEvent, AxiosRequestConfig } from 'axios';
 
 // Base API Types
-export interface ApiRequestConfig extends Omit<AxiosRequestConfig, 'onUploadProgress'> {
+export interface ApiRequestConfig extends Omit<AxiosRequestConfig, 'url' | 'method' | 'data'> {
   routeParams?: Record<string, string>;
-  onUploadProgress?: (progress: number) => void;
+  onUploadProgress?: (progressEvent: AxiosProgressEvent) => void;
 }
 
 export interface BaseApiConfig {

@@ -1,170 +1,170 @@
 // src/common/api/routes.ts
 
 export const APIRoutes = {
-    AUTH: {
-      LOGIN: '/api/v1/auth/login',
-      REGISTER: '/api/v1/auth/register',
-      REFRESH: '/api/v1/auth/refresh',
-      LOGOUT: '/api/v1/auth/logout',
-      VERIFY: '/api/v1/auth/verify',
-      FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
-      RESET_PASSWORD: '/api/v1/auth/reset-password',
-      VERIFY_EMAIL: '/api/v1/auth/verify-email',
-      PROFILE: '/api/v1/auth/profile',
-      CHANGE_PASSWORD: '/api/v1/auth/change-password'
+  AUTH: {
+    LOGIN: '/api/v1/auth/login',
+    REGISTER: '/api/v1/auth/register',
+    REFRESH: '/api/v1/auth/refresh',
+    LOGOUT: '/api/v1/auth/logout',
+    VERIFY: '/api/v1/auth/verify',
+    FORGOT_PASSWORD: '/api/v1/auth/forgot-password',
+    RESET_PASSWORD: '/api/v1/auth/reset-password',
+    VERIFY_EMAIL: '/api/v1/auth/verify-email',
+    PROFILE: '/api/v1/auth/profile',
+    CHANGE_PASSWORD: '/api/v1/auth/change-password'
+  },
+
+  DATA_SOURCES: {
+    LIST: '/api/v1/sources',
+    CREATE: '/api/v1/sources',
+    GET: '/api/v1/sources/:source_id',
+    UPDATE: '/api/v1/sources/:source_id',
+    DELETE: '/api/v1/sources/:source_id',
+    TEST: '/api/v1/sources/:source_id/test',
+    SYNC: '/api/v1/sources/:source_id/sync',
+    VALIDATE: '/api/v1/sources/:source_id/validate',
+    PREVIEW: '/api/v1/sources/:source_id/preview',
+    DISCONNECT: '/api/v1/sources/connection/:connection_id/disconnect',
+    STATUS: '/api/v1/sources/connection/:connection_id/status',
+
+    API: {
+      CONNECT: '/api/v1/sources/api/connect',
+      TEST: '/api/v1/sources/api/test-endpoint',
+      EXECUTE: '/api/v1/sources/api/:connection_id/execute',
+      STATUS: '/api/v1/sources/api/:connection_id/status',
+      METADATA: '/api/v1/sources/api/metadata'
     },
-  
-    DATA_SOURCES: {
-      LIST: '/api/v1/sources',
-      CREATE: '/api/v1/sources',
-      DETAIL: '/api/v1/sources/:id',
-      UPDATE: '/api/v1/sources/:id',
-      DELETE: '/api/v1/sources/:id',
-      TEST: '/api/v1/sources/:id/test',
-      SYNC: '/api/v1/sources/:id/sync',
-      VALIDATE: '/api/v1/sources/:id/validate',
-      PREVIEW: '/api/v1/sources/:id/preview',
-      DISCONNECT: '/api/v1/sources/connection/:connectionId/disconnect',
-      STATUS: '/api/v1/sources/connection/:connectionId/status',
-  
-      API: {
-        CONNECT: '/api/v1/sources/api/connect',
-        TEST: '/api/v1/sources/api/test-endpoint',
-        EXECUTE: '/api/v1/sources/api/:connectionId/execute',
-        STATUS: '/api/v1/sources/api/:connectionId/status',
-        METADATA: '/api/v1/sources/api/metadata'
-      },
-  
-      DATABASE: {
-        CONNECT: '/api/v1/sources/database/connect',
-        TEST: '/api/v1/sources/database/:connectionId/test',
-        QUERY: '/api/v1/sources/database/:connectionId/query',
-        SCHEMA: '/api/v1/sources/database/:connectionId/schema',
-        STATUS: '/api/v1/sources/database/:connectionId/status',
-        METADATA: '/api/v1/sources/database/metadata'
-      },
-  
-      S3: {
-        CONNECT: '/api/v1/sources/s3/connect',
-        LIST: '/api/v1/sources/s3/:connectionId/list',
-        INFO: '/api/v1/sources/s3/:connectionId/info',
-        DOWNLOAD: '/api/v1/sources/s3/:connectionId/download',
-        STATUS: '/api/v1/sources/s3/:connectionId/status',
-        METADATA: '/api/v1/sources/s3/metadata'
-      },
-  
-      STREAM: {
-        CONNECT: '/api/v1/sources/stream/connect',
-        STATUS: '/api/v1/sources/stream/:connectionId/status',
-        METRICS: '/api/v1/sources/stream/:connectionId/metrics',
-        START: '/api/v1/sources/stream/start',
-        STOP: '/api/v1/sources/stream/stop',
-        METADATA: '/api/v1/sources/stream/metadata'
-      },
-  
-      FILE: {
-        UPLOAD: '/api/v1/sources/file/upload',
-        PARSE: '/api/v1/sources/file/:fileId/parse',
-        METADATA: '/api/v1/sources/file/:fileId/metadata'
-      }
+
+    DATABASE: {
+      CONNECT: '/api/v1/sources/database/connect',
+      TEST: '/api/v1/sources/database/:connection_id/test',
+      QUERY: '/api/v1/sources/database/:connection_id/query',
+      SCHEMA: '/api/v1/sources/database/:connection_id/schema',
+      STATUS: '/api/v1/sources/database/:connection_id/status',
+      METADATA: '/api/v1/sources/database/metadata'
     },
-  
-    PIPELINES: {
-      LIST: '/api/v1/pipelines',
-      CREATE: '/api/v1/pipelines',
-      DETAIL: '/api/v1/pipelines/:id',
-      UPDATE: '/api/v1/pipelines/:id',
-      DELETE: '/api/v1/pipelines/:id',
-      START: '/api/v1/pipelines/:id/start',
-      STOP: '/api/v1/pipelines/:id/stop',
-      STATUS: '/api/v1/pipelines/:id/status',
-      LOGS: '/api/v1/pipelines/:id/logs',
-      PAUSE: '/api/v1/pipelines/pause',
-      RESUME: '/api/v1/pipelines/resume',
-      RETRY: '/api/v1/pipelines/retry',
-      METRICS: '/api/v1/pipelines/metrics',
-      RUNS: '/api/v1/pipelines/runs',
-      VALIDATE: '/api/v1/pipelines/validate'
+
+    S3: {
+      CONNECT: '/api/v1/sources/s3/connect',
+      LIST: '/api/v1/sources/s3/:connection_id/list',
+      INFO: '/api/v1/sources/s3/:connection_id/info',
+      DOWNLOAD: '/api/v1/sources/s3/:connection_id/download',
+      STATUS: '/api/v1/sources/s3/:connection_id/status',
+      METADATA: '/api/v1/sources/s3/metadata'
     },
-  
-    ANALYSIS: {
-        QUALITY: {
-          START: '/api/v1/analysis/quality/start',
-          STATUS: '/api/v1/analysis/quality/:id/status',
-          REPORT: '/api/v1/analysis/quality/:id/report',
-          EXPORT: '/api/v1/analysis/quality/:id/export'
-        },
-        INSIGHT: {
-          START: '/api/v1/analysis/insight/start',
-          STATUS: '/api/v1/analysis/insight/:id/status',
-          REPORT: '/api/v1/analysis/insight/:id/report',
-          TRENDS: '/api/v1/analysis/insight/:id/trends',
-          PATTERN_DETAILS: '/api/v1/analysis/insight/:id/pattern/:patternId',
-          EXPORT: '/api/v1/analysis/insight/:id/export',
-          CORRELATIONS: '/api/v1/analysis/insight/:id/correlations',
-          ANOMALIES: '/api/v1/analysis/insight/:id/anomalies'
-        },
-        UPLOAD: '/api/v1/analysis/upload',
-        CANCEL: '/api/v1/analysis/:id/cancel'
-      },
-  
-    MONITORING: {
-      START: '/api/v1/monitoring/:id/start',
-      METRICS: '/api/v1/monitoring/:id/metrics',
-      HEALTH: '/api/v1/monitoring/:id/health',
-      PERFORMANCE: '/api/v1/monitoring/:id/performance',
-      ALERTS_CONFIG: '/api/v1/monitoring/:id/alerts/config',
-      ALERTS_HISTORY: '/api/v1/monitoring/:id/alerts/history',
-      RESOURCES: '/api/v1/monitoring/:id/resources',
-      TIME_SERIES: '/api/v1/monitoring/:id/time-series',
-      AGGREGATED: '/api/v1/monitoring/:id/metrics/aggregated'
+
+    STREAM: {
+      CONNECT: '/api/v1/sources/stream/connect',
+      STATUS: '/api/v1/sources/stream/:connection_id/status',
+      METRICS: '/api/v1/sources/stream/:connection_id/metrics',
+      START: '/api/v1/sources/stream/start',
+      STOP: '/api/v1/sources/stream/stop',
+      METADATA: '/api/v1/sources/stream/metadata'
     },
-  
-    REPORTS: {
-      LIST: '/api/v1/reports',
-      CREATE: '/api/v1/reports',
-      DETAIL: '/api/v1/reports/:id',
-      STATUS: '/api/v1/reports/:id/status',
-      DELETE: '/api/v1/reports/:id',
-      EXPORT: '/api/v1/reports/:id/export',
-      SCHEDULE: '/api/v1/reports/schedule',
-      METADATA: '/api/v1/reports/:id/metadata',
-      PREVIEW: '/api/v1/reports/:id/preview',
-      TEMPLATES: '/api/v1/reports/templates',
-      UPDATE: '/api/v1/reports/update'
-    },
-  
-    RECOMMENDATIONS: {
-      LIST: '/api/v1/recommendations',
-      DETAILS: '/api/v1/recommendations/:id',
-      APPLY: '/api/v1/recommendations/:id/apply',
-      STATUS: '/api/v1/recommendations/:id/status',
-      DISMISS: '/api/v1/recommendations/:id/dismiss',
-      HISTORY: '/api/v1/recommendations/pipeline/:id/history'
-    },
-  
-    DECISIONS: {
-      LIST: '/api/v1/decisions',
-      DETAILS: '/api/v1/decisions/:id',
-      MAKE: '/api/v1/decisions/:id/make',
-      DEFER: '/api/v1/decisions/:id/defer',
-      HISTORY: '/api/v1/decisions/pipeline/:id/history',
-      ANALYZE_IMPACT: '/api/v1/decisions/:id/options/:optionId/impact',
-      LOCK: '/api/v1/decisions/:id/lock',
-      STATE: '/api/v1/decisions/:id/state'
-    },
-  
-    SETTINGS: {
-      PROFILE: '/api/v1/settings/profile',
-      PREFERENCES: '/api/v1/settings/preferences',
-      SECURITY: '/api/v1/settings/security',
-      NOTIFICATIONS: '/api/v1/settings/notifications',
-      APPEARANCE: '/api/v1/settings/appearance',
-      VALIDATE: '/api/v1/settings/validate',
-      RESET: '/api/v1/settings/reset'
+
+    FILE: {
+      UPLOAD: '/api/v1/sources/file/upload',
+      PARSE: '/api/v1/sources/file/:file_id/parse',
+      METADATA: '/api/v1/sources/file/:file_id/metadata'
     }
-  } as const;
-  
+  },
+
+  PIPELINES: {
+    LIST: '/api/v1/pipelines',
+    CREATE: '/api/v1/pipelines',
+    GET: '/api/v1/pipelines/:pipeline_id',
+    UPDATE: '/api/v1/pipelines/:pipeline_id',
+    DELETE: '/api/v1/pipelines/:pipeline_id',
+    START: '/api/v1/pipelines/:pipeline_id/start',
+    STOP: '/api/v1/pipelines/:pipeline_id/stop',
+    STATUS: '/api/v1/pipelines/:pipeline_id/status',
+    LOGS: '/api/v1/pipelines/:pipeline_id/logs',
+    PAUSE: '/api/v1/pipelines/:pipeline_id/pause',
+    RESUME: '/api/v1/pipelines/:pipeline_id/resume',
+    RETRY: '/api/v1/pipelines/:pipeline_id/retry',
+    METRICS: '/api/v1/pipelines/:pipeline_id/metrics',
+    RUNS: '/api/v1/pipelines/runs',
+    VALIDATE: '/api/v1/pipelines/validate'
+  },
+
+  ANALYSIS: {
+    QUALITY: {
+      START: '/api/v1/analysis/quality/start',
+      STATUS: '/api/v1/analysis/quality/:analysis_id/status',
+      REPORT: '/api/v1/analysis/quality/:analysis_id/report',
+      EXPORT: '/api/v1/analysis/quality/:analysis_id/export'
+    },
+    INSIGHT: {
+      START: '/api/v1/analysis/insight/start',
+      STATUS: '/api/v1/analysis/insight/:analysis_id/status',
+      REPORT: '/api/v1/analysis/insight/:analysis_id/report',
+      TRENDS: '/api/v1/analysis/insight/:analysis_id/trends',
+      PATTERN_DETAILS: '/api/v1/analysis/insight/:analysis_id/pattern/:pattern_id',
+      EXPORT: '/api/v1/analysis/insight/:analysis_id/export',
+      CORRELATIONS: '/api/v1/analysis/insight/:analysis_id/correlations',
+      ANOMALIES: '/api/v1/analysis/insight/:analysis_id/anomalies'
+    },
+    UPLOAD: '/api/v1/analysis/upload',
+    CANCEL: '/api/v1/analysis/:analysis_id/cancel'
+  },
+
+  MONITORING: {
+    START: '/api/v1/monitoring/:pipeline_id/start',
+    METRICS: '/api/v1/monitoring/:pipeline_id/metrics',
+    HEALTH: '/api/v1/monitoring/:pipeline_id/health',
+    PERFORMANCE: '/api/v1/monitoring/:pipeline_id/performance',
+    ALERTS_CONFIG: '/api/v1/monitoring/:pipeline_id/alerts/config',
+    ALERTS_HISTORY: '/api/v1/monitoring/:pipeline_id/alerts/history',
+    RESOURCES: '/api/v1/monitoring/:pipeline_id/resources',
+    TIME_SERIES: '/api/v1/monitoring/:pipeline_id/time-series',
+    AGGREGATED: '/api/v1/monitoring/:pipeline_id/metrics/aggregated'
+  },
+
+  REPORTS: {
+    LIST: '/api/v1/reports',
+    CREATE: '/api/v1/reports',
+    GET: '/api/v1/reports/:report_id',
+    UPDATE: '/api/v1/reports/:report_id',
+    DELETE: '/api/v1/reports/:report_id',
+    STATUS: '/api/v1/reports/:report_id/status',
+    EXPORT: '/api/v1/reports/:report_id/export',
+    SCHEDULE: '/api/v1/reports/schedule',
+    METADATA: '/api/v1/reports/:report_id/metadata',
+    PREVIEW: '/api/v1/reports/:report_id/preview',
+    TEMPLATES: '/api/v1/reports/templates'
+  },
+
+  RECOMMENDATIONS: {
+    LIST: '/api/v1/recommendations',
+    GET: '/api/v1/recommendations/:recommendation_id',
+    APPLY: '/api/v1/recommendations/:recommendation_id/apply',
+    STATUS: '/api/v1/recommendations/:recommendation_id/status',
+    DISMISS: '/api/v1/recommendations/:recommendation_id/dismiss',
+    HISTORY: '/api/v1/recommendations/pipeline/:pipeline_id/history'
+  },
+
+  DECISIONS: {
+    LIST: '/api/v1/decisions',
+    GET: '/api/v1/decisions/:decision_id',
+    MAKE: '/api/v1/decisions/:decision_id/make',
+    DEFER: '/api/v1/decisions/:decision_id/defer',
+    HISTORY: '/api/v1/decisions/pipeline/:pipeline_id/history',
+    ANALYZE_IMPACT: '/api/v1/decisions/:decision_id/options/:option_id/impact',
+    LOCK: '/api/v1/decisions/:decision_id/lock',
+    STATE: '/api/v1/decisions/:decision_id/state'
+  },
+
+  SETTINGS: {
+    PROFILE: '/api/v1/settings/profile',
+    PREFERENCES: '/api/v1/settings/preferences',
+    SECURITY: '/api/v1/settings/security',
+    NOTIFICATIONS: '/api/v1/settings/notifications',
+    APPEARANCE: '/api/v1/settings/appearance',
+    VALIDATE: '/api/v1/settings/validate',
+    RESET: '/api/v1/settings/reset'
+  }
+} as const;
+
   // Type definitions
   // Basic route types
   export type RouteKey = keyof typeof APIRoutes;

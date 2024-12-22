@@ -11,7 +11,7 @@ class DataSource(BaseModel):
     type = Column(Enum('file', 'database', 'api', 's3', 'stream', name='source_type'), nullable=False)
     status = Column(Enum('active', 'inactive', 'error', name='source_status'))
     config = Column(JSONB, nullable=False)
-    metadata = Column(JSONB)
+    meta_data = Column(JSONB)  # Changed from metadata to meta_data
     last_sync = Column(DateTime)
     error = Column(Text)
     refresh_interval = Column(Integer)  # in seconds
@@ -49,7 +49,7 @@ class DataSource(BaseModel):
             if missing:
                 raise ValueError(f"Missing required config fields: {missing}")
         return config
-
+    
 # Source-specific configuration models
 class APISourceConfig(BaseModel):
     __tablename__ = 'api_source_configs'
@@ -148,6 +148,6 @@ class SourceSyncHistory(BaseModel):
     records_processed = Column(Integer)
     bytes_processed = Column(Integer)
     error = Column(Text)
-    metadata = Column(JSONB)
+    sync_metadata = Column(JSONB)  # Changed from metadata to sync_metadata
     
     source = relationship('DataSource')

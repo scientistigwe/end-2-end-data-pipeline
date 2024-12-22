@@ -1,0 +1,195 @@
+2024-12-21 16:25:02,796 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:25:02,882 - backend.flask_api.app - INFO - All extensions initialized successfully
+2024-12-21 16:25:03,090 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:25:03,091 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:25:03,092 - backend.flask_api.app - ERROR - Error registering blueprints: No module named '.blueprints'
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 179, in register_blueprints
+    module = __import__(f'.blueprints.{module}.routes', fromlist=[bp_name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named '.blueprints'
+2024-12-21 16:25:03,098 - backend.flask_api.app - ERROR - Failed to create application: No module named '.blueprints'
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 230, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 179, in register_blueprints
+    module = __import__(f'.blueprints.{module}.routes', fromlist=[bp_name])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named '.blueprints'
+2024-12-21 16:29:17,007 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:29:17,052 - backend.flask_api.app - INFO - All extensions initialized successfully
+2024-12-21 16:29:17,215 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:29:17,216 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:29:17,741 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:29:17,773 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:29:17,777 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:29:17,782 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:29:17,784 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:29:17,786 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:29:17,789 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:29:17,791 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:29:17,793 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:29:17,794 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:29:17,794 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:29:17,827 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-21 16:29:17,828 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-21 16:29:17,829 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:29:18,457 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:29:18,499 - backend.flask_api.app - INFO - All extensions initialized successfully
+2024-12-21 16:29:18,657 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:29:18,657 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:29:19,133 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:29:19,168 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:29:19,172 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:29:19,177 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:29:19,179 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:29:19,182 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:29:19,186 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:29:19,188 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:29:19,190 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:29:19,191 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:29:19,192 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:29:19,208 - werkzeug - WARNING -  * Debugger is active!
+2024-12-21 16:29:19,212 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-21 16:29:48,601 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-21 16:29:48,602 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:29:48] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-21 16:29:48,909 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-21 16:29:48,909 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:29:48] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-21 16:30:37,146 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-21 16:30:37,146 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:30:37] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-21 16:30:37,150 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-21 16:30:37,150 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:30:37] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-21 16:32:44,186 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\__init__.py', reloading
+2024-12-21 16:32:44,378 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:48:09,082 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:48:09,123 - backend.flask_api.app - INFO - All extensions initialized successfully
+2024-12-21 16:48:09,282 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:48:09,282 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:48:09,839 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:48:09,882 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:48:09,886 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:48:09,891 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:48:09,893 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:48:09,896 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:48:09,899 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:48:09,902 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:48:09,904 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:48:09,905 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:48:09,905 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:48:09,926 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-21 16:48:09,927 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-21 16:48:09,928 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:48:10,552 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:48:10,598 - backend.flask_api.app - INFO - All extensions initialized successfully
+2024-12-21 16:48:10,756 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:48:10,756 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:48:11,235 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:48:11,268 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:48:11,275 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:48:11,281 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:48:11,284 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:48:11,286 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:48:11,289 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:48:11,292 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:48:11,294 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:48:11,295 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:48:11,295 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:48:11,312 - werkzeug - WARNING -  * Debugger is active!
+2024-12-21 16:48:11,321 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-21 16:48:16,395 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:16,396 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:16] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:17,973 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:17,973 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:17] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:19,300 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:19,300 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:19] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:20,827 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:20,828 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:20] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:22,147 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:22,148 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:22] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:24,166 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:24,167 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:24] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:28,491 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 308 Duration: 0.00s
+2024-12-21 16:48:28,491 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:28] "[32mOPTIONS /api/v1/pipelines HTTP/1.1[0m" 308 -
+2024-12-21 16:48:34,059 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-21 16:48:34,059 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:48:34] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-21 16:50:09,734 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\__init__.py', reloading
+2024-12-21 16:50:09,882 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:50:10,558 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:50:10,558 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-21 16:50:10,765 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:50:10,765 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:50:11,280 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:50:11,327 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:50:11,335 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:50:11,342 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:50:11,344 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:50:11,348 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:50:11,350 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:50:11,354 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:50:11,356 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:50:11,357 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:50:11,357 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:50:11,374 - werkzeug - WARNING -  * Debugger is active!
+2024-12-21 16:50:11,379 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-21 16:50:16,795 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\__init__.py', reloading
+2024-12-21 16:50:16,930 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:50:17,495 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:50:17,495 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-21 16:50:17,716 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:50:17,717 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:50:18,259 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:50:18,322 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:50:18,327 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:50:18,332 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:50:18,334 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:50:18,336 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:50:18,339 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:50:18,341 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:50:18,343 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:50:18,344 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:50:18,344 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:50:18,363 - werkzeug - WARNING -  * Debugger is active!
+2024-12-21 16:50:18,367 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-21 16:50:23,079 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:23,080 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:23] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:24,102 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:24,102 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:24] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:25,195 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:25,197 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:25] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:26,207 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:26,207 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:26] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:28,525 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:28,527 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:28] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:32,537 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 16:50:32,537 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:32] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 16:50:35,692 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-21 16:50:35,693 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:35] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-21 16:50:36,007 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-21 16:50:36,009 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 16:50:36] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-21 16:53:10,651 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\middleware\\cors_middleware.py', reloading
+2024-12-21 16:53:10,855 - werkzeug - INFO -  * Restarting with stat
+2024-12-21 16:53:11,433 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-21 16:53:11,434 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-21 16:53:11,635 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-21 16:53:11,636 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-21 16:53:12,146 - backend.flask_api.app - INFO - Registered blueprint: auth at /api/v1/auth
+2024-12-21 16:53:12,178 - backend.flask_api.app - INFO - Registered blueprint: data_sources at /api/v1/sources
+2024-12-21 16:53:12,183 - backend.flask_api.app - INFO - Registered blueprint: pipeline at /api/v1/pipelines
+2024-12-21 16:53:12,187 - backend.flask_api.app - INFO - Registered blueprint: analysis at /api/v1/analysis
+2024-12-21 16:53:12,189 - backend.flask_api.app - INFO - Registered blueprint: recommendations at /api/v1/recommendations
+2024-12-21 16:53:12,192 - backend.flask_api.app - INFO - Registered blueprint: decisions at /api/v1/decisions
+2024-12-21 16:53:12,195 - backend.flask_api.app - INFO - Registered blueprint: monitoring at /api/v1/monitoring
+2024-12-21 16:53:12,198 - backend.flask_api.app - INFO - Registered blueprint: reports at /api/v1/reports
+2024-12-21 16:53:12,200 - backend.flask_api.app - INFO - Registered blueprint: settings at /api/v1/settings
+2024-12-21 16:53:12,201 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-21 16:53:12,201 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-21 16:53:12,218 - werkzeug - WARNING -  * Debugger is active!
+2024-12-21 16:53:12,224 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-21 17:18:28,346 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 17:18:28,346 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 17:18:28] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 17:18:29,361 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 17:18:29,362 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 17:18:29] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-21 17:18:31,678 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-21 17:18:31,679 - werkzeug - INFO - 127.0.0.1 - - [21/Dec/2024 17:18:31] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -

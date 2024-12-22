@@ -1,91 +1,65 @@
-// auth/routes/authRoutes.tsx
-import { lazy, Suspense } from 'react';
-import { RouteObject } from 'react-router-dom';
-import { AuthLayout } from '../components/AuthLayout';
-import { AuthGuard } from '../components/AuthGuard';
-import { LoadingSpinner } from '@/common/components/navigation/LoadingSpinner';
-import { ErrorBoundary } from '@/common/components/errors/ErrorBoundary';
-import { AUTH_API_CONFIG } from '../api/config';
+// src/auth/routes/authRoutes.ts
+import { lazy } from "react";
+import type { RouteConfig } from "@/common/types/routes";
+import { AuthGuard } from "../components/AuthGuard";
+import { AuthLayout } from "../components/AuthLayout";
 
-// Lazy loaded pages with proper naming and error boundaries
-const LoginPage = lazy(() => 
-  import('../pages/LoginPage').then(module => ({
-    default: module.LoginPage
-  }))
-);
+// Lazy loaded pages
+const LoginPage = lazy(() => import("../pages/LoginPage"));
+const RegisterPage = lazy(() => import("../pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
+const ProfilePage = lazy(() => import("../pages/ProfilePage"));
 
-const RegisterPage = lazy(() => 
-  import('../pages/RegisterPage').then(module => ({
-    default: module.RegisterPage
-  }))
-);
-
-const ForgotPasswordPage = lazy(() => 
-  import('../pages/ForgotPasswordPage').then(module => ({
-    default: module.ForgotPasswordPage
-  }))
-);
-
-const ProfilePage = lazy(() => 
-  import('../pages/ProfilePage').then(module => ({
-    default: module.ProfilePage
-  }))
-);
-
-// Wrapper for lazy loaded components with AuthLayout
-const AuthPageWrapper: React.FC<{ component: React.ReactNode }> = ({ component }) => (
-  <AuthLayout>
-    <ErrorBoundary>
-      <Suspense fallback={<LoadingSpinner />}>
-        {component}
-      </Suspense>
-    </ErrorBoundary>
-  </AuthLayout>
-);
-
-// Auth route configuration
-export const authRoutes: RouteObject[] = [
-  {
-    path: AUTH_API_CONFIG.endpoints.LOGIN,
-    element: (
-      <AuthGuard requireAuth={false} redirectTo="/">
-        <AuthPageWrapper component={<LoginPage />} />
-      </AuthGuard>
-    )
-  },
-  {
-    path: AUTH_API_CONFIG.endpoints.REGISTER,
-    element: (
-      <AuthGuard requireAuth={false} redirectTo="/">
-        <AuthPageWrapper component={<RegisterPage />} />
-      </AuthGuard>
-    )
-  },
-  {
-    path: AUTH_API_CONFIG.endpoints.FORGOT_PASSWORD,
-    element: (
-      <AuthGuard requireAuth={false} redirectTo="/">
-        <AuthPageWrapper component={<ForgotPasswordPage />} />
-      </AuthGuard>
-    )
-  },
-  {
-    path: AUTH_API_CONFIG.endpoints.PROFILE,
-    element: (
-      <AuthGuard requireAuth>
-        <AuthPageWrapper component={<ProfilePage />} />
-      </AuthGuard>
-    )
-  }
-];
-
-// Type-safe route paths
+// Route paths configuration
 export const AUTH_PATHS = {
-  LOGIN: AUTH_API_CONFIG.endpoints.LOGIN,
-  REGISTER: AUTH_API_CONFIG.endpoints.REGISTER,
-  FORGOT_PASSWORD: AUTH_API_CONFIG.endpoints.FORGOT_PASSWORD,
-  PROFILE: AUTH_API_CONFIG.endpoints.PROFILE,
+  LOGIN: "/login",
+  REGISTER: "/register",
+  FORGOT_PASSWORD: "/forgot-password",
+  PROFILE: "/profile",
 } as const;
 
-// Utility for generating auth route paths
-export const getAuthPath = (path: keyof typeof AUTH_PATHS) => AUTH_PATHS[path];
+export type AuthPath = (typeof AUTH_PATHS)[keyof typeof AUTH_PATHS];
+
+// Auth routes configuration
+export const authRoutes: RouteConfig[] = [
+  {
+    path: AUTH_PATHS.LOGIN,
+    element: LoginPage,
+    layoutComponent: AuthLayout,
+    guard: {
+      component: AuthGuard,
+      props: { requireAuth: false, redirectTo: "/" },
+    },
+  },
+  {
+    path: AUTH_PATHS.REGISTER,
+    element: RegisterPage,
+    layoutComponent: AuthLayout,
+    guard: {
+      component: AuthGuard,
+      props: { requireAuth: false, redirectTo: "/" },
+    },
+  },
+  {
+    path: AUTH_PATHS.FORGOT_PASSWORD,
+    element: ForgotPasswordPage,
+    layoutComponent: AuthLayout,
+    guard: {
+      component: AuthGuard,
+      props: { requireAuth: false, redirectTo: "/" },
+    },
+  },
+  {
+    path: AUTH_PATHS.PROFILE,
+    element: ProfilePage,
+    layoutComponent: AuthLayout,
+    guard: {
+      component: AuthGuard,
+      props: { requireAuth: true },
+    },
+  },
+];
+
+// Helper function to get route path
+export const getAuthPath = (path: keyof typeof AUTH_PATHS): AuthPath =>
+  AUTH_PATHS[path];

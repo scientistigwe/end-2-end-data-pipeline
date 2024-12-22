@@ -12,7 +12,7 @@ class Decision(BaseModel):
     status = Column(Enum('pending', 'approved', 'rejected', 'deferred', name='decision_status'))
     priority = Column(Enum('low', 'medium', 'high', 'critical', name='priority_level'))
     deadline = Column(DateTime)
-    metadata = Column(JSONB)
+    meta_info = Column(JSONB)
     context = Column(JSONB)
     impact_analysis = Column(JSONB)
     
@@ -56,7 +56,7 @@ class DecisionHistory(BaseModel):
     previous_status = Column(String(50))
     new_status = Column(String(50))
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
-    metadata = Column(JSONB)
+    event_meta = Column(JSONB)
     
     decision = relationship('Decision', back_populates='history')
 
@@ -72,7 +72,7 @@ class Recommendation(BaseModel):
     description = Column(Text)
     rationale = Column(Text)
     action_details = Column(JSONB)
-    metadata = Column(JSONB)
+    recommendation_meta = Column(JSONB)
     applied_at = Column(DateTime)
     applied_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     dismissed_at = Column(DateTime)
@@ -86,4 +86,4 @@ class RecommendationFeedback(BaseModel):
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     rating = Column(Integer)  # 1-5
     comment = Column(Text)
-    metadata = Column(JSONB)
+    feedback_meta = Column(JSONB)

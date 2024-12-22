@@ -14,7 +14,7 @@ class Report(BaseModel):
     format = Column(String(50))  # pdf, excel, etc.
     config = Column(JSONB)
     parameters = Column(JSONB)
-    metadata = Column(JSONB)
+    report_meta = Column(JSONB)
     
     owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     template_id = Column(UUID(as_uuid=True), ForeignKey('report_templates.id'))
@@ -30,7 +30,7 @@ class ReportTemplate(BaseModel):
     type = Column(String(100))
     content = Column(JSONB)
     parameters = Column(JSONB)
-    metadata = Column(JSONB)
+    template_meta = Column(JSONB)
     is_active = Column(Boolean, default=True)
 
 class ReportSection(BaseModel):
@@ -69,4 +69,4 @@ class ReportExecution(BaseModel):
     parameters = Column(JSONB)
     output_url = Column(String(255))
     error = Column(Text)
-    metadata = Column(JSONB)
+    execution_meta = Column(JSONB)

@@ -1,5 +1,5 @@
 # models/utils.py
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text, Table
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text, Table, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from .base import BaseModel
@@ -47,7 +47,7 @@ class Notification(BaseModel):
     priority = Column(Integer, default=0)
     read = Column(Boolean, default=False)
     read_at = Column(DateTime)
-    metadata = Column(JSONB)
+    notification_meta = Column(JSONB)
 
 # Comments (generic for multiple entities)
 class Comment(BaseModel):
@@ -58,7 +58,7 @@ class Comment(BaseModel):
     entity_id = Column(UUID(as_uuid=True))
     content = Column(Text)
     parent_id = Column(UUID(as_uuid=True), ForeignKey('comments.id'))
-    metadata = Column(JSONB)
+    comment_meta = Column(JSONB)
 
 # File Storage
 class File(BaseModel):
@@ -70,4 +70,4 @@ class File(BaseModel):
     size = Column(Integer)
     entity_type = Column(String(50))
     entity_id = Column(UUID(as_uuid=True))
-    metadata = Column(JSONB)
+    file_meta = Column(JSONB)

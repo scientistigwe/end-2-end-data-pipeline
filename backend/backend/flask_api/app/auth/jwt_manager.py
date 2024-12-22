@@ -32,13 +32,3 @@ class JWTTokenManager:
 
 
 
-
-
-
-
-
-
-
-# Example updated route with security and documentation
-# app/blueprints/pipeline/routes.py
-

@@ -1,279 +1,198 @@
-# Enterprise Data Quality & Integration Pipeline
+# Enterprise Pipeline Backend
 
-An advanced, enterprise-grade framework for automated data quality management, validation, and integration with enhanced user interoperability features. This pipeline orchestrates the complete data lifecycle from multi-source ingestion through validation to final delivery, with comprehensive quality gates and intelligent workflow management.
+## 🎯 Overview
 
-## 🏗️ System Architecture
+The backend system of the Enterprise Data Pipeline platform, built with Python/Flask, provides a sophisticated data processing engine with advanced quality analysis, orchestration, and API capabilities.
+
+## 🏗️ Architecture
+
+### Core Components
 
 ```
-enterprise_pipeline/
-├── orchestrator/              # Enhanced pipeline orchestration
-│   ├── source_managers/      # Multi-source data ingestion
-│   │   ├── file_manager/     # File-based ingestion
-│   │   ├── api_manager/      # API integration
-│   │   ├── db_manager/       # Database connections
-│   │   ├── stream_manager/   # Real-time streaming
-│   │   └── cloud_manager/    # Cloud storage (S3, etc.)
-│   ├── message_broker/       # Advanced message handling
-│   │   ├── router/          # Intelligent message routing
-│   │   ├── tracker/         # Message chain tracking
-│   │   └── decision_handler/ # Decision management
-│   ├── flow_conductor/       # Enhanced flow management
-│   │   ├── registry/        # Module registration
-│   │   ├── router/          # Conditional routing
-│   │   └── state_tracker/   # Flow state management
-│   └── output_handler/       # Multi-destination output
-├── modules/                  # Processing modules
-│   ├── quality/             # Data quality modules
-│   ├── transformation/      # Data transformation
-│   ├── validation/          # Validation rules
-│   ├── enrichment/          # Data enrichment
-│   └── custom/              # User-defined modules
-└── interop/                 # Interoperability layer
-    ├── api/                 # REST API interface
-    ├── ui/                  # User interface
-    └── sdk/                 # Client SDK
+backend/
+├── core/                      # Core framework
+│   ├── app/                  # Application factory
+│   ├── channel_handlers/     # Channel management
+│   ├── messaging/           # Message broker system
+│   ├── metrics/            # Performance tracking
+│   ├── orchestration/      # Pipeline orchestration
+│   └── registry/          # Component registry
+│
+├── data_pipeline/           # Data processing engine
+│   ├── insight_analysis/   # Data insights
+│   ├── quality_analysis/   # Quality framework
+│   │   ├── data_issue_analyzer/
+│   │   ├── data_issue_detector/
+│   │   └── data_issue_resolver/
+│   ├── source/            # Source handlers
+│   │   ├── api/          # API integration
+│   │   ├── cloud/        # Cloud storage
+│   │   ├── database/     # Database connections
+│   │   ├── file/         # File processing
+│   │   └── stream/       # Stream processing
+│   └── validation/       # Validation framework
+│
+├── database/              # Database layer
+│   ├── models/           # SQLAlchemy models
+│   └── migrations/       # Database migrations
+│
+└── flask_api/            # REST API
+    └── app/
+        ├── blueprints/   # Route handlers
+        ├── schemas/      # Data validation
+        └── services/     # Business logic
 ```
 
-## 🎯 Core Features
-
-### 🔄 Enhanced Orchestration
-
-#### Multi-Source Data Management
-- **Dynamic Source Registration**: Plug-and-play integration of new data sources
-- **Unified Interface**: Consistent handling across different source types
-- **Automatic Pipeline Creation**: Per-batch pipeline instantiation
-- **State Tracking**: Comprehensive pipeline state management
-
-#### Advanced Message Processing
-- **Intelligent Routing**: Context-aware message distribution
-- **Chain Tracking**: Parent-child relationship management
-- **Decision Support**: Structured handling of decisions and recommendations
-- **Status Updates**: Real-time pipeline status monitoring
-
-#### Flow Management
-- **Dynamic Module Registration**: Support for 50+ processing modules
-- **Conditional Routing**: Rule-based flow control
-- **State Management**: Comprehensive flow state tracking
-- **Error Handling**: Robust error recovery mechanisms
-
-### 🔌 Interoperability Features
-
-#### API Integration
-```python
-from enterprise_pipeline import Pipeline
-from enterprise_pipeline.sources import APISource
-
-# Configure API source
-api_source = APISource(
-    endpoint="https://api.example.com/data",
-    auth_method="oauth2",
-    refresh_token=True
-)
-
-# Initialize pipeline with API source
-pipeline = Pipeline(source=api_source)
-
-# Start processing with callbacks
-pipeline.process(
-    on_decision_needed=decision_handler,
-    on_status_update=status_handler
-)
-```
-
-#### Custom Module Integration
-```python
-from enterprise_pipeline.modules import BaseModule
-
-class CustomProcessor(BaseModule):
-    def process(self, data, context):
-        # Implementation
-        return processed_data
-    
-    def get_decisions(self):
-        return self.pending_decisions
-```
-
-### 🔍 Quality Management
-
-#### Validation Framework
-- Multi-level validation hierarchy
-- Pattern recognition and analysis
-- Impact assessment
-- Relationship mapping
-- Confidence scoring
-
-#### Processing Categories
-1. **Source Validation**
-   - Format verification
-   - Schema validation
-   - Data completeness
-   - Source reliability
-
-2. **Quality Analysis**
-   - Pattern detection
-   - Anomaly identification
-   - Relationship validation
-   - Business rule compliance
-
-3. **Transformation**
-   - Data standardization
-   - Format conversion
-   - Value normalization
-   - Structure alignment
-
-4. **Enrichment**
-   - Reference data integration
-   - Derived value calculation
-   - External data fusion
-   - Context enhancement
-
-## 🚀 Getting Started
+## 🚀 Setup & Development
 
 ### Prerequisites
+
+- Python 3.8+
+- PostgreSQL 12+
+- Redis (for caching/messaging)
+
+### Installation
+
+1. Create virtual environment:
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Configure environment:
+
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configurations
+   ```
+
+4. Initialize database:
+   ```bash
+   flask db upgrade
+   ```
+
+### Development Server
+
 ```bash
-python >= 3.8
-pip install enterprise-pipeline
+python wsgi.py
 ```
 
-### Basic Usage
+## 🧪 Testing
 
-```python
-from enterprise_pipeline import Pipeline
-from enterprise_pipeline.config import Config
+### Running Tests
 
-# Initialize with advanced configuration
-pipeline = Pipeline(
-    config=Config(
-        source_configs={
-            'api': {'rate_limit': 1000},
-            'db': {'pool_size': 10},
-            'stream': {'buffer_size': 1000}
-        },
-        processing_configs={
-            'batch_size': 50000,
-            'parallel_modules': True,
-            'decision_timeout': 300
-        }
-    )
-)
+```bash
+# Run all tests
+pytest
 
-# Process with callbacks
-results = pipeline.process(
-    input_source='api',
-    output_destination='s3',
-    on_decision_needed=lambda x: handle_decision(x),
-    on_status_update=lambda x: update_status(x)
-)
+# Run with coverage
+pytest --cov=app tests/
+
+# Run specific test category
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/e2e/
 ```
+
+## 📝 Development Guidelines
+
+### Code Style
+
+- Follow PEP 8
+- Use type hints
+- Write comprehensive docstrings
+- Implement proper logging
+
+### Adding New Features
+
+1. Models: Add/update in `database/models/`
+2. Migrations: Generate with `flask db migrate`
+3. Services: Implement in appropriate service module
+4. Routes: Add to relevant blueprint
+5. Tests: Write comprehensive tests
+
+## 🔍 Quality Analysis Framework
+
+### Available Analyzers
+
+- Basic Data Validation
+
+  - Missing values
+  - Data type mismatches
+  - Format validation
+
+- Domain-Specific Validation
+
+  - Compliance rules
+  - Business logic
+  - Custom validations
+
+- Reference Data Management
+  - Lookup validation
+  - Code list management
+  - Range checking
+
+### Issue Resolution
+
+- Automated fixes for common issues
+- Manual review workflow
+- Resolution tracking
+- Quality metrics
+
+## 📦 Deployment
+
+### Docker Support
+
+```bash
+# Build image
+docker build -t enterprise-pipeline-backend .
+
+# Run container
+docker run -p 5000:5000 enterprise-pipeline-backend
+```
+
+### Production Configuration
+
+- Use gunicorn/uvicorn
+- Enable worker processes
+- Configure logging
+- Set up monitoring
+- Enable security features
+
+## 🔒 Security Features
+
+- JWT authentication
+- Role-based access control
+- Input validation
+- Rate limiting
+- SQL injection prevention
+- XSS protection
 
 ## 📊 Monitoring & Metrics
 
-### Real-time Monitoring
-- Pipeline state tracking
-- Module performance metrics
+- Performance tracking
 - Resource utilization
-- Error rates and types
+- Error rates
+- Pipeline statistics
+- Quality metrics
 
-### Quality Metrics
-- Data completeness
-- Validation success rates
-- Processing accuracy
-- Decision response times
+## 📚 API Documentation
 
-## 🔧 Configuration
+- OpenAPI/Swagger docs at `/api/docs`
+- Authentication details
+- Request/response schemas
+- Error handling
 
-### Source Configuration
-```yaml
-sources:
-  api:
-    type: rest
-    rate_limit: 1000
-    retry_config:
-      max_retries: 3
-      backoff: exponential
-  
-  database:
-    type: postgresql
-    pool_size: 10
-    timeout: 30
-```
+## 🆘 Support
 
-### Module Configuration
-```yaml
-modules:
-  quality:
-    enabled: true
-    parallel: true
-    timeout: 300
-    
-  transformation:
-    enabled: true
-    batch_size: 50000
-    memory_limit: "4G"
-```
-
-## 📝 Development
-
-### Adding New Sources
-```python
-from enterprise_pipeline.sources import BaseSource
-
-class CustomSource(BaseSource):
-    def connect(self):
-        # Implementation
-        
-    def read_batch(self):
-        # Implementation
-```
-
-### Custom Processing Modules
-```python
-from enterprise_pipeline.modules import BaseModule
-
-class CustomProcessor(BaseModule):
-    def validate(self, data):
-        # Implementation
-        
-    def process(self, data):
-        # Implementation
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes
-4. Add tests
-5. Submit pull request
-
-## 📚 Documentation
-
-Comprehensive documentation available at [docs/](docs/)
-
-## 📅 Roadmap
-
-- [ ] Stream processing enhancements
-- [ ] Machine learning integration
-- [ ] Advanced visualization
-- [ ] Distributed processing
-- [ ] Real-time analytics
-
-## 📫 Support
-
-- Issues: [GitHub Issues](https://github.com/your-repo/issues)
-- Documentation: [Wiki](https://github.com/your-repo/wiki)
-- Email: support@yourcompany.com
-
-## 📄 License
-
-MIT License - see [LICENSE.md](LICENSE.md)
-
-Questions:
-Pipeline Progress Monitoring:
-Do you need periodic health checks for pipelines that are neither completed nor in an error state?
-Dynamic Resource Scaling:
-Is there a mechanism for scaling up resources dynamically based on active pipelines or processing load?
-System Restart:
-Upon system restart, how are incomplete pipelines recovered or resumed?
-This design is an excellent foundation for a sophisticated orchestration framework. Let me know if you'd like further help refining specific parts or integrating new features.
-
+- Technical documentation in `/docs`
+- Issue tracking
+- Email support
+- Developer guides

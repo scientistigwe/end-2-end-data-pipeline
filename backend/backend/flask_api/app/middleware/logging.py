@@ -1,8 +1,39 @@
-# app/middleware/logging.py
 import logging
 import time
 from flask import request, g
+from typing import Optional
+import os
 
+def configure_logging(app_name: str = "flask_app", log_level: Optional[str] = None) -> None:
+    """Configure logging for the application."""
+    # Set default log level if none provided
+    if log_level is None:
+        log_level = os.getenv('LOG_LEVEL', 'INFO')
+
+    # Create formatters and handlers
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    # File handler
+    file_handler = logging.FileHandler('app.log')
+    file_handler.setFormatter(formatter)
+
+    # Get the root logger
+    logger = logging.getLogger(app_name)
+    
+    # Set log level
+    logger.setLevel(getattr(logging, log_level.upper()))
+
+    # Add handlers
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+    logger.info(f"Logging configured with level: {log_level}")
 
 class RequestLoggingMiddleware:
     def __init__(self, app):
@@ -29,4 +60,4 @@ class RequestLoggingMiddleware:
 
         return self.app(environ, custom_start_response)
 
-
+__all__ = ['RequestLoggingMiddleware', 'configure_logging']

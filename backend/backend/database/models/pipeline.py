@@ -1,9 +1,16 @@
 # models/pipeline.py
-from sqlalchemy import Column, String, DateTime, JSON, Enum, ForeignKey, Integer, Float, Text, Boolean
+from sqlalchemy import (
+    Column, String, DateTime, JSON, Enum, ForeignKey, 
+    Integer, Float, Text, Boolean, Index, UniqueConstraint, 
+    event, DDL
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
+from sqlalchemy.ext.hybrid import hybrid_property  # Add this import
 from .base import BaseModel
 import uuid
+from datetime import datetime
+
 # models/pipeline.py
 from sqlalchemy import Index, UniqueConstraint, event, DDL
 from sqlalchemy.orm import validates
@@ -98,6 +105,7 @@ class PipelineStep(BaseModel):
     
     pipeline = relationship('Pipeline', back_populates='steps')
 
+
 class PipelineRun(BaseModel):
     __tablename__ = 'pipeline_runs'
 
@@ -112,6 +120,8 @@ class PipelineRun(BaseModel):
     
     pipeline = relationship('Pipeline', back_populates='runs')
     step_runs = relationship('PipelineStepRun', back_populates='pipeline_run')
+    quality_checks = relationship('QualityCheck', back_populates='pipeline_run')
+
 
 class PipelineStepRun(BaseModel):
     __tablename__ = 'pipeline_step_runs'
@@ -144,14 +154,7 @@ class QualityGate(BaseModel):
 # Triggers
 def create_pipeline_triggers():
     return [
-        DDL(
-            """
-            CREATE TRIGGER update_pipeline_stats_trigger
-            AFTER INSERT OR UPDATE ON pipeline_runs
-            FOR EACH ROW
-            EXECUTE FUNCTION update_pipeline_stats();
-            """
-        ),
+        # 1. First create the function
         DDL(
             """
             CREATE OR REPLACE FUNCTION update_pipeline_stats()
@@ -170,8 +173,43 @@ def create_pipeline_triggers():
             END;
             $$ LANGUAGE plpgsql;
             """
+        ),
+        # 2. Then create the trigger, with safety checks
+        DDL(
+            """
+            DO $$ 
+            BEGIN
+                -- Drop trigger if exists
+                DROP TRIGGER IF EXISTS update_pipeline_stats_trigger ON pipeline_runs;
+                
+                -- Create trigger
+                CREATE TRIGGER update_pipeline_stats_trigger
+                    AFTER INSERT OR UPDATE ON pipeline_runs
+                    FOR EACH ROW
+                    EXECUTE FUNCTION update_pipeline_stats();
+            END $$;
+            """
         )
     ]
+
+# Listen for table creation and apply triggers
+def setup_pipeline_triggers():
+    # Create function first
+    event.listen(
+        PipelineRun.__table__,
+        'after_create',
+        create_pipeline_triggers()[0].execute_if(dialect='postgresql')
+    )
+    
+    # Create trigger after function exists
+    event.listen(
+        PipelineRun.__table__,
+        'after_create',
+        create_pipeline_triggers()[1].execute_if(dialect='postgresql')
+    )
+
+# Call setup
+setup_pipeline_triggers()
 
 event.listen(
     Pipeline.__table__,

@@ -1,6 +1,8 @@
 // src/pipeline/api/pipelineApi.ts
+import { AxiosHeaders } from 'axios';
 import { BaseClient } from '@/common/api/client/baseClient';
 import { API_CONFIG } from '@/common/api/client/config';
+import { RouteHelper, RouteKey } from '@/common/api/routes';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   Pipeline,
@@ -16,10 +18,11 @@ import type {
   PipelineRunCompleteDetail,
   PipelineErrorDetail
 } from '../types/pipeline';
-import { PIPELINE_EVENTS } from '../types/pipeline';
+import { PIPELINE_EVENTS } from '../constants/events';
 
 class PipelineApi extends BaseClient {
   private readonly PIPELINE_EVENTS = PIPELINE_EVENTS;
+  private readonly MODULE: RouteKey = 'PIPELINES';
 
   constructor() {
     super({
@@ -35,12 +38,15 @@ class PipelineApi extends BaseClient {
   }
 
   // Interceptors and Error Handling
-  private setupPipelineInterceptors() {
+  private setupPipelineInterceptors(): void {
     this.client.interceptors.request.use(
       (config) => {
-        config.headers.set('X-Pipeline-Timestamp', new Date().toISOString());
+        const headers = new AxiosHeaders(config.headers || {});
+        headers.set('X-Pipeline-Timestamp', new Date().toISOString());
+        config.headers = headers;
         return config;
-      }
+      },
+      (error) => Promise.reject(error)
     );
 
     this.client.interceptors.response.use(
@@ -63,34 +69,41 @@ class PipelineApi extends BaseClient {
 
     if (error instanceof Error) {
       return {
-        ...error,
         ...baseError,
+        ...error,
         message: error.message
       };
     }
 
     if (typeof error === 'object' && error !== null) {
       const errorObj = error as Record<string, any>;
-      if (errorObj.response?.status === 409) {
-        return {
-          ...baseError,
-          message: 'Pipeline is already running',
-          code: 'PIPELINE_RUNNING'
-        };
-      }
-      if (errorObj.response?.status === 404) {
-        return {
-          ...baseError,
-          message: 'Pipeline not found',
-          code: 'PIPELINE_NOT_FOUND'
-        };
-      }
-      if (errorObj.response?.status === 400) {
-        return {
-          ...baseError,
-          message: `Invalid pipeline configuration: ${errorObj.response.data?.message}`,
-          code: 'INVALID_CONFIG'
-        };
+      const status = errorObj.response?.status;
+
+      switch (status) {
+        case 409:
+          return {
+            ...baseError,
+            message: 'Pipeline is already running',
+            code: 'PIPELINE_RUNNING'
+          };
+        case 404:
+          return {
+            ...baseError,
+            message: 'Pipeline not found',
+            code: 'PIPELINE_NOT_FOUND'
+          };
+        case 400:
+          return {
+            ...baseError,
+            message: `Invalid pipeline configuration: ${errorObj.response.data?.message}`,
+            code: 'INVALID_CONFIG'
+          };
+        default:
+          return {
+            ...baseError,
+            message: errorObj.response?.data?.message || errorObj.message || baseError.message,
+            code: errorObj.code || 'UNKNOWN_ERROR'
+          };
       }
     }
 
@@ -144,21 +157,21 @@ class PipelineApi extends BaseClient {
     mode?: string[];
   }): Promise<ApiResponse<Pipeline[]>> {
     return this.get(
-      this.getRoute('PIPELINES', 'LIST'),
+      RouteHelper.getRoute(this.MODULE, 'LIST'),
       { params }
     );
   }
 
   async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
     return this.post(
-      this.getRoute('PIPELINES', 'CREATE'),
+      RouteHelper.getRoute(this.MODULE, 'CREATE'),
       config
     );
   }
 
   async getPipeline(id: string): Promise<ApiResponse<Pipeline>> {
     return this.get(
-      this.getRoute('PIPELINES', 'DETAIL', { id })
+      RouteHelper.getRoute(this.MODULE, 'GET', { pipeline_id: id })
     );
   }
 
@@ -167,14 +180,14 @@ class PipelineApi extends BaseClient {
     updates: Partial<PipelineConfig>
   ): Promise<ApiResponse<Pipeline>> {
     return this.put(
-      this.getRoute('PIPELINES', 'UPDATE', { id }),
+      RouteHelper.getRoute(this.MODULE, 'UPDATE', { pipeline_id: id }),
       updates
     );
   }
 
   async deletePipeline(id: string): Promise<ApiResponse<void>> {
     return this.delete(
-      this.getRoute('PIPELINES', 'DELETE', { id })
+      RouteHelper.getRoute(this.MODULE, 'DELETE', { pipeline_id: id })
     );
   }
 
@@ -187,32 +200,32 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineRun>> {
     return this.post(
-      this.getRoute('PIPELINES', 'START', { id }),
+      RouteHelper.getRoute(this.MODULE, 'START', { pipeline_id: id }),
       options
     );
   }
 
   async stopPipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      this.getRoute('PIPELINES', 'STOP', { id })
+      RouteHelper.getRoute(this.MODULE, 'STOP', { pipeline_id: id })
     );
   }
 
   async pausePipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      this.getRoute('PIPELINES', 'PAUSE', { id })
+      RouteHelper.getRoute(this.MODULE, 'PAUSE', { pipeline_id: id })
     );
   }
 
   async resumePipeline(id: string): Promise<ApiResponse<void>> {
     return this.post(
-      this.getRoute('PIPELINES', 'RESUME', { id })
+      RouteHelper.getRoute(this.MODULE, 'RESUME', { pipeline_id: id })
     );
   }
 
   async retryPipeline(id: string): Promise<ApiResponse<PipelineRun>> {
     return this.post(
-      this.getRoute('PIPELINES', 'RETRY', { id })
+      RouteHelper.getRoute(this.MODULE, 'RETRY', { pipeline_id: id })
     );
   }
 
@@ -228,7 +241,7 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineLogs>> {
     return this.get(
-      this.getRoute('PIPELINES', 'LOGS', { id }),
+      RouteHelper.getRoute(this.MODULE, 'LOGS', { pipeline_id: id }),
       { params: options }
     );
   }
@@ -241,12 +254,11 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineMetrics[]>> {
     return this.get(
-      this.getRoute('PIPELINES', 'METRICS', { id }),
+      RouteHelper.getRoute(this.MODULE, 'METRICS', { pipeline_id: id }),
       { params: timeRange }
     );
   }
 
-  // Pipeline Runs
   async getPipelineRuns(
     id: string,
     options?: {
@@ -256,8 +268,8 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineRun[]>> {
     return this.get(
-      this.getRoute('PIPELINES', 'RUNS', { id }),
-      { params: options }
+      RouteHelper.getRoute(this.MODULE, 'RUNS'),
+      { params: { ...options, pipeline_id: id } }
     );
   }
 
@@ -267,7 +279,7 @@ class PipelineApi extends BaseClient {
     errors?: string[];
   }>> {
     return this.post(
-      this.getRoute('PIPELINES', 'VALIDATE'),
+      RouteHelper.getRoute(this.MODULE, 'VALIDATE'),
       config
     );
   }
@@ -310,7 +322,7 @@ class PipelineApi extends BaseClient {
     }
   ): Promise<ApiResponse<PipelineRun>> {
     const interval = options?.pollingInterval || 5000;
-    const timeout = options?.timeout || 300000;
+    const timeout = options?.timeout || 300000; // 5 minutes default
     return this.checkCompletion(id, Date.now(), interval, timeout);
   }
 

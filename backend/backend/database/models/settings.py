@@ -34,4 +34,4 @@ class Integration(BaseModel):
     config = Column(JSONB)
     status = Column(Enum('active', 'inactive', 'error', name='integration_status'))
     credentials = Column(JSONB)
-    metadata = Column(JSONB)
+    integration_meta = Column(JSONB)

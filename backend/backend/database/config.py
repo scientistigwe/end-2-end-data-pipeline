@@ -12,7 +12,8 @@ class DatabaseConfig:
         self.SQLALCHEMY_POOL_TIMEOUT = 30
 
     def _get_database_uri(self, config):
-        if config.TESTING:
+        # Use getattr() with a default value to safely check TESTING
+        if getattr(config, 'TESTING', False):
             return 'postgresql://postgres:password@localhost:5432/pipeline_test'
         
         return self._construct_db_uri(
@@ -22,7 +23,6 @@ class DatabaseConfig:
             port=os.getenv('DB_PORT', '5432'),
             database=os.getenv('DB_NAME', 'pipeline_db')
         )
-
     def _construct_db_uri(self, username, password, host, port, database):
         return f'postgresql://{username}:{password}@{host}:{port}/{database}'
 

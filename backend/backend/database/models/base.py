@@ -1,5 +1,13 @@
 # models/base.py
-from sqlalchemy import Column, DateTime, String, UUID, event, DDL
+from sqlalchemy import (
+    Column, 
+    DateTime, 
+    String, 
+    UUID, 
+    event, 
+    DDL, 
+    ForeignKey  # Added this import
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import validates
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -17,14 +25,13 @@ class BaseModel(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), index=True)
     updated_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
 
-    # Validation methods
+    # Rest of your code remains the same
     @validates('created_at', 'updated_at')
     def validate_dates(self, key, value):
         if not isinstance(value, datetime):
             raise ValueError(f"{key} must be a datetime object")
         return value
 
-    # Common properties
     @hybrid_property
     def age(self):
         """Returns the age of the record in days"""
@@ -35,7 +42,6 @@ class BaseModel(Base):
         """Returns True if the record is less than 24 hours old"""
         return (datetime.utcnow() - self.created_at).days < 1
 
-    # Lifecycle hooks
     @classmethod
     def __declare_last__(cls):
         event.listen(
@@ -44,7 +50,6 @@ class BaseModel(Base):
             DDL(f'ALTER TABLE {cls.__tablename__} ADD CONSTRAINT valid_dates CHECK (updated_at >= created_at)')
         )
 
-    # Utility methods
     def to_dict(self):
         """Convert model to dictionary"""
         return {

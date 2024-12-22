@@ -25,7 +25,7 @@ class ResourceUsage(BaseModel):
     disk_usage = Column(Float)
     network_in = Column(Float)
     network_out = Column(Float)
-    metadata = Column(JSONB)
+    resource_meta = Column(JSONB)
 
 class Alert(BaseModel):
     __tablename__ = 'alerts'
@@ -35,7 +35,7 @@ class Alert(BaseModel):
     severity = Column(Enum('info', 'warning', 'critical', name='alert_severity'))
     status = Column(Enum('active', 'acknowledged', 'resolved', name='alert_status'))
     message = Column(Text)
-    metadata = Column(JSONB)
+    alert_meta = Column(JSONB)
     acknowledged_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     acknowledged_at = Column(DateTime)
     resolved_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))

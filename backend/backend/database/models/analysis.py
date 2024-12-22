@@ -1,10 +1,54 @@
 # models/analysis.py
-from sqlalchemy import Column, String, DateTime, JSON, Enum, ForeignKey, Float, Text, Integer, Boolean
+from sqlalchemy import (
+    Column, 
+    String, 
+    DateTime, 
+    JSON, 
+    Enum, 
+    ForeignKey, 
+    Float, 
+    Text, 
+    Integer, 
+    Boolean
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from datetime import datetime
 from .base import BaseModel
 
+# Analysis Status Enum
+analysis_status = Enum(
+    'pending', 
+    'running', 
+    'completed', 
+    'failed', 
+    name='analysis_status',
+    create_type=False
+)
+
+# Check Status Enum
+check_status = Enum(
+    'pending', 
+    'running', 
+    'completed', 
+    'failed',
+    name='check_status',
+    create_type=False
+)
+
+# Impact Level Enum
+impact_level = Enum(
+    'low', 
+    'medium', 
+    'high', 
+    'critical',
+    name='impact_level',
+    create_type=False
+)
+
 class QualityCheck(BaseModel):
+    """Model for data quality check results."""
     __tablename__ = 'quality_checks'
 
     dataset_id = Column(UUID(as_uuid=True), ForeignKey('datasets.id'), nullable=False)
@@ -12,30 +56,34 @@ class QualityCheck(BaseModel):
     type = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
     config = Column(JSONB)
-    status = Column(Enum('pending', 'running', 'completed', 'failed', name='check_status'))
+    status = Column(check_status)
     results = Column(JSONB)
     score = Column(Float)
-    impact = Column(Enum('low', 'medium', 'high', 'critical', name='impact_level'))
+    impact = Column(impact_level)
     
+    # Relationships
     dataset = relationship('Dataset', back_populates='quality_checks')
     pipeline_run = relationship('PipelineRun', back_populates='quality_checks')
     validation_results = relationship('ValidationResult', back_populates='quality_check')
 
 class InsightAnalysis(BaseModel):
+    """Model for storing analysis insights."""
     __tablename__ = 'insight_analyses'
 
     pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'), nullable=False)
     type = Column(String(100), nullable=False)
-    status = Column(Enum('pending', 'running', 'completed', 'failed', name='analysis_status'))
+    status = Column(analysis_status)
     config = Column(JSONB)
     results = Column(JSONB)
     metrics = Column(JSONB)
     
-    patterns = relationship('Pattern', back_populates='analysis')
-    correlations = relationship('Correlation', back_populates='analysis')
-    anomalies = relationship('Anomaly', back_populates='analysis')
+    # Relationships
+    patterns = relationship('Pattern', back_populates='analysis', cascade='all, delete-orphan')
+    correlations = relationship('Correlation', back_populates='analysis', cascade='all, delete-orphan')
+    anomalies = relationship('Anomaly', back_populates='analysis', cascade='all, delete-orphan')
 
 class Pattern(BaseModel):
+    """Model for pattern detection results."""
     __tablename__ = 'patterns'
 
     analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
@@ -46,9 +94,11 @@ class Pattern(BaseModel):
     support = Column(Float)
     data = Column(JSONB)
     
+    # Relationships
     analysis = relationship('InsightAnalysis', back_populates='patterns')
 
 class Correlation(BaseModel):
+    """Model for correlation analysis results."""
     __tablename__ = 'correlations'
 
     analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
@@ -57,11 +107,13 @@ class Correlation(BaseModel):
     coefficient = Column(Float)
     significance = Column(Float)
     type = Column(String(100))
-    metadata = Column(JSONB)
+    meta_data = Column(JSONB)
     
+    # Relationships
     analysis = relationship('InsightAnalysis', back_populates='correlations')
 
 class Anomaly(BaseModel):
+    """Model for anomaly detection results."""
     __tablename__ = 'anomalies'
 
     analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
@@ -71,6 +123,7 @@ class Anomaly(BaseModel):
     timestamp = Column(DateTime)
     value = Column(Float)
     expected_range = Column(JSONB)  # {min: number, max: number}
-    metadata = Column(JSONB)
+    meta_data = Column(JSONB)
     
+    # Relationships
     analysis = relationship('InsightAnalysis', back_populates='anomalies')

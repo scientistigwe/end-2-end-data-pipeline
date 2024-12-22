@@ -1,3 +1,4 @@
+// frontend\src\routes\index.tsx
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { MainLayout } from "@/common/components/layout/MainLayout";

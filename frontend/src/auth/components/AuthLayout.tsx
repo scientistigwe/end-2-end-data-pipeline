@@ -1,12 +1,10 @@
+// frontend\src\auth\components\AuthLayout.tsx
+
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import PipelineLogo from "@/assets/PipelineLogo";
 
-interface AuthLayoutProps {
-  children: React.ReactNode;
-}
-
-export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
+export const AuthLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -40,7 +38,9 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
       {/* Main Content */}
       <div className="flex min-h-[calc(100vh-4rem)] bg-muted/10">
         <div className="flex-1 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-          <div className="sm:mx-auto sm:w-full sm:max-w-md">{children}</div>
+          <div className="sm:mx-auto sm:w-full sm:max-w-md">
+            <Outlet />
+          </div>
         </div>
       </div>
     </div>

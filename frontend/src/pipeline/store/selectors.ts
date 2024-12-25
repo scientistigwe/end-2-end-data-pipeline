@@ -113,3 +113,14 @@ export const selectPipelineMetricsByPipelineId = createSelector(
   (metrics, pipelineId): PipelineMetrics[] => 
     metrics[pipelineId] || []
 );
+
+export const selectPipelineStatusHistory = (state: RootState): Record<string, Array<{
+  status: PipelineStatus;
+  previousStatus: PipelineStatus;
+  timestamp: string;
+}>> => state.pipelines?.statusHistory || {};
+
+export const selectPipelineStatusHistoryById = createSelector(
+  [selectPipelineStatusHistory, (_state: RootState, pipelineId: string) => pipelineId],
+  (statusHistory, pipelineId) => statusHistory[pipelineId] || []
+);

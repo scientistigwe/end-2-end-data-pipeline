@@ -12,13 +12,20 @@ const RegisterPage: React.FC = () => {
   const handleRegister = async (data: RegisterData) => {
     setIsLoading(true);
     try {
-      await authApi.register(data);
+      console.log("Attempting to register with data:", data); // Debug log
+      const response = await authApi.register(data);
+      console.log("Registration response:", response); // Debug log
       navigate("/login", {
         replace: true,
         state: { message: "Registration successful! Please log in." },
       });
     } catch (error) {
-      throw error;
+      console.error("Registration error:", error); // Detailed error logging
+      if (error instanceof Error) {
+        throw new Error(error.message);
+      } else {
+        throw new Error("An unexpected error occurred during registration");
+      }
     } finally {
       setIsLoading(false);
     }

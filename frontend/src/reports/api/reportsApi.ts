@@ -1,6 +1,4 @@
-// src/reports/api/reportsApi.ts
-import { BaseClient } from '@/common/api/client/baseClient';
-import { API_CONFIG } from '@/common/api/client/config';
+import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   Report,
@@ -19,32 +17,34 @@ import type {
 } from '../types/report';
 import { REPORT_EVENTS } from '../types/report';
 
-class ReportsApi extends BaseClient {
+class ReportsApi {
+  private client = baseAxiosClient;
   private readonly REPORT_EVENTS = REPORT_EVENTS;
 
   constructor() {
-    super({
-      baseURL: import.meta.env.VITE_REPORTS_API_URL || API_CONFIG.BASE_URL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        'X-Service': 'reports'
-      }
-    });
-
+    this.setupReportHeaders();
     this.setupReportInterceptors();
+  }
+
+  private setupReportHeaders() {
+    this.client.setDefaultHeaders({
+      'X-Service': 'reports'
+    });
   }
 
   // Interceptors and Error Handling
   private setupReportInterceptors() {
-    this.client.interceptors.request.use(
+    // Add custom interceptor on the axios instance
+    const instance = (this.client as any).client;
+    if (!instance) return;
+
+    instance.interceptors.request.use(
       (config) => {
-        config.headers.set('X-Report-Timestamp', new Date().toISOString());
         return config;
       }
     );
 
-    this.client.interceptors.response.use(
+    instance.interceptors.response.use(
       response => {
         this.handleReportEvents(response);
         return response;
@@ -166,8 +166,8 @@ class ReportsApi extends BaseClient {
     progress?: number;
     error?: string;
   }>> {
-    return this.get(
-      this.getRoute('REPORTS', 'STATUS', { id })
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'STATUS', { id })
     );
   }
 
@@ -178,8 +178,8 @@ class ReportsApi extends BaseClient {
     type?: string[];
     status?: string[];
   }): Promise<ApiResponse<Report[]>> {
-    return this.get(
-      this.getRoute('REPORTS', 'LIST'),
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'LIST'),
       { params }
     );
   }
@@ -188,15 +188,15 @@ class ReportsApi extends BaseClient {
     config: ReportConfig,
     options?: ReportGenerationOptions
   ): Promise<ApiResponse<Report>> {
-    return this.post(
-      this.getRoute('REPORTS', 'CREATE'),
+    return this.client.executePost(
+      this.client.createRoute('REPORTS', 'CREATE'),
       { config, options }
     );
   }
 
   async getReport(id: string): Promise<ApiResponse<Report>> {
-    return this.get(
-      this.getRoute('REPORTS', 'DETAIL', { id })
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'DETAIL', { id })
     );
   }
 
@@ -204,15 +204,15 @@ class ReportsApi extends BaseClient {
     id: string,
     updates: Partial<ReportConfig>
   ): Promise<ApiResponse<Report>> {
-    return this.put(
-      this.getRoute('REPORTS', 'UPDATE', { id }),
+    return this.client.executePut(
+      this.client.createRoute('REPORTS', 'UPDATE', { id }),
       updates
     );
   }
 
   async deleteReport(id: string): Promise<ApiResponse<void>> {
-    return this.delete(
-      this.getRoute('REPORTS', 'DELETE', { id })
+    return this.client.executeDelete(
+      this.client.createRoute('REPORTS', 'DELETE', { id })
     );
   }
 
@@ -221,8 +221,8 @@ class ReportsApi extends BaseClient {
     id: string,
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
-    return this.post(
-      this.getRoute('REPORTS', 'EXPORT', { id }),
+    return this.client.executePost(
+      this.client.createRoute('REPORTS', 'EXPORT', { id }),
       options
     );
   }
@@ -246,8 +246,8 @@ class ReportsApi extends BaseClient {
 
   // Schedule Operations
   async scheduleReport(config: ScheduleConfig): Promise<ApiResponse<Report>> {
-    return this.post(
-      this.getRoute('REPORTS', 'SCHEDULE'),
+    return this.client.executePost(
+      this.client.createRoute('REPORTS', 'SCHEDULE'),
       config
     );
   }
@@ -256,16 +256,16 @@ class ReportsApi extends BaseClient {
     id: string,
     updates: Partial<ScheduleConfig>
   ): Promise<ApiResponse<Report>> {
-    return this.put(
-      this.getRoute('REPORTS', 'SCHEDULE', { id }),
+    return this.client.executePut(
+      this.client.createRoute('REPORTS', 'SCHEDULE', { id }),
       updates
     );
   }
 
   // Metadata and Preview
   async getReportMetadata(id: string): Promise<ApiResponse<ReportMetadata>> {
-    return this.get(
-      this.getRoute('REPORTS', 'METADATA', { id })
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'METADATA', { id })
     );
   }
 
@@ -273,8 +273,8 @@ class ReportsApi extends BaseClient {
     id: string,
     section?: string
   ): Promise<ApiResponse<{ content: string }>> {
-    return this.get(
-      this.getRoute('REPORTS', 'PREVIEW', { id }),
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'PREVIEW', { id }),
       { params: { section } }
     );
   }
@@ -285,8 +285,8 @@ class ReportsApi extends BaseClient {
     name: string;
     type: string;
   }>>> {
-    return this.get(
-      this.getRoute('REPORTS', 'TEMPLATES')
+    return this.client.executeGet(
+      this.client.createRoute('REPORTS', 'TEMPLATES')
     );
   }
 
@@ -358,4 +358,5 @@ class ReportsApi extends BaseClient {
   }
 }
 
+// Export singleton instance
 export const reportsApi = new ReportsApi();

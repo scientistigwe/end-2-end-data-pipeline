@@ -1,6 +1,5 @@
 # app/blueprints/monitoring/routes.py
 from flask import Blueprint, request, g
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from ...schemas.monitoring import (
     MetricsRequestSchema,
@@ -28,7 +27,6 @@ def get_monitoring_service():
 
 # Pipeline Monitoring Routes
 @monitoring_bp.route('/<pipeline_id>/metrics', methods=['GET'])
-@jwt_required()
 def get_metrics(pipeline_id):
     """Get metrics for a pipeline."""
     try:
@@ -46,7 +44,6 @@ def get_metrics(pipeline_id):
         return ResponseBuilder.error("Failed to fetch metrics", status_code=500)
 
 @monitoring_bp.route('/<pipeline_id>/health', methods=['GET'])
-@jwt_required()
 def get_health_status(pipeline_id):
     """Get health status of a pipeline."""
     try:
@@ -60,7 +57,6 @@ def get_health_status(pipeline_id):
         return ResponseBuilder.error("Failed to fetch health status", status_code=500)
 
 @monitoring_bp.route('/<pipeline_id>/performance', methods=['GET'])
-@jwt_required()
 def get_performance_metrics(pipeline_id):
     """Get performance metrics for a pipeline."""
     try:
@@ -75,7 +71,6 @@ def get_performance_metrics(pipeline_id):
 
 # Alert Management Routes
 @monitoring_bp.route('/<pipeline_id>/alerts/config', methods=['GET', 'POST'])
-@jwt_required()
 def manage_alert_config(pipeline_id):
     """Get or update alert configuration."""
     try:
@@ -100,7 +95,6 @@ def manage_alert_config(pipeline_id):
         return ResponseBuilder.error("Alert configuration failed", status_code=500)
 
 @monitoring_bp.route('/<pipeline_id>/alerts/history', methods=['GET'])
-@jwt_required()
 def get_alert_history(pipeline_id):
     """Get alert history for a pipeline."""
     try:
@@ -115,7 +109,6 @@ def get_alert_history(pipeline_id):
 
 # Resource Monitoring Routes
 @monitoring_bp.route('/<pipeline_id>/resources', methods=['GET'])
-@jwt_required()
 def get_resource_usage(pipeline_id):
     """Get resource usage statistics."""
     try:
@@ -129,7 +122,6 @@ def get_resource_usage(pipeline_id):
         return ResponseBuilder.error("Failed to fetch resource usage", status_code=500)
 
 @monitoring_bp.route('/<pipeline_id>/metrics/aggregated', methods=['GET'])
-@jwt_required()
 def get_aggregated_metrics(pipeline_id):
     """Get aggregated metrics for a pipeline."""
     try:

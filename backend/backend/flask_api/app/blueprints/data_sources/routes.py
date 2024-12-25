@@ -1,6 +1,5 @@
 # app/blueprints/data_sources/routes.py
 from flask import Blueprint, request, g, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from ...schemas.data_sources.file_source import (
     FileSourceConfigSchema, 
@@ -57,7 +56,6 @@ def get_services():
 
 # General Data Source Routes
 @data_source_bp.route('/', methods=['GET'])
-@jwt_required()
 def list_sources():
     """List all data sources."""
     try:
@@ -75,7 +73,6 @@ def list_sources():
         return ResponseBuilder.error("Failed to list sources", status_code=500)
 
 @data_source_bp.route('/<source_id>', methods=['GET'])
-@jwt_required()
 def get_source(source_id):
     """Get specific data source details."""
     try:
@@ -98,11 +95,11 @@ def get_source(source_id):
 
 # File Source Routes
 @data_source_bp.route('/file/upload', methods=['POST'])
-@jwt_required()
 def upload_file():
     """Upload file(s) as data source."""
     try:
         file_service, *_ = get_services()
+        current_user_id = g.current_user.id  # Get user ID from global context
         files = request.files.getlist('files')
         metadata = request.form.get('metadata', '{}')
         
@@ -112,7 +109,8 @@ def upload_file():
         for file in files:
             data = upload_schema.load({
                 'filename': file.filename, 
-                'content_type': file.content_type
+                'content_type': file.content_type,
+                'user_id': current_user_id
             })
             result = file_service.handle_file_upload(file, data)
             results.append(FileMetadataResponseSchema().dump(result))
@@ -124,8 +122,17 @@ def upload_file():
         logger.error(f"File upload error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Upload failed", status_code=500)
 
+# Error Handling
+@data_source_bp.errorhandler(404)
+def not_found_error(error):
+    return ResponseBuilder.error("Resource not found", status_code=404)
+
+@data_source_bp.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal error: {error}", exc_info=True)
+    return ResponseBuilder.error("Internal server error", status_code=500)
+
 @data_source_bp.route('/file/<file_id>/parse', methods=['POST'])
-@jwt_required()
 def parse_file(file_id):
     """Parse uploaded file."""
     try:
@@ -141,7 +148,6 @@ def parse_file(file_id):
 
 # Database Source Routes
 @data_source_bp.route('/database/connect', methods=['POST'])
-@jwt_required()
 def connect_database():
     """Connect to database source."""
     try:
@@ -159,7 +165,6 @@ def connect_database():
         return ResponseBuilder.error("Connection failed", status_code=500)
 
 @data_source_bp.route('/database/<connection_id>/test', methods=['POST'])
-@jwt_required()
 def test_database_connection(connection_id):
     """Test database connection."""
     try:
@@ -171,7 +176,6 @@ def test_database_connection(connection_id):
         return ResponseBuilder.error("Connection test failed", status_code=500)
 
 @data_source_bp.route('/database/<connection_id>/schema', methods=['GET'])
-@jwt_required()
 def get_database_schema(connection_id):
     """Get database schema."""
     try:
@@ -184,7 +188,6 @@ def get_database_schema(connection_id):
 
 # S3 Source Routes
 @data_source_bp.route('/s3/connect', methods=['POST'])
-@jwt_required()
 def connect_s3():
     """Connect to S3 bucket."""
     try:
@@ -202,7 +205,6 @@ def connect_s3():
         return ResponseBuilder.error("Connection failed", status_code=500)
 
 @data_source_bp.route('/s3/<connection_id>/list', methods=['GET'])
-@jwt_required()
 def list_s3_objects(connection_id):
     """List objects in S3 bucket."""
     try:
@@ -216,7 +218,6 @@ def list_s3_objects(connection_id):
 
 # API Source Routes
 @data_source_bp.route('/api/connect', methods=['POST'])
-@jwt_required()
 def connect_api():
     """Connect to API source."""
     try:
@@ -234,7 +235,6 @@ def connect_api():
         return ResponseBuilder.error("Connection failed", status_code=500)
 
 @data_source_bp.route('/api/<connection_id>/execute', methods=['POST'])
-@jwt_required()
 def execute_api_request(connection_id):
     """Execute API request."""
     try:
@@ -248,7 +248,6 @@ def execute_api_request(connection_id):
 
 # Stream Source Routes
 @data_source_bp.route('/stream/connect', methods=['POST'])
-@jwt_required()
 def connect_stream():
     """Connect to stream source."""
     try:
@@ -266,7 +265,6 @@ def connect_stream():
         return ResponseBuilder.error("Connection failed", status_code=500)
 
 @data_source_bp.route('/stream/<connection_id>/status', methods=['GET'])
-@jwt_required()
 def get_stream_status(connection_id):
     """Get stream connection status."""
     try:

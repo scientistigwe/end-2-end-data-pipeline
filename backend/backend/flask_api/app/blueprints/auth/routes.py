@@ -1,8 +1,11 @@
 # app/blueprints/auth/routes.py
 from flask import Blueprint, request, g, current_app
 from flask_jwt_extended import (
-    jwt_required, get_jwt_identity, create_access_token, 
-    create_refresh_token, get_jwt
+    jwt_required,
+    get_jwt_identity,
+    create_access_token, 
+    create_refresh_token,
+    get_jwt
 )
 from marshmallow import ValidationError
 from ...schemas.auth import (
@@ -34,6 +37,7 @@ def get_auth_service():
         g.auth_service = AuthService(g.db)
     return g.auth_service
 
+# Public Routes (No JWT Required)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register a new user."""
@@ -44,7 +48,6 @@ def register():
         auth_service = get_auth_service()
         user = auth_service.register_user(data)
         
-        # Create tokens
         access_token = create_access_token(identity=str(user.id))
         refresh_token = create_refresh_token(identity=str(user.id))
         
@@ -75,23 +78,19 @@ def login():
         if not user:
             return ResponseBuilder.error("Invalid credentials", status_code=401)
         
-        # Create tokens
         access_token = create_access_token(identity=str(user.id))
         refresh_token = create_refresh_token(identity=str(user.id))
         
-        # Update last login
         auth_service.update_last_login(user.id)
         
-        response_data = {
-            'tokens': {
-                'access_token': access_token,
-                'refresh_token': refresh_token
-            },
-            'user': user
-        }
-        
         return ResponseBuilder.success(
-            LoginResponseSchema().dump(response_data)
+            LoginResponseSchema().dump({
+                'tokens': {
+                    'access_token': access_token,
+                    'refresh_token': refresh_token
+                },
+                'user': user
+            })
         )
     except ValidationError as e:
         return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
@@ -99,8 +98,9 @@ def login():
         logger.error(f"Login error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Login failed", status_code=500)
 
+# Protected Routes (JWT Required)
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
+@jwt_required(refresh=True)  # Keep this as it's specifically for refresh tokens
 def refresh():
     """Refresh access token."""
     try:
@@ -115,7 +115,6 @@ def refresh():
         return ResponseBuilder.error("Token refresh failed", status_code=500)
 
 @auth_bp.route('/logout', methods=['POST'])
-@jwt_required()
 def logout():
     """Logout user and invalidate tokens."""
     try:
@@ -127,25 +126,7 @@ def logout():
         logger.error(f"Logout error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Logout failed", status_code=500)
 
-@auth_bp.route('/verify-email', methods=['POST'])
-def verify_email():
-    """Verify user's email address."""
-    try:
-        schema = EmailVerificationRequestSchema()
-        data = schema.load(request.get_json())
-        
-        auth_service = get_auth_service()
-        result = auth_service.verify_email(data['token'])
-        
-        return ResponseBuilder.success(
-            EmailVerificationResponseSchema().dump(result)
-        )
-    except ValidationError as e:
-        return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
-    except Exception as e:
-        logger.error(f"Email verification error: {str(e)}", exc_info=True)
-        return ResponseBuilder.error("Email verification failed", status_code=500)
-
+# Public Password Management Routes
 @auth_bp.route('/forgot-password', methods=['POST'])
 def forgot_password():
     """Initiate password reset process."""
@@ -184,37 +165,12 @@ def reset_password():
         logger.error(f"Password reset error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Password reset failed", status_code=500)
 
-@auth_bp.route('/change-password', methods=['POST'])
-@jwt_required()
-def change_password():
-    """Change user's password."""
-    try:
-        schema = ChangePasswordRequestSchema()
-        data = schema.load(request.get_json())
-        current_user = get_jwt_identity()
-        
-        auth_service = get_auth_service()
-        result = auth_service.change_password(
-            user_id=current_user,
-            current_password=data['current_password'],
-            new_password=data['new_password']
-        )
-        
-        return ResponseBuilder.success(
-            ChangePasswordResponseSchema().dump(result)
-        )
-    except ValidationError as e:
-        return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
-    except Exception as e:
-        logger.error(f"Password change error: {str(e)}", exc_info=True)
-        return ResponseBuilder.error("Password change failed", status_code=500)
-
+# Protected User Profile Routes
 @auth_bp.route('/profile', methods=['GET'])
-@jwt_required()
 def get_profile():
     """Get user's profile information."""
     try:
-        current_user = get_jwt_identity()
+        current_user = g.current_user.id
         auth_service = get_auth_service()
         user = auth_service.get_user_profile(current_user)
         
@@ -226,13 +182,12 @@ def get_profile():
         return ResponseBuilder.error("Failed to fetch profile", status_code=500)
 
 @auth_bp.route('/profile', methods=['PUT'])
-@jwt_required()
 def update_profile():
     """Update user's profile information."""
     try:
         schema = UserProfileUpdateRequestSchema()
         data = schema.load(request.get_json())
-        current_user = get_jwt_identity()
+        current_user = g.current_user.id
         
         auth_service = get_auth_service()
         updated_user = auth_service.update_user_profile(current_user, data)

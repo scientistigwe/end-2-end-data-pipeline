@@ -1,129 +1,205 @@
-# models/analysis.py
+# backend\backend\database\models\analysis.py
 from sqlalchemy import (
     Column, 
     String, 
     DateTime, 
-    JSON, 
     Enum, 
     ForeignKey, 
     Float, 
     Text, 
-    Integer, 
-    Boolean
+    Integer,
+    Index,
+    CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from datetime import datetime
 from .base import BaseModel
-
-# Analysis Status Enum
-analysis_status = Enum(
-    'pending', 
-    'running', 
-    'completed', 
-    'failed', 
-    name='analysis_status',
-    create_type=False
-)
-
-# Check Status Enum
-check_status = Enum(
-    'pending', 
-    'running', 
-    'completed', 
-    'failed',
-    name='check_status',
-    create_type=False
-)
-
-# Impact Level Enum
-impact_level = Enum(
-    'low', 
-    'medium', 
-    'high', 
-    'critical',
-    name='impact_level',
-    create_type=False
-)
-
-class QualityCheck(BaseModel):
-    """Model for data quality check results."""
-    __tablename__ = 'quality_checks'
-
-    dataset_id = Column(UUID(as_uuid=True), ForeignKey('datasets.id'), nullable=False)
-    pipeline_run_id = Column(UUID(as_uuid=True), ForeignKey('pipeline_runs.id'))
-    type = Column(String(100), nullable=False)
-    name = Column(String(255), nullable=False)
-    config = Column(JSONB)
-    status = Column(check_status)
-    results = Column(JSONB)
-    score = Column(Float)
-    impact = Column(impact_level)
-    
-    # Relationships
-    dataset = relationship('Dataset', back_populates='quality_checks')
-    pipeline_run = relationship('PipelineRun', back_populates='quality_checks')
-    validation_results = relationship('ValidationResult', back_populates='quality_check')
+from datetime import datetime
 
 class InsightAnalysis(BaseModel):
-    """Model for storing analysis insights."""
-    __tablename__ = 'insight_analyses'
+    """Model for storing and managing data analysis insights."""
+    __tablename__ = 'insight_analysis'
 
-    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'), nullable=False)
-    type = Column(String(100), nullable=False)
-    status = Column(analysis_status)
-    config = Column(JSONB)
+    # Basic information
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    analysis_type = Column(String(100), nullable=False)
+    source_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey('data_sources.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    
+    # Analysis data
     results = Column(JSONB)
-    metrics = Column(JSONB)
+    insight_meta = Column(JSONB)
+    status = Column(
+        Enum('pending', 'running', 'completed', 'failed', name='analysis_status'),
+        nullable=False,
+        default='pending'
+    )
+    
+    # Execution tracking
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    execution_time = Column(Float)  # in seconds
     
     # Relationships
-    patterns = relationship('Pattern', back_populates='analysis', cascade='all, delete-orphan')
-    correlations = relationship('Correlation', back_populates='analysis', cascade='all, delete-orphan')
-    anomalies = relationship('Anomaly', back_populates='analysis', cascade='all, delete-orphan')
+    source = relationship('DataSource', back_populates='insights')
+    patterns = relationship(
+        'Pattern',
+        back_populates='analysis',
+        cascade='all, delete-orphan'
+    )
+    correlations = relationship(
+        'Correlation',
+        back_populates='analysis',
+        cascade='all, delete-orphan'
+    )
+    anomalies = relationship(
+        'Anomaly',
+        back_populates='analysis',
+        cascade='all, delete-orphan'
+    )
+
+    __table_args__ = (
+        Index('ix_insight_analysis_status', 'status'),
+        Index('ix_insight_analysis_type', 'analysis_type'),
+        CheckConstraint('execution_time >= 0', name='ck_positive_execution_time'),
+        CheckConstraint(
+            'completed_at IS NULL OR completed_at >= started_at',
+            name='ck_valid_completion_time'
+        ),
+        {'extend_existing': True}
+    )
+
+    def __repr__(self):
+        return f"<InsightAnalysis(name='{self.name}', type='{self.analysis_type}')>"
+
 
 class Pattern(BaseModel):
-    """Model for pattern detection results."""
+    """Model for storing identified patterns in data analysis."""
     __tablename__ = 'patterns'
 
-    analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
-    type = Column(String(100))
-    name = Column(String(255))
-    description = Column(Text)
-    confidence = Column(Float)
-    support = Column(Float)
-    data = Column(JSONB)
+    analysis_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey('insight_analysis.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    pattern_type = Column(String(100), nullable=False)
+    confidence = Column(Float, nullable=False)
+    pattern_data = Column(JSONB)
+    pattern_meta = Column(JSONB)
+    
+    # Additional fields
+    frequency = Column(Integer)  # Number of occurrences
+    impact_score = Column(Float)  # Measure of pattern significance
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
     
     # Relationships
     analysis = relationship('InsightAnalysis', back_populates='patterns')
 
+    __table_args__ = (
+        CheckConstraint('confidence >= 0 AND confidence <= 1', name='ck_valid_confidence'),
+        CheckConstraint('impact_score >= 0', name='ck_positive_impact_score'),
+        CheckConstraint(
+            'end_date IS NULL OR end_date >= start_date',
+            name='ck_valid_pattern_dates'
+        )
+    )
+
+    def __repr__(self):
+        return f"<Pattern(type='{self.pattern_type}', confidence={self.confidence})>"
+
+
 class Correlation(BaseModel):
-    """Model for correlation analysis results."""
+    """Model for storing correlations between data elements."""
     __tablename__ = 'correlations'
 
-    analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
-    field_a = Column(String(255))
-    field_b = Column(String(255))
-    coefficient = Column(Float)
-    significance = Column(Float)
-    type = Column(String(100))
-    meta_data = Column(JSONB)
+    analysis_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey('insight_analysis.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    variable_x = Column(String(255), nullable=False)
+    variable_y = Column(String(255), nullable=False)
+    correlation_type = Column(String(100), nullable=False)
+    strength = Column(Float, nullable=False)
+    significance = Column(Float, nullable=False)
+    correlation_data = Column(JSONB)
+    correlation_meta = Column(JSONB)
+    
+    # Additional fields
+    direction = Column(
+        Enum('positive', 'negative', 'none', name='correlation_direction'),
+        nullable=False
+    )
+    sample_size = Column(Integer)
+    time_period = Column(String(50))  # e.g., 'daily', 'weekly', 'monthly'
     
     # Relationships
     analysis = relationship('InsightAnalysis', back_populates='correlations')
 
+    __table_args__ = (
+        CheckConstraint('strength >= -1 AND strength <= 1', name='ck_valid_correlation_strength'),
+        CheckConstraint('significance >= 0 AND significance <= 1', name='ck_valid_significance'),
+        CheckConstraint('sample_size > 0', name='ck_positive_sample_size'),
+        Index('ix_correlations_vars', 'variable_x', 'variable_y'),
+        {'extend_existing': True}
+    )
+
+    def __repr__(self):
+        return f"<Correlation(vars='{self.variable_x}->{self.variable_y}', strength={self.strength})>"
+
+
 class Anomaly(BaseModel):
-    """Model for anomaly detection results."""
+    """Model for storing detected anomalies in data."""
     __tablename__ = 'anomalies'
 
-    analysis_id = Column(UUID(as_uuid=True), ForeignKey('insight_analyses.id'), nullable=False)
-    field = Column(String(255))
-    type = Column(String(100))
-    severity = Column(Float)
-    timestamp = Column(DateTime)
-    value = Column(Float)
-    expected_range = Column(JSONB)  # {min: number, max: number}
-    meta_data = Column(JSONB)
+    analysis_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey('insight_analysis.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    anomaly_type = Column(String(100), nullable=False)
+    severity = Column(
+        Enum('low', 'medium', 'high', 'critical', name='anomaly_severity'),
+        nullable=False
+    )
+    confidence = Column(Float, nullable=False)
+    detected_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    anomaly_data = Column(JSONB)
+    anomaly_meta = Column(JSONB)
+    
+    # Additional fields
+    resolution_status = Column(
+        Enum('open', 'investigating', 'resolved', 'false_positive', name='resolution_status'),
+        default='open'
+    )
+    resolved_at = Column(DateTime)
+    resolved_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    resolution_notes = Column(Text)
+    affected_metrics = Column(JSONB)
     
     # Relationships
     analysis = relationship('InsightAnalysis', back_populates='anomalies')
+    resolver = relationship('User', foreign_keys=[resolved_by])
+
+    __table_args__ = (
+        CheckConstraint('confidence >= 0 AND confidence <= 1', name='ck_valid_anomaly_confidence'),
+        CheckConstraint(
+            'resolved_at IS NULL OR resolved_at >= detected_at',
+            name='ck_valid_resolution_time'
+        ),
+        Index('ix_anomalies_severity', 'severity'),
+        Index('ix_anomalies_resolution', 'resolution_status'),
+        {'extend_existing': True}
+    )
+
+    def __repr__(self):
+        return f"<Anomaly(type='{self.anomaly_type}', severity='{self.severity}')>"

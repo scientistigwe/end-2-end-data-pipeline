@@ -1,7 +1,4 @@
-// src/analysis/api/analysisApi.ts
-import { BaseClient } from '@/common/api/client/baseClient';
-import { API_CONFIG } from '@/common/api/client/config';
-import { RouteHelper } from '@/common/api/routes';
+import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { AxiosProgressEvent } from 'axios';
 import type { ApiResponse } from '@/common/types/api';
 import type {
@@ -14,35 +11,36 @@ import type {
   AnalysisStatus
 } from '../types/analysis';
 
-class AnalysisApi extends BaseClient {
+class AnalysisApi {
+  private client = baseAxiosClient;
+
   constructor() {
-    super({
-      baseURL: import.meta.env.VITE_ANALYSIS_API_URL || API_CONFIG.BASE_URL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        'X-Service': 'analysis'
-      }
+    this.setupAnalysisHeaders();
+  }
+
+  private setupAnalysisHeaders() {
+    this.client.setDefaultHeaders({
+      'X-Service': 'analysis'
     });
   }
 
   // Quality Analysis Methods
   async startQualityAnalysis(config: QualityConfig): Promise<ApiResponse<AnalysisResult>> {
-    return this.post(
-      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'START'),
+    return this.client.executePost(
+      this.client.createNestedRoute('ANALYSIS', 'QUALITY', 'START'),
       config
     );
   }
 
   async getQualityStatus(analysisId: string): Promise<ApiResponse<AnalysisResult>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'STATUS', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'QUALITY', 'STATUS', { id: analysisId })
     );
   }
 
   async getQualityReport(analysisId: string): Promise<ApiResponse<QualityReport>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'REPORT', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'QUALITY', 'REPORT', { id: analysisId })
     );
   }
 
@@ -50,8 +48,8 @@ class AnalysisApi extends BaseClient {
     analysisId: string,
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
-    return this.post(
-      RouteHelper.getNestedRoute('ANALYSIS', 'QUALITY', 'EXPORT', { id: analysisId }),
+    return this.client.executePost(
+      this.client.createNestedRoute('ANALYSIS', 'QUALITY', 'EXPORT', { id: analysisId }),
       options,
       { responseType: 'blob' }
     );
@@ -59,37 +57,37 @@ class AnalysisApi extends BaseClient {
 
   // Insight Analysis Methods
   async startInsightAnalysis(config: InsightConfig): Promise<ApiResponse<AnalysisResult>> {
-    return this.post(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'START'),
+    return this.client.executePost(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'START'),
       config
     );
   }
 
   async getInsightStatus(analysisId: string): Promise<ApiResponse<AnalysisResult>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'STATUS', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'STATUS', { id: analysisId })
     );
   }
 
   async getInsightReport(analysisId: string): Promise<ApiResponse<InsightReport>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'REPORT', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'REPORT', { id: analysisId })
     );
   }
 
   async getCorrelations(
     analysisId: string
   ): Promise<ApiResponse<InsightReport['correlations']>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'CORRELATIONS', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'CORRELATIONS', { id: analysisId })
     );
   }
 
   async getAnomalies(
     analysisId: string
   ): Promise<ApiResponse<InsightReport['anomalies']>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'ANOMALIES', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'ANOMALIES', { id: analysisId })
     );
   }
 
@@ -100,8 +98,8 @@ class AnalysisApi extends BaseClient {
     significance: number;
     description: string;
   }>>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'TRENDS', { id: analysisId })
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'TRENDS', { id: analysisId })
     );
   }
 
@@ -109,8 +107,8 @@ class AnalysisApi extends BaseClient {
     analysisId: string,
     patternId: string
   ): Promise<ApiResponse<InsightReport['patterns'][0]>> {
-    return this.get(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'PATTERN_DETAILS', { 
+    return this.client.executeGet(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'PATTERN_DETAILS', { 
         id: analysisId, 
         patternId 
       })
@@ -121,8 +119,8 @@ class AnalysisApi extends BaseClient {
     analysisId: string,
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
-    return this.post(
-      RouteHelper.getNestedRoute('ANALYSIS', 'INSIGHT', 'EXPORT', { id: analysisId }),
+    return this.client.executePost(
+      this.client.createNestedRoute('ANALYSIS', 'INSIGHT', 'EXPORT', { id: analysisId }),
       options,
       { responseType: 'blob' }
     );
@@ -133,8 +131,8 @@ class AnalysisApi extends BaseClient {
     data: FormData,
     onProgress?: (progress: number) => void
   ): Promise<ApiResponse<{ id: string }>> {
-    return this.post(
-      RouteHelper.getRoute('ANALYSIS', 'UPLOAD'),
+    return this.client.executePost(
+      this.client.createRoute('ANALYSIS', 'UPLOAD'),
       data,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -159,8 +157,8 @@ class AnalysisApi extends BaseClient {
   }
 
   async cancelAnalysis(analysisId: string): Promise<ApiResponse<void>> {
-    return this.post(
-      RouteHelper.getRoute('ANALYSIS', 'CANCEL', { id: analysisId })
+    return this.client.executePost(
+      this.client.createRoute('ANALYSIS', 'CANCEL', { id: analysisId })
     );
   }
 }

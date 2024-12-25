@@ -1,4 +1,3 @@
-// src/common/api/client/baseClient.ts
 import axios, { 
   AxiosInstance, 
   AxiosRequestConfig, 
@@ -6,57 +5,161 @@ import axios, {
   AxiosHeaders,
   InternalAxiosRequestConfig,
   AxiosHeaderValue,
-  RawAxiosRequestHeaders
+  RawAxiosRequestHeaders,
+  AxiosResponse
 } from 'axios';
 
 import { 
-  API_CONFIG, 
-  ApiRequestConfig, 
+  APIRoutes,
+  RouteHelper,
+  RouteParams,
+  RouteKey,
+  SubRouteKey,
+  NestedRouteKey,
+  RouteConfig,
+  getRoutePath
+} from '../routes';
+
+import { 
+  ApiRequestConfig,
   ApiResponse,
+  HttpMethod,
+  HTTP_STATUS,
+  ErrorResponse,
+  RetryableRequestConfig,
+  CacheEntry,
+  HeadersType,
+  RetryStatus
+} from '../../types/api';
+
+import { 
+  API_CONFIG, 
   DEFAULT_REQUEST_CONFIG,
   RETRY_CONFIG,
-  ENV_CONFIG
 } from './config';
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-type HeadersType = Record<string, AxiosHeaderValue>;
-
 export class BaseClient {
+  private static instance: BaseClient | null = null;
   protected client: AxiosInstance;
   private cache: Map<string, CacheEntry<any>>;
+  private retryConfig = RETRY_CONFIG;
 
-  constructor(config?: CreateAxiosDefaults) {
+  private constructor(config?: CreateAxiosDefaults) {
     this.cache = new Map();
     this.client = this.initializeClient(config);
     this.setupInterceptors();
   }
 
-  private initializeClient(config?: CreateAxiosDefaults): AxiosInstance {
-    const defaultHeaders: HeadersType = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest'
-    };
+  public static getInstance(config?: CreateAxiosDefaults): BaseClient {
+    if (!BaseClient.instance) {
+      BaseClient.instance = new BaseClient(config);
+    }
+    return BaseClient.instance;
+  }
 
-    const baseURL = `${ENV_CONFIG.apiUrl}/api/${API_CONFIG.VERSION}`;
-
-    return axios.create({
-      baseURL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: defaultHeaders,
-      withCredentials: true,
-      validateStatus: (status) => status >= 200 && status < 300,
-      ...DEFAULT_REQUEST_CONFIG,
-      ...config
+  // Public Methods for API Consumers
+  public setDefaultHeaders(headers: Record<string, string>): void {
+    Object.entries(headers).forEach(([key, value]) => {
+      if (this.client.defaults.headers.common) {
+        this.client.defaults.headers.common[key] = value;
+      }
     });
   }
 
+  public createRoute<T extends RouteKey>(
+    module: T,
+    route: SubRouteKey<T>,
+    params?: RouteParams
+  ): string {
+    return this.getRoute(module, route, params);
+  }
+
+  public createNestedRoute<
+    T extends RouteKey,
+    S extends keyof typeof APIRoutes[T],
+    R extends NestedRouteKey<T, S>
+  >(
+    module: T,
+    section: S,
+    route: R,
+    params?: RouteParams
+  ): string {
+    return this.getNestedRoute(module, section, route, params);
+  }
+
+  // Public HTTP Methods
+  public async executeGet<T>(
+    endpoint: string,
+    config?: ApiRequestConfig & { cacheDuration?: number }
+  ): Promise<T> {
+    return this.get<T>(endpoint, config);
+  }
+
+  public async executePost<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.post<T>(endpoint, data, config);
+  }
+
+  public async executePut<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.put<T>(endpoint, data, config);
+  }
+
+  public async executePatch<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.patch<T>(endpoint, data, config);
+  }
+
+  public async executeDelete<T>(
+    endpoint: string,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.delete<T>(endpoint, config);
+  }
+
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
+  // Protected Methods
+  protected getRoute<T extends RouteKey>(
+    module: T,
+    route: SubRouteKey<T>,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getRoute(module, route, params);
+  }
+
+  protected getNestedRoute<
+    T extends RouteKey,
+    S extends keyof typeof APIRoutes[T],
+    R extends NestedRouteKey<T, S>
+  >(
+    module: T,
+    section: S,
+    route: R,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getNestedRoute(module, section, route, params);
+  }
+
+  protected resolveRoute<T extends RouteKey>(
+    config: RouteConfig<T>
+  ): string {
+    return getRoutePath(config);
+  }
+
   protected async request<T>(
-    method: 'get' | 'post' | 'put' | 'delete',
+    method: HttpMethod,
     endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
@@ -71,7 +174,7 @@ export class BaseClient {
       };
 
       const requestConfig: AxiosRequestConfig = {
-        method,
+        method: method.toLowerCase(),
         url: endpoint,
         data,
         ...axiosConfig,
@@ -85,6 +188,31 @@ export class BaseClient {
       throw this.handleApiError(error);
     }
   }
+
+  // Private Methods
+  private initializeClient(config?: CreateAxiosDefaults): AxiosInstance {
+    const defaultHeaders: HeadersType = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    };
+
+    const clientConfig: CreateAxiosDefaults = {
+      baseURL: API_CONFIG.FULL_BASE_URL,
+      timeout: API_CONFIG.TIMEOUT,
+      headers: defaultHeaders,
+      withCredentials: true,
+      validateStatus: (status: number): boolean => {
+        return status >= HTTP_STATUS.OK && status < HTTP_STATUS.MULTIPLE_CHOICES;
+      },
+      ...DEFAULT_REQUEST_CONFIG,
+      ...config
+    };
+
+    console.log('Initializing API client with config:', clientConfig);
+    return axios.create(clientConfig);
+  }
+
   private setupInterceptors(): void {
     this.setupRequestInterceptor();
     this.setupResponseInterceptor();
@@ -101,17 +229,27 @@ export class BaseClient {
         }
 
         config.headers = headers;
+        
+        console.log('Making request:', {
+          method: config.method,
+          url: config.url,
+          baseURL: config.baseURL,
+          headers: config.headers
+        });
+        
         return config;
       },
-      (error) => Promise.reject(error)
+      (error: Error) => Promise.reject(error)
     );
   }
 
   private setupResponseInterceptor(): void {
     this.client.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        if (!error.config) return Promise.reject(error);
+      (response: AxiosResponse) => response,
+      async (error: unknown) => {
+        if (!axios.isAxiosError(error) || !error.config) {
+          return Promise.reject(error);
+        }
 
         if (this.shouldRefreshToken(error)) {
           return this.handleTokenRefresh(error);
@@ -126,58 +264,112 @@ export class BaseClient {
     );
   }
 
-  private shouldRefreshToken(error: any): boolean {
+  private shouldRefreshToken(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false;
+    
+    const config = error.config as RetryableRequestConfig;
     return (
-      error.response?.status === 401 && 
-      !error.config?._retry &&
+      error.response?.status === HTTP_STATUS.UNAUTHORIZED && 
+      !(config?._retry ?? 0) &&
       !!localStorage.getItem('refreshToken')
     );
   }
 
-  private async handleTokenRefresh(error: any): Promise<any> {
+  private async handleTokenRefresh(error: unknown): Promise<AxiosResponse> {
+    if (!axios.isAxiosError(error)) {
+      throw error;
+    }
+
     try {
       const refreshToken = localStorage.getItem('refreshToken');
-      const response = await this.client.post<ApiResponse<{ token: string }>>('/auth/refresh', { refreshToken });
-      const { token } = response.data.data;
+      const response = await this.request<{ token: string }>(
+        'POST',
+        this.createRoute('AUTH', 'REFRESH'),
+        undefined,
+        { refreshToken }
+      );
 
+      const { token } = response;
       localStorage.setItem('token', token);
-      error.config.headers = new AxiosHeaders({
-        ...error.config.headers,
-        Authorization: `Bearer ${token}`
-      });
 
-      return this.client(error.config);
+      if (error.config) {
+        const config = error.config as RetryableRequestConfig;
+        config.headers = new AxiosHeaders({
+          ...config.headers,
+          Authorization: `Bearer ${token}`
+        });
+
+        return this.client(config);
+      }
+      
+      throw new Error('Invalid error configuration');
     } catch (refreshError) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
-      return Promise.reject(refreshError);
+      this.handleAuthFailure();
+      throw refreshError;
     }
   }
 
-  private shouldRetryRequest(error: any): boolean {
-    const retryCount = error.config?._retry || 0;
-    return (
-      retryCount < RETRY_CONFIG.count &&
-      RETRY_CONFIG.statuses.includes(error.response?.status)
+  private handleAuthFailure(): void {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    window.dispatchEvent(new Event('auth:sessionExpired'));
+  }
+
+  private shouldRetryRequest(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false;
+    
+    const config = error.config as RetryableRequestConfig;
+    const retryCount = config?._retry ?? 0;
+    const status = error.response?.status as RetryStatus;
+    const method = (error.config?.method?.toUpperCase() ?? '') as HttpMethod;
+
+    return !!(
+      status &&
+      method &&
+      retryCount < this.retryConfig.count &&
+      this.retryConfig.statuses.includes(status) &&
+      (!this.retryConfig.methods || this.retryConfig.methods.includes(method))
     );
   }
 
-  private async handleRequestRetry(error: any): Promise<any> {
-    error.config._retry = (error.config._retry || 0) + 1;
-    const delay = RETRY_CONFIG.delay * Math.pow(2, error.config._retry - 1);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return this.client(error.config);
-  }
-
-  private handleApiError(error: any): Error {
-    if (axios.isAxiosError(error)) {
-      return new Error(error.response?.data?.message || error.message);
+  private async handleRequestRetry(error: unknown): Promise<AxiosResponse> {
+    if (!axios.isAxiosError(error) || !error.config) {
+      throw error;
     }
-    return error;
+
+    const config = error.config as RetryableRequestConfig;
+    config._retry = (config._retry ?? 0) + 1;
+    
+    const delay = Math.min(
+      this.retryConfig.delay * Math.pow(this.retryConfig.backoffFactor || 2, config._retry - 1),
+      this.retryConfig.maxDelay || 30000
+    );
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return this.client(config);
   }
 
-  protected async get<T>(
+  private handleApiError(error: unknown): Error {
+    console.error('API Error:', error);
+  
+    if (axios.isAxiosError(error)) {
+      const errorResponse = error.response?.data as ErrorResponse;
+      return new Error(
+        errorResponse?.error?.message || 
+        errorResponse?.message || 
+        error.message || 
+        'An unexpected error occurred'
+      );
+    }
+
+    if (error instanceof Error) {
+      return error;
+    }
+
+    return new Error('An unexpected error occurred');
+  }
+
+  private async get<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
   ): Promise<T> {
@@ -188,13 +380,44 @@ export class BaseClient {
       if (cached) return cached;
     }
 
-    const response = await this.request<T>('get', endpoint, restConfig);
+    const response = await this.request<T>('GET', endpoint, restConfig);
     
     if (cacheDuration > 0) {
       this.setCache(endpoint, restConfig, response);
     }
 
     return response;
+  }
+
+  private async post<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.request<T>('POST', endpoint, config, data);
+  }
+
+  private async put<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.request<T>('PUT', endpoint, config, data);
+  }
+
+  private async patch<T>(
+    endpoint: string,
+    data?: unknown,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.request<T>('PATCH', endpoint, config, data);
+  }
+
+  private async delete<T>(
+    endpoint: string,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    return this.request<T>('DELETE', endpoint, config);
   }
 
   private getFromCache<T>(
@@ -224,33 +447,6 @@ export class BaseClient {
   private getCacheKey(endpoint: string, config?: ApiRequestConfig): string {
     return `${endpoint}-${JSON.stringify(config)}`;
   }
-
-  protected async post<T>(
-    endpoint: string,
-    data?: unknown,
-    config?: ApiRequestConfig
-  ): Promise<T> {
-    return this.request<T>('post', endpoint, config, data);
-  }
-
-  protected async put<T>(
-    endpoint: string,
-    data?: unknown,
-    config?: ApiRequestConfig
-  ): Promise<T> {
-    return this.request<T>('put', endpoint, config, data);
-  }
-
-  protected async delete<T>(
-    endpoint: string,
-    config?: ApiRequestConfig
-  ): Promise<T> {
-    return this.request<T>('delete', endpoint, config);
-  }
-
-  public clearCache(): void {
-    this.cache.clear();
-  }
 }
 
-export const baseAxiosClient = new BaseClient();
+export const baseAxiosClient = BaseClient.getInstance();

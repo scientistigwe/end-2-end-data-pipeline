@@ -31,20 +31,23 @@ class Config:
     SQLALCHEMY_POOL_TIMEOUT: int = 30
     SQLALCHEMY_POOL_RECYCLE: int = 1800  # Recycle connections after 30 minutes
     
-    # Common CORS settings
+    # Common CORS headers
     COMMON_HEADERS: List[str] = [
         "Content-Type",
         "Authorization",
         "X-Requested-With",
         "Accept",
         "Origin",
+        "X-Total-Count",
+        "X-Request-ID",
+        "X-CSRF-Token",
         "Access-Control-Allow-Headers",
         "Access-Control-Allow-Methods",
         "Access-Control-Allow-Origin",
-        "Access-Control-Allow-Credentials",
-        "X-CSRF-Token"
+        "Access-Control-Allow-Credentials"
     ]
 
+    # HTTP methods allowed
     COMMON_METHODS: List[str] = [
         "GET", 
         "POST", 
@@ -54,32 +57,62 @@ class Config:
         "PATCH"
     ]
     
-    # CORS Configuration
+    # Base CORS Configuration
     CORS_SETTINGS: Dict[str, Union[List[str], str, bool, int]] = {
         "origins": [
-            "http://localhost:5173",  # Vite default dev server
+            "http://localhost:5173",
             "http://127.0.0.1:5173"
         ],
         "methods": COMMON_METHODS,
         "allow_headers": COMMON_HEADERS,
-        "expose_headers": [
-            "Content-Type",
-            "X-Total-Count",
-            "Authorization",
-            "X-Request-ID"
-        ],
+        "expose_headers": COMMON_HEADERS,
         "supports_credentials": True,
-        "max_age": 3600,  # 1 hour
+        "max_age": 3600,
         "send_wildcard": False,
         "automatic_options": True,
         "vary_header": True
     }
 
-    # JWT Settings
-    JWT_SECRET_KEY: str = os.getenv('JWT_SECRET_KEY') or os.urandom(32).hex()
-    JWT_ACCESS_TOKEN_EXPIRES: int = 3600  # 1 hour
-    JWT_REFRESH_TOKEN_EXPIRES: int = 2592000  # 30 days
-    JWT_ERROR_MESSAGE_KEY: str = "message"
+    # JWT Configuration - update this section in Config class
+    JWT_SETTINGS = {
+        'TOKEN': {
+            'LOCATION': ['headers'],
+            'HEADER_NAME': 'Authorization',
+            'HEADER_TYPE': 'Bearer',
+            'ACCESS_EXPIRES': 3600,  # 1 hour
+            'REFRESH_EXPIRES': 2592000,  # 30 days
+            'ALGORITHM': 'HS256',
+            'LEEWAY': 0
+        },
+        'SECURITY': {
+            'SECRET_KEY': os.getenv('JWT_SECRET_KEY') or os.urandom(32).hex(),
+            'COOKIE_CSRF_PROTECT': True,
+            'BLACKLIST_ENABLED': True,
+            'BLACKLIST_TOKEN_CHECKS': ['access', 'refresh']
+        },
+        'CLAIMS': {
+            'IDENTITY_CLAIM': 'sub',
+            'USER_CLAIMS': 'user_claims'
+        },
+        'COOKIES': {
+            'ACCESS_COOKIE_NAME': 'access_token_cookie',
+            'REFRESH_COOKIE_NAME': 'refresh_token_cookie',
+            'ACCESS_COOKIE_PATH': '/',
+            'REFRESH_COOKIE_PATH': '/api/v1/auth/refresh',
+            'SECURE': False,  # Set to True in production
+            'DOMAIN': None,
+            'SESSION_COOKIE': True,
+            'SAMESITE': 'Lax'  # Use 'Strict' in production
+        }
+    }
+
+    # For backward compatibility and Flask-JWT-Extended defaults
+    JWT_TOKEN_LOCATION = JWT_SETTINGS['TOKEN']['LOCATION']
+    JWT_HEADER_NAME = JWT_SETTINGS['TOKEN']['HEADER_NAME']
+    JWT_HEADER_TYPE = JWT_SETTINGS['TOKEN']['HEADER_TYPE']
+    JWT_ACCESS_TOKEN_EXPIRES = JWT_SETTINGS['TOKEN']['ACCESS_EXPIRES']
+    JWT_REFRESH_TOKEN_EXPIRES = JWT_SETTINGS['TOKEN']['REFRESH_EXPIRES']
+    JWT_SECRET_KEY = JWT_SETTINGS['SECURITY']['SECRET_KEY']
 
     @classmethod
     def validate_config(cls) -> None:
@@ -123,6 +156,8 @@ class DevelopmentConfig(Config):
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001"
         ],
+        "allow_headers": Config.COMMON_HEADERS,
+        "expose_headers": Config.COMMON_HEADERS,
         "supports_credentials": True,
         "send_wildcard": False,
         "max_age": 3600
@@ -143,8 +178,10 @@ class TestingConfig(Config):
     # Simplified CORS for testing
     CORS_SETTINGS = {
         **Config.CORS_SETTINGS,
-        "origins": ["*"],  # Allow all origins in testing
-        "supports_credentials": False,  # Disable credentials in testing
+        "origins": ["*"],
+        "allow_headers": Config.COMMON_HEADERS,
+        "expose_headers": Config.COMMON_HEADERS,
+        "supports_credentials": False,
         "send_wildcard": True,
         "max_age": 86400  # 24 hours
     }
@@ -173,7 +210,9 @@ class ProductionConfig(Config):
             os.getenv('PRODUCTION_DOMAIN', 'https://yourdomain.com'),
             os.getenv('API_DOMAIN', 'https://api.yourdomain.com')
         ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Restricted methods
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": Config.COMMON_HEADERS,
+        "expose_headers": Config.COMMON_HEADERS,
         "supports_credentials": True,
         "send_wildcard": False,
         "max_age": 7200,  # 2 hours

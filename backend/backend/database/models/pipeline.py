@@ -1,30 +1,29 @@
-# models/pipeline.py
 from sqlalchemy import (
-    Column, String, DateTime, JSON, Enum, ForeignKey, 
-    Integer, Float, Text, Boolean, Index, UniqueConstraint, 
-    event, DDL
+    Column, String, DateTime, Enum, ForeignKey, Float, Text, 
+    Integer, Boolean, Index, UniqueConstraint, event, DDL, CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates
-from sqlalchemy.ext.hybrid import hybrid_property  # Add this import
+from sqlalchemy.ext.hybrid import hybrid_property
 from .base import BaseModel
-import uuid
 from datetime import datetime
-
-# models/pipeline.py
-from sqlalchemy import Index, UniqueConstraint, event, DDL
-from sqlalchemy.orm import validates
-from .base import BaseModel
 
 class Pipeline(BaseModel):
     __tablename__ = 'pipelines'
 
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    status = Column(Enum('idle', 'running', 'paused', 'completed', 'failed', 'cancelled', name='pipeline_status'))
-    mode = Column(Enum('development', 'staging', 'production', name='pipeline_mode'))
+    status = Column(
+        Enum('idle', 'running', 'paused', 'completed', 'failed', 'cancelled', name='pipeline_status'),
+        default='idle'
+    )
+    mode = Column(
+        Enum('development', 'staging', 'production', name='pipeline_mode'),
+        default='development'
+    )
     source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
-    target_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'), nullable=True)
+    target_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey('datasets.id'))
     config = Column(JSONB)
     progress = Column(Float, default=0)
     error = Column(Text)
@@ -36,32 +35,62 @@ class Pipeline(BaseModel):
     total_runs = Column(Integer, default=0)
     successful_runs = Column(Integer, default=0)
     average_duration = Column(Float)
+    last_success = Column(DateTime)
+    failure_count = Column(Integer, default=0)
     
     # Schedule
     schedule_enabled = Column(Boolean, default=False)
     schedule_cron = Column(String(100))
     schedule_timezone = Column(String(50))
+    schedule_start = Column(DateTime)
+    schedule_end = Column(DateTime)
+    
+    # Performance
+    timeout = Column(Integer)  # seconds
+    retry_limit = Column(Integer, default=3)
+    retry_delay = Column(Integer)  # seconds
+    priority = Column(Integer, default=0)
+    concurrent_runs = Column(Boolean, default=False)
+    
+    # Foreign Keys
+    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     
     # Relationships
-    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
-    owner = relationship('User', back_populates='pipelines')
+    owner = relationship('User', back_populates='pipelines', foreign_keys=[owner_id])
+    source = relationship('DataSource', foreign_keys=[source_id])
+    target = relationship('DataSource', foreign_keys=[target_id])
+    dataset = relationship('Dataset', back_populates='pipelines')
     steps = relationship('PipelineStep', back_populates='pipeline', cascade='all, delete-orphan')
-    runs = relationship('PipelineRun', back_populates='pipeline')
-    quality_gates = relationship('QualityGate', back_populates='pipeline')
+    runs = relationship('PipelineRun', back_populates='pipeline', cascade='all, delete-orphan')
+    quality_gates = relationship('QualityGate', back_populates='pipeline', cascade='all, delete-orphan')
+    alerts = relationship('Alert', back_populates='pipeline')
+    alert_rules = relationship('AlertRule', back_populates='pipeline')
+    health_checks = relationship('HealthCheck', back_populates='pipeline')
+    resource_usage = relationship('ResourceUsage', back_populates='pipeline')
+    decisions = relationship('Decision', back_populates='pipeline', cascade='all, delete-orphan')
+    recommendations = relationship('Recommendation', back_populates='pipeline', cascade='all, delete-orphan')
+    tags = relationship(
+        'Tag',
+        secondary='pipeline_tags',  # Using the association table
+        back_populates='pipelines'
+    )
 
-    # Indexes
     __table_args__ = (
-        Index('idx_pipeline_status_created', 'status', 'created_at'),
-        Index('idx_pipeline_owner_status', 'owner_id', 'status'),
+        Index('ix_pipelines_status', 'status'),
+        Index('ix_pipelines_mode', 'mode'),
+        Index('ix_pipelines_owner', 'owner_id'),
         UniqueConstraint('name', 'owner_id', name='uq_pipeline_name_owner'),
+        CheckConstraint('progress >= 0 AND progress <= 100', name='ck_progress_range'),
+        CheckConstraint('timeout > 0', name='ck_timeout_positive'),
+        CheckConstraint('retry_limit >= 0', name='ck_retry_limit_positive'),
+        CheckConstraint('retry_delay >= 0', name='ck_retry_delay_positive'),
         {'extend_existing': True}
     )
 
-    # Validators
     @validates('name')
     def validate_name(self, key, name):
         if not name or len(name.strip()) < 3:
-            raise ValueError("Pipeline name must be at least 3 characters long")
+            raise ValueError("Pipeline name must be at least 3 characters")
         return name.strip()
 
     @validates('progress')
@@ -70,7 +99,6 @@ class Pipeline(BaseModel):
             raise ValueError("Progress must be between 0 and 100")
         return value
 
-    # Properties
     @hybrid_property
     def is_active(self):
         return self.status in ('running', 'paused')
@@ -81,7 +109,6 @@ class Pipeline(BaseModel):
             return (self.next_run - self.last_run).total_seconds()
         return None
 
-    # Methods
     def can_start(self):
         return self.status in ('idle', 'failed', 'completed')
 
@@ -89,130 +116,146 @@ class Pipeline(BaseModel):
         return self.status in ('running', 'paused')
 
 class PipelineStep(BaseModel):
-    __tablename__ = 'pipeline_steps'
+   __tablename__ = 'pipeline_steps'
 
-    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'), nullable=False)
-    name = Column(String(255), nullable=False)
-    type = Column(String(100), nullable=False)
-    config = Column(JSONB)
-    status = Column(Enum('pending', 'running', 'completed', 'failed', name='step_status'))
-    order = Column(Integer)
-    enabled = Column(Boolean, default=True)
-    timeout = Column(Integer)  # in seconds
-    retry_attempts = Column(Integer, default=0)
-    max_retries = Column(Integer, default=3)
-    dependencies = Column(JSONB)  # Array of step IDs
-    
-    pipeline = relationship('Pipeline', back_populates='steps')
-
+   pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), nullable=False)
+   name = Column(String(255), nullable=False)
+   type = Column(String(100), nullable=False)
+   config = Column(JSONB)
+   status = Column(
+       Enum('pending', 'running', 'completed', 'failed', name='step_status'),
+       default='pending'
+   )
+   pipeline_step_order = Column(Integer, nullable=False)
+   enabled = Column(Boolean, default=True)
+   timeout = Column(Integer)  # seconds
+   retry_attempts = Column(Integer, default=0)
+   max_retries = Column(Integer, default=3)
+   dependencies = Column(JSONB)  # Array of step IDs
+   artifacts = Column(JSONB)
+   environment = Column(JSONB)
+   resources = Column(JSONB)
+   timeout_policy = Column(
+       Enum('fail', 'skip', 'retry', name='timeout_policy'),
+       default='fail'
+   )
+   error_policy = Column(
+       Enum('fail', 'skip', 'retry', name='error_policy'), 
+       default='fail'
+   )
+   
+   # Relationships
+   pipeline = relationship('Pipeline', back_populates='steps')
+   runs = relationship('PipelineStepRun', back_populates='step', cascade='all, delete-orphan')
+   __table_args__ = (
+       Index('ix_pipeline_steps_pipeline', 'pipeline_id'),
+       Index('ix_pipeline_steps_order', 'pipeline_id', 'pipeline_step_order'),
+       CheckConstraint('pipeline_step_order >= 0', name='ck_step_order_positive'),
+       CheckConstraint('timeout > 0', name='ck_step_timeout_positive'),
+       CheckConstraint('retry_attempts >= 0', name='ck_retry_attempts_valid'),
+       CheckConstraint('max_retries >= 0', name='ck_max_retries_valid'),
+       {'extend_existing': True}
+   )
 
 class PipelineRun(BaseModel):
-    __tablename__ = 'pipeline_runs'
+   __tablename__ = 'pipeline_runs'
 
-    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'), nullable=False)
-    version = Column(Integer, nullable=False)
-    status = Column(Enum('running', 'completed', 'failed', 'cancelled', name='run_status'))
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime)
-    duration = Column(Float)  # in seconds
-    error = Column(JSONB)  # {message: string, step?: string, details?: any}
-    metrics = Column(JSONB)  # Performance metrics
-    
-    pipeline = relationship('Pipeline', back_populates='runs')
-    step_runs = relationship('PipelineStepRun', back_populates='pipeline_run')
-    quality_checks = relationship('QualityCheck', back_populates='pipeline_run')
+   pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), nullable=False)
+   version = Column(Integer, nullable=False)
+   status = Column(
+       Enum('running', 'completed', 'failed', 'cancelled', name='run_status'),
+       default='running'
+   )
+   start_time = Column(DateTime, nullable=False)
+   end_time = Column(DateTime)
+   duration = Column(Float)  # seconds
+   error = Column(JSONB)  # {message: string, step?: string, details?: any}
+   metrics = Column(JSONB)  # Performance metrics
+   triggered_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+   trigger_type = Column(String(50))  # manual, scheduled, webhook, etc.
+   environment_snapshot = Column(JSONB)
+   inputs = Column(JSONB)
+   outputs = Column(JSONB)
+   logs_url = Column(String(255))
+   
+   # Relationships
+   pipeline = relationship('Pipeline', back_populates='runs')
+   step_runs = relationship('PipelineStepRun', back_populates='pipeline_run', cascade='all, delete-orphan')
+   quality_checks = relationship('QualityCheck', back_populates='pipeline_run')
 
+   __table_args__ = (
+       Index('ix_pipeline_runs_status', 'status'),
+       Index('ix_pipeline_runs_pipeline', 'pipeline_id'),
+       CheckConstraint('duration >= 0', name='ck_run_duration_positive'),
+       CheckConstraint(
+           'end_time IS NULL OR end_time >= start_time',
+           name='ck_run_time_valid'
+       ),
+       {'extend_existing': True}
+   )
 
 class PipelineStepRun(BaseModel):
-    __tablename__ = 'pipeline_step_runs'
+   __tablename__ = 'pipeline_step_runs'
 
-    pipeline_run_id = Column(UUID(as_uuid=True), ForeignKey('pipeline_runs.id'), nullable=False)
-    step_id = Column(UUID(as_uuid=True), ForeignKey('pipeline_steps.id'), nullable=False)
-    status = Column(Enum('pending', 'running', 'completed', 'failed', name='step_run_status'))
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime)
-    duration = Column(Float)  # in seconds
-    error = Column(JSONB)
-    output = Column(JSONB)
-    metrics = Column(JSONB)
-    
-    pipeline_run = relationship('PipelineRun', back_populates='step_runs')
-    step = relationship('PipelineStep')
+   pipeline_run_id = Column(UUID(as_uuid=True), ForeignKey('pipeline_runs.id', ondelete='CASCADE'), nullable=False)
+   step_id = Column(UUID(as_uuid=True), ForeignKey('pipeline_steps.id', ondelete='CASCADE'), nullable=False)
+   status = Column(
+       Enum('pending', 'running', 'completed', 'failed', name='step_run_status'),
+       default='pending'
+   )
+   start_time = Column(DateTime, nullable=False)
+   end_time = Column(DateTime)
+   duration = Column(Float)  # seconds
+   error = Column(JSONB)
+   output = Column(JSONB)
+   metrics = Column(JSONB)
+   attempt = Column(Integer, default=1)
+   node = Column(String(255))  # Execution node/worker
+   resources_used = Column(JSONB)
+   
+   # Relationships
+   pipeline_run = relationship(
+       'PipelineRun',
+       back_populates='step_runs',
+       foreign_keys=[pipeline_run_id]
+       )
+   step = relationship('PipelineStep', back_populates='runs')
+
+   __table_args__ = (
+       Index('ix_pipeline_step_runs_status', 'status'),
+       CheckConstraint('duration >= 0', name='ck_step_run_duration_positive'),
+       CheckConstraint('attempt > 0', name='ck_attempt_positive'),
+       CheckConstraint(
+           'end_time IS NULL OR end_time >= start_time',
+           name='ck_step_run_time_valid'
+       ),
+       {'extend_existing': True}
+   )
 
 class QualityGate(BaseModel):
-    __tablename__ = 'quality_gates'
+   __tablename__ = 'quality_gates'
 
-    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'), nullable=False)
-    name = Column(String(255), nullable=False)
-    rules = Column(JSONB)
-    threshold = Column(Float)
-    is_active = Column(Boolean, default=True)
-    
-    pipeline = relationship('Pipeline', back_populates='quality_gates')
+   pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), nullable=False)
+   name = Column(String(255), nullable=False)
+   description = Column(Text)
+   rules = Column(JSONB)
+   threshold = Column(Float)
+   is_active = Column(Boolean, default=True)
+   severity = Column(
+       Enum('low', 'medium', 'high', 'critical', name='gate_severity'),
+       default='medium'
+   )
+   action = Column(
+       Enum('warn', 'block', 'notify', name='gate_action'),
+       default='warn'
+   )
+   notification_config = Column(JSONB)
+   
+   # Relationships
+   pipeline = relationship('Pipeline', back_populates='quality_gates')
 
-
-# Triggers
-def create_pipeline_triggers():
-    return [
-        # 1. First create the function
-        DDL(
-            """
-            CREATE OR REPLACE FUNCTION update_pipeline_stats()
-            RETURNS TRIGGER AS $$
-            BEGIN
-                UPDATE pipelines
-                SET total_runs = total_runs + 1,
-                    successful_runs = CASE 
-                        WHEN NEW.status = 'completed' 
-                        THEN successful_runs + 1 
-                        ELSE successful_runs 
-                    END,
-                    last_run = NEW.start_time
-                WHERE id = NEW.pipeline_id;
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-            """
-        ),
-        # 2. Then create the trigger, with safety checks
-        DDL(
-            """
-            DO $$ 
-            BEGIN
-                -- Drop trigger if exists
-                DROP TRIGGER IF EXISTS update_pipeline_stats_trigger ON pipeline_runs;
-                
-                -- Create trigger
-                CREATE TRIGGER update_pipeline_stats_trigger
-                    AFTER INSERT OR UPDATE ON pipeline_runs
-                    FOR EACH ROW
-                    EXECUTE FUNCTION update_pipeline_stats();
-            END $$;
-            """
-        )
-    ]
-
-# Listen for table creation and apply triggers
-def setup_pipeline_triggers():
-    # Create function first
-    event.listen(
-        PipelineRun.__table__,
-        'after_create',
-        create_pipeline_triggers()[0].execute_if(dialect='postgresql')
-    )
-    
-    # Create trigger after function exists
-    event.listen(
-        PipelineRun.__table__,
-        'after_create',
-        create_pipeline_triggers()[1].execute_if(dialect='postgresql')
-    )
-
-# Call setup
-setup_pipeline_triggers()
-
-event.listen(
-    Pipeline.__table__,
-    'after_create',
-    create_pipeline_triggers()[0].execute_if(dialect='postgresql')
-)
+   __table_args__ = (
+       Index('ix_quality_gates_pipeline', 'pipeline_id'),
+       CheckConstraint('threshold >= 0 AND threshold <= 1', name='ck_threshold_range'),
+       {'extend_existing': True}
+   )

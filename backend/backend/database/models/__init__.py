@@ -9,9 +9,13 @@ from .base import Base, BaseModel
 # Import all models
 from .auth import User, UserSession
 from .dataset import Dataset
-from .validation import ValidationResult
-from .analysis import (
+from .validation import (  # Updated: QualityCheck moved to validation
+    ValidationRule,
     QualityCheck,
+    ValidationResult,
+    RemediationAction
+)
+from .analysis import (  # Removed QualityCheck from here
     InsightAnalysis,
     Pattern,
     Correlation,
@@ -52,12 +56,14 @@ __all__ = [
     # Dataset
     'Dataset',
     # Validation
+    'ValidationRule',
+    'QualityCheck',  # Moved to validation section
     'ValidationResult',
+    'RemediationAction',
     # Auth
     'User',
     'UserSession',
     # Analysis
-    'QualityCheck',
     'InsightAnalysis',
     'Pattern',
     'Correlation',

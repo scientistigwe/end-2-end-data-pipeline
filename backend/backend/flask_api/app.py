@@ -1,4 +1,5 @@
 # backend/backend/flask_api/app.py
+
 from flask import Flask, g, request
 from flask_cors import CORS
 import logging
@@ -30,40 +31,31 @@ class ApplicationFactory:
         self.db_session = None
 
     def _initialize_cors(self) -> None:
-        """Initialize CORS with proper configuration and error handling."""
+        """Initialize CORS with proper settings."""
         try:
             CORS(
                 self.app,
                 resources={
                     r"/api/*": {
-                        "origins": self.app.config['CORS_SETTINGS']['origins'],
-                        "methods": self.app.config['CORS_SETTINGS']['methods'],
-                        "allow_headers": self.app.config['CORS_SETTINGS']['allow_headers'],
-                        "expose_headers": self.app.config['CORS_SETTINGS']['expose_headers'],
+                        "origins": ["http://localhost:5173"],
+                        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                        "allow_headers": ["content-type, authorization, x-requested-with, accept, origin, X-Request-Time"],  
+                        "expose_headers": ["content-type, x-total-count, x-request-id"],
                         "supports_credentials": True,
-                        "send_wildcard": False,
                         "max_age": 3600
                     }
-                },
-                supports_credentials=True
+                }
             )
 
             @self.app.after_request
             def after_request(response):
-                """Add CORS headers to response."""
-                origin = request.headers.get('Origin')
-                if origin and origin in self.app.config['CORS_SETTINGS']['origins']:
-                    response.headers['Access-Control-Allow-Origin'] = origin
+                if request.method == 'OPTIONS':
+                    # Handle preflight
+                    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173'
+                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+                    response.headers['Access-Control-Allow-Headers'] = 'content-type, authorization, x-requested-with, accept, origin, X-Request-Time'
                     response.headers['Access-Control-Allow-Credentials'] = 'true'
-                    response.headers['Access-Control-Allow-Methods'] = ', '.join(
-                        self.app.config['CORS_SETTINGS']['methods']
-                    )
-                    response.headers['Access-Control-Allow-Headers'] = ', '.join(
-                        self.app.config['CORS_SETTINGS']['allow_headers']
-                    )
-                    response.headers['Access-Control-Expose-Headers'] = ', '.join(
-                        self.app.config['CORS_SETTINGS']['expose_headers']
-                    )
+                    response.headers['Access-Control-Max-Age'] = '3600'
                 return response
 
             logger.info("CORS initialized successfully")
@@ -71,7 +63,7 @@ class ApplicationFactory:
         except Exception as e:
             logger.error(f"CORS initialization error: {str(e)}", exc_info=True)
             raise
-
+        
     def _initialize_database(self) -> None:
         """Initialize database connection and session management."""
         try:
@@ -98,11 +90,9 @@ class ApplicationFactory:
             raise
 
     def _initialize_components(self) -> None:
-        """Initialize application components like message broker and orchestrator."""
+        """Initialize application components."""
         try:
             # Initialize your components here
-            # Example: self.components['message_broker'] = MessageBroker()
-            #         self.components['orchestrator'] = Orchestrator()
             pass
             logger.info("Components initialized successfully")
 
@@ -187,7 +177,38 @@ class ApplicationFactory:
         try:
             # Initialize JWT manager
             jwt_manager = JWTTokenManager(self.app)
-            # Add more security configurations as needed
+            
+            # Add JWT error handlers
+            @jwt_manager.expired_token_loader
+            def expired_token_callback(jwt_header, jwt_payload):
+                return {
+                    'message': 'Token has expired',
+                    'error': 'token_expired'
+                }, 401
+
+            @jwt_manager.invalid_token_loader
+            def invalid_token_callback(error):
+                return {
+                    'message': 'Invalid token',
+                    'error': 'invalid_token'
+                }, 401
+
+            @jwt_manager.unauthorized_loader
+            def missing_token_callback(error):
+                return {
+                    'message': 'Missing authorization token',
+                    'error': 'authorization_required'
+                }, 401
+
+            # Configure JWT blacklist if enabled
+            if self.app.config.get('JWT_BLACKLIST_ENABLED', False):
+                @jwt_manager.token_in_blocklist_loader
+                def check_if_token_revoked(jwt_header, jwt_payload):
+                    jti = jwt_payload['jti']
+                    # Implement your token blacklist check here
+                    # Example: return is_token_blacklisted(jti)
+                    return False
+
             logger.info("Security configuration completed successfully")
 
         except Exception as e:
@@ -205,25 +226,15 @@ class ApplicationFactory:
             raise
 
     def create_app(self, config_name: str = 'development') -> Flask:
-        """Create and configure the Flask application instance.
-        
-        Args:
-            config_name (str): Configuration environment name
-            
-        Returns:
-            Flask: Configured Flask application instance
-            
-        Raises:
-            Exception: If any initialization step fails
-        """
+        """Create and configure the Flask application instance."""
         try:
             # Initialize Flask
             self.app = Flask(__name__)
             self.app.config.from_object(config_by_name[config_name])
 
             # Initialize all components
+            self._initialize_cors()  # Initialize CORS first
             self._initialize_database()
-            self._initialize_cors()
             self._initialize_components()
             self._initialize_services()
             self._register_blueprints()
@@ -256,12 +267,5 @@ class ApplicationFactory:
             raise
 
 def create_app(config_name: str = 'development') -> Flask:
-    """Application factory function.
-    
-    Args:
-        config_name (str): Name of the configuration to use
-        
-    Returns:
-        Flask: Configured Flask application instance
-    """
+    """Application factory function."""
     return ApplicationFactory().create_app(config_name)

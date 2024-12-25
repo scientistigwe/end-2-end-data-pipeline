@@ -8,7 +8,7 @@ import type {
 } from '../types/pipeline';
 
 // Define the state interface
-interface PipelineState {
+export interface PipelineState {
   pipelines: Record<string, Pipeline>;
   runs: Record<string, PipelineRun[]>;
   logs: Record<string, PipelineLogs>;
@@ -24,6 +24,11 @@ interface PipelineState {
       end: string;
     };
   };
+  statusHistory: Record<string, Array<{
+    status: PipelineStatus;
+    previousStatus: PipelineStatus;
+    timestamp: string;
+  }>>;
 }
 
 const initialState: PipelineState = {
@@ -34,7 +39,8 @@ const initialState: PipelineState = {
   selectedPipelineId: null,
   isLoading: false,
   error: null,
-  filters: {}
+  filters: {},
+  statusHistory: {},
 };
 
 const pipelineSlice = createSlice({
@@ -105,17 +111,36 @@ const pipelineSlice = createSlice({
 
     updatePipelineStatus(
       state,
-      action: PayloadAction<{ id: string; status: PipelineStatus }>
+      action: PayloadAction<{
+        id: string;
+        status: PipelineStatus;
+        previousStatus: PipelineStatus;
+        timestamp: string;
+      }>
     ) {
-      const { id, status } = action.payload;
+      const { id, status, previousStatus, timestamp } = action.payload;
       if (!id || !status) {
         state.error = 'Invalid pipeline status update data';
         return;
       }
-
+    
       try {
         if (state.pipelines[id]) {
+          // Update current status
           state.pipelines[id].status = status;
+          
+          // Initialize status history array if it doesn't exist
+          if (!state.statusHistory[id]) {
+            state.statusHistory[id] = [];
+          }
+          
+          // Add status change to history
+          state.statusHistory[id].push({
+            status,
+            previousStatus,
+            timestamp
+          });
+          
           state.error = null;
         } else {
           state.error = 'Pipeline not found';

@@ -4,6 +4,34 @@ export type PipelineStatus = 'idle' | 'running' | 'paused' | 'completed' | 'fail
 export type PipelineMode = 'development' | 'staging' | 'production';
 export type LogLevel = 'info' | 'warn' | 'error';
 
+// Define valid route actions
+export type PipelineRouteAction =
+  // CRUD operations
+  | 'LIST'
+  | 'CREATE'
+  | 'GET'
+  | 'UPDATE'
+  | 'DELETE'
+  // Execution controls
+  | 'START'
+  | 'STOP'
+  | 'PAUSE'
+  | 'RESUME'
+  | 'RETRY'
+  // Monitoring
+  | 'LOGS'
+  | 'METRICS'
+  | 'RUNS'
+  // Validation
+  | 'VALIDATE';
+
+// Route definition interface
+export interface RouteDefinition {
+  PIPELINES: {
+    [K in PipelineRouteAction]: string;
+  };
+}
+
 export interface PipelineStep {
   id: string;
   name: string;
@@ -139,71 +167,25 @@ export interface PipelineMetrics {
   };
 }
 
-export interface PipelineState {
-  pipelines: Record<string, {
-    id: string;
-    name: string;
-    description?: string;
-    status: 'active' | 'paused' | 'failed';
-    steps: Array<{
-      id: string;
-      type: string;
-      config: Record<string, unknown>;
-      dependencies: string[];
-      status: 'pending' | 'running' | 'completed' | 'failed';
-    }>;
-    schedule?: {
-      enabled: boolean;
-      cron: string;
-      lastRun?: string;
-      nextRun?: string;
-    };
-    metadata: {
-      createdAt: string;
-      updatedAt: string;
-      lastRun?: string;
-      successCount: number;
-      failureCount: number;
-    };
-  }>;
-  activePipelineId: string | null;
-  isLoading: boolean;
-  error: string | null;
-}
-
-export interface PipelineError extends Error {
-  name: 'PipelineError';
-  code?: string;
-  timestamp: string;
-  component: 'pipeline';
-  details?: unknown;
-}
-
-// Event constants
+// Event constants with type-safe keys
 export const PIPELINE_EVENTS = {
   STATUS_CHANGE: 'pipeline:statusChange',
   RUN_COMPLETE: 'pipeline:runComplete',
   ERROR: 'pipeline:error'
 } as const;
 
-export interface PipelineError extends Error {
-  name: 'PipelineError';
-  code?: string;
-  timestamp: string;
-  component: 'pipeline';
-  details?: unknown;
-}
-
 // Event detail types
 export interface PipelineStatusChangeDetail {
   pipelineId: string;
   status: PipelineStatus;
   previousStatus: PipelineStatus;
+  timestamp: string;
 }
 
 export interface PipelineRunCompleteDetail {
   pipelineId: string;
   status: PipelineStatus;
+  timestamp: string;
 }
 
 export interface PipelineErrorDetail {
@@ -228,6 +210,3 @@ export type PipelineEventMap = {
 };
 
 export type PipelineEventName = keyof PipelineEventMap;
-
-
-

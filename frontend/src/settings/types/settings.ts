@@ -1,28 +1,32 @@
-// src/settings/types/settings.ts
-
-export interface SettingsResponse {
-  data: UserSettings;
+// Base Response Types
+export interface BaseResponse {
   message?: string;
   status: number;
 }
 
-export interface SettingsValidationResponse {
-  valid: boolean;
-  errors?: Array<{
-    field: string;
-    message: string;
-  }>;
+export interface SettingsResponse extends BaseResponse {
+  data: UserSettings;
 }
 
-// Add to Event Detail types
-export interface SettingsSyncedDetail {
-  userId: string;
-  settings: UserSettings; // Now explicitly typed
-  source: 'local' | 'remote';
-  timestamp?: string;
+export interface SettingsValidationResponse extends BaseResponse {
+  data: {
+    valid: boolean;
+    errors?: Array<{
+      field: string;
+      message: string;
+    }>;
+  };
 }
 
+// Settings Types
 export interface UserSettings {
+  data: {
+    valid: boolean;
+    errors?: Array<{
+      field: string;
+      message: string;
+    }>;
+  };
   appearance: {
     theme: 'light' | 'dark' | 'system';
     fontSize: number;
@@ -52,6 +56,9 @@ export interface UserSettings {
   };
 }
 
+export type UpdateSettingsDto = Partial<UserSettings>;
+
+// Event Types
 export const SETTINGS_EVENTS = {
   UPDATED: 'settings:updated',
   SYNCED: 'settings:synced',
@@ -69,9 +76,13 @@ export interface SettingsError extends Error {
   };
 }
 
+export interface SettingsSyncedDetail {
+  userId: string;
+  settings: UserSettings;
+  source: 'local' | 'remote';
+  timestamp: string;
+}
 
-
-// Event Detail Types
 export interface SettingsUpdatedDetail {
   userId: string;
   settings: UserSettings;
@@ -84,10 +95,6 @@ export interface SettingsErrorDetail {
   userId: string;
 }
 
-
-export type UpdateSettingsDto = Partial<UserSettings>;
-
-// Event Map Type
 export type SettingsEventMap = {
   'settings:updated': CustomEvent<SettingsUpdatedDetail>;
   'settings:synced': CustomEvent<SettingsSyncedDetail>;

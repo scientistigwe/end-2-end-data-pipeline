@@ -1,7 +1,4 @@
-// src/monitoring/api/monitoringApi.ts
-import { BaseClient } from '@/common/api/client/baseClient';
-import { API_CONFIG } from '@/common/api/client/config';
-import { RouteHelper } from '@/common/api/routes';
+import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   MonitoringConfig,
@@ -16,7 +13,8 @@ import type {
   MonitoringError
 } from '../types/monitoring';
 
-class MonitoringApi extends BaseClient {
+class MonitoringApi {
+  private client = baseAxiosClient;
   private metricsSocket: WebSocket | null = null;
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
@@ -28,28 +26,29 @@ class MonitoringApi extends BaseClient {
   } as const;
 
   constructor() {
-    super({
-      baseURL: import.meta.env.VITE_MONITORING_API_URL || API_CONFIG.BASE_URL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        'X-Service': 'monitoring'
-      }
-    });
-
+    this.setupMonitoringHeaders();
     this.setupMonitoringInterceptors();
+  }
+
+  private setupMonitoringHeaders() {
+    this.client.setDefaultHeaders({
+      'X-Service': 'monitoring'
+    });
   }
 
   // Interceptors
   private setupMonitoringInterceptors() {
-    this.client.interceptors.request.use(
+    // Add custom interceptor on the axios instance
+    const instance = (this.client as any).client;
+    if (!instance) return;
+
+    instance.interceptors.request.use(
       (config) => {
-        config.headers.set('X-Monitoring-Timestamp', new Date().toISOString());
         return config;
       }
     );
 
-    this.client.interceptors.response.use(
+    instance.interceptors.response.use(
       response => response,
       error => {
         const enhancedError = this.handleMonitoringError(error);
@@ -70,8 +69,8 @@ class MonitoringApi extends BaseClient {
 
     if (error instanceof Error) {
       return {
-        ...error,
         ...baseError,
+        ...error,
         message: error.message
       };
     }
@@ -133,27 +132,27 @@ class MonitoringApi extends BaseClient {
 
   // Core Monitoring Operations
   async startMonitoring(pipelineId: string, config: MonitoringConfig): Promise<ApiResponse<void>> {
-    return this.post(
-      this.getRoute('MONITORING', 'START', { id: pipelineId }),
+    return this.client.executePost<void>(
+      this.client.createRoute('MONITORING', 'START', { id: pipelineId }),
       config
     );
   }
 
   async getMetrics(pipelineId: string): Promise<ApiResponse<MetricsData>> {
-    return this.get(
-      this.getRoute('MONITORING', 'METRICS', { id: pipelineId })
+    return this.client.executeGet<MetricsData>(
+      this.client.createRoute('MONITORING', 'METRICS', { id: pipelineId })
     );
   }
 
   async getHealth(pipelineId: string): Promise<ApiResponse<SystemHealth>> {
-    return this.get(
-      this.getRoute('MONITORING', 'HEALTH', { id: pipelineId })
+    return this.client.executeGet<SystemHealth>(
+      this.client.createRoute('MONITORING', 'HEALTH', { id: pipelineId })
     );
   }
 
   async getPerformance(pipelineId: string): Promise<ApiResponse<PerformanceMetrics>> {
-    return this.get(
-      this.getRoute('MONITORING', 'PERFORMANCE', { id: pipelineId })
+    return this.client.executeGet<PerformanceMetrics>(
+      this.client.createRoute('MONITORING', 'PERFORMANCE', { id: pipelineId })
     );
   }
 
@@ -164,8 +163,8 @@ class MonitoringApi extends BaseClient {
       duration?: string;
     }
   ): Promise<ApiResponse<ResourceUsage>> {
-    return this.get(
-      this.getRoute('MONITORING', 'RESOURCES', { id: pipelineId }),
+    return this.client.executeGet<ResourceUsage>(
+      this.client.createRoute('MONITORING', 'RESOURCES', { id: pipelineId }),
       { params }
     );
   }
@@ -180,16 +179,16 @@ class MonitoringApi extends BaseClient {
       interval?: string;
     }
   ): Promise<ApiResponse<TimeSeriesData>> {
-    return this.get(
-      this.getRoute('MONITORING', 'TIME_SERIES', { id: pipelineId }),
+    return this.client.executeGet<TimeSeriesData>(
+      this.client.createRoute('MONITORING', 'TIME_SERIES', { id: pipelineId }),
       { params }
     );
   }
 
   // Alert Operations
   async configureAlerts(pipelineId: string, config: AlertConfig): Promise<ApiResponse<void>> {
-    return this.post(
-      this.getRoute('MONITORING', 'ALERTS_CONFIG', { id: pipelineId }),
+    return this.client.executePost<void>(
+      this.client.createRoute('MONITORING', 'ALERTS_CONFIG', { id: pipelineId }),
       config
     );
   }
@@ -203,8 +202,8 @@ class MonitoringApi extends BaseClient {
       limit?: number;
     }
   ): Promise<ApiResponse<Alert[]>> {
-    return this.get(
-      this.getRoute('MONITORING', 'ALERTS_HISTORY', { id: pipelineId }),
+    return this.client.executeGet<Alert[]>(
+      this.client.createRoute('MONITORING', 'ALERTS_HISTORY', { id: pipelineId }),
       { params }
     );
   }

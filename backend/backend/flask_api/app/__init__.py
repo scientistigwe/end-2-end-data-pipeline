@@ -1,12 +1,19 @@
 # flask_api/app/__init__.py
 
-from flask import Flask, g, request
+from flask import Flask, g, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import (
+    JWTManager,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt,
+    verify_jwt_in_request
+)
 from flask_sqlalchemy import SQLAlchemy
 import logging
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List, Optional
+from functools import wraps
 
 # Import configurations
 from backend.flask_api.config import get_config
@@ -16,17 +23,16 @@ from backend.database.config import init_db
 from .middleware.error_handler import register_error_handlers
 from .middleware.logging import RequestLoggingMiddleware
 
+# Import auth manager
+from .auth.jwt_manager import JWTTokenManager
+
 logger = logging.getLogger(__name__)
 
 # Initialize SQLAlchemy instance
 db = SQLAlchemy()
 
 def configure_logging(app: Flask) -> None:
-    """Configure application logging.
-    
-    Args:
-        app: Flask application instance
-    """
+    """Configure application logging."""
     log_dir = Path(app.config['LOG_FOLDER'])
     log_dir.mkdir(exist_ok=True)
     
@@ -53,7 +59,7 @@ def _init_extensions(app: Flask) -> None:
                          "X-Requested-With",
                          "Accept",
                          "Origin",
-                         "X-Service",  # Added this
+                         "X-Service",
                          "Access-Control-Request-Method",
                          "Access-Control-Request-Headers"
                      ],
@@ -68,7 +74,6 @@ def _init_extensions(app: Flask) -> None:
         @app.after_request
         def after_request(response):
             if request.method == 'OPTIONS':
-                # Handle OPTIONS requests specifically
                 response.status_code = 200
                 response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173'
                 response.headers['Access-Control-Allow-Credentials'] = 'true'
@@ -84,20 +89,50 @@ def _init_extensions(app: Flask) -> None:
     except Exception as e:
         logger.error(f"Extension initialization error: {str(e)}", exc_info=True)
         raise
-def _init_database(app: Flask) -> Tuple[Any, Any]:
-    """Initialize database connection and session management.
-    
-    Args:
-        app: Flask application instance
-        
-    Returns:
-        Tuple containing database engine and session factory
-    """
+
+def _init_jwt(app: Flask) -> None:
+    """Initialize JWT manager with error handlers."""
     try:
-        # Initialize SQLAlchemy with app
+        jwt = JWTManager(app)
+
+        @jwt.unauthorized_loader
+        def unauthorized_callback(error):
+            return jsonify({
+                'message': 'Missing authorization token',
+                'error': 'authorization_required'
+            }), 401
+
+        @jwt.invalid_token_loader
+        def invalid_token_callback(error):
+            return jsonify({
+                'message': 'Invalid token',
+                'error': 'invalid_token'
+            }), 401
+
+        @jwt.expired_token_loader
+        def expired_token_callback(_jwt_header, _jwt_data):
+            return jsonify({
+                'message': 'Token has expired',
+                'error': 'token_expired'
+            }), 401
+
+        @jwt.needs_fresh_token_loader
+        def token_not_fresh_callback(_jwt_header, _jwt_data):
+            return jsonify({
+                'message': 'Fresh token required',
+                'error': 'fresh_token_required'
+            }), 401
+
+        logger.info("JWT initialized successfully")
+    except Exception as e:
+        logger.error(f"JWT initialization error: {str(e)}", exc_info=True)
+        raise
+
+def _init_database(app: Flask) -> Tuple[Any, Any]:
+    """Initialize database connection and session management."""
+    try:
         engine, SessionLocal = init_db(app)
         
-        # Add database session management
         @app.before_request
         def before_request():
             g.db = SessionLocal()
@@ -108,7 +143,6 @@ def _init_database(app: Flask) -> Tuple[Any, Any]:
             if db is not None:
                 db.close()
                 
-        # Create all tables
         from backend.database.models import Base
         Base.metadata.create_all(bind=engine)
         
@@ -120,11 +154,7 @@ def _init_database(app: Flask) -> Tuple[Any, Any]:
         raise
 
 def _configure_paths(app: Flask) -> None:
-    """Configure application paths for uploads and logs.
-    
-    Args:
-        app: Flask application instance
-    """
+    """Configure application paths."""
     try:
         for folder in ['UPLOAD_FOLDER', 'LOG_FOLDER']:
             directory = Path(app.config[folder])
@@ -137,11 +167,7 @@ def _configure_paths(app: Flask) -> None:
         raise
 
 def register_blueprints(app: Flask) -> None:
-    """Register all application blueprints.
-    
-    Args:
-        app: Flask application instance
-    """
+    """Register all application blueprints with JWT protection."""
     try:
         # Import blueprints
         from backend.flask_api.app.blueprints.auth.routes import auth_bp
@@ -153,12 +179,17 @@ def register_blueprints(app: Flask) -> None:
         from backend.flask_api.app.blueprints.monitoring.routes import monitoring_bp
         from backend.flask_api.app.blueprints.reports.routes import reports_bp
         from backend.flask_api.app.blueprints.settings.routes import settings_bp
+        from flask_jwt_extended import jwt_required
 
-        # Blueprint registration with error handling
-        blueprints = [
-            (auth_bp, '/api/v1/auth'),
+        # Define public blueprints (no JWT required)
+        public_blueprints = [
+            (auth_bp, '/api/v1/auth'),  # Auth routes should be public
+        ]
+
+        # Define protected blueprints (JWT required)
+        protected_blueprints = [
             (data_source_bp, '/api/v1/sources'),
-            (pipeline_bp, '/api/v1/pipelines'),
+            (pipeline_bp, '/pipelines'),
             (analysis_bp, '/api/v1/analysis'),
             (recommendation_bp, '/api/v1/recommendations'),
             (decision_bp, '/api/v1/decisions'),
@@ -167,13 +198,30 @@ def register_blueprints(app: Flask) -> None:
             (settings_bp, '/api/v1/settings')
         ]
 
-        # Register each blueprint with proper error handling
-        for blueprint, url_prefix in blueprints:
+        # Register public blueprints
+        for blueprint, url_prefix in public_blueprints:
             try:
                 app.register_blueprint(blueprint, url_prefix=url_prefix)
-                logger.info(f"Registered blueprint: {blueprint.name} at {url_prefix}")
+                logger.info(f"Registered public blueprint: {blueprint.name} at {url_prefix}")
             except Exception as e:
-                logger.error(f"Failed to register blueprint {blueprint.name}: {str(e)}")
+                logger.error(f"Failed to register public blueprint {blueprint.name}: {str(e)}")
+                raise
+
+        # Register protected blueprints with JWT
+        for blueprint, url_prefix in protected_blueprints:
+            try:
+                # Apply JWT protection to all routes in blueprint
+                for view_function in blueprint.view_functions.values():
+                    # Ensure we don't double-wrap if jwt_required is already present
+                    if not hasattr(view_function, '_jwt_required'):
+                        protected_view = jwt_required()(view_function)
+                        protected_view._jwt_required = True  # Mark as protected
+                        blueprint.view_functions[view_function.__name__] = protected_view
+
+                app.register_blueprint(blueprint, url_prefix=url_prefix)
+                logger.info(f"Registered protected blueprint: {blueprint.name} at {url_prefix}")
+            except Exception as e:
+                logger.error(f"Failed to register protected blueprint {blueprint.name}: {str(e)}")
                 raise
 
         # Register default routes
@@ -202,14 +250,7 @@ def register_blueprints(app: Flask) -> None:
         raise
 
 def create_app(config_name: str = 'development') -> Flask:
-    """Application factory function.
-    
-    Args:
-        config_name: Configuration environment name
-        
-    Returns:
-        Configured Flask application instance
-    """
+    """Application factory function."""
     try:
         # Initialize Flask app
         app = Flask(__name__)
@@ -222,6 +263,7 @@ def create_app(config_name: str = 'development') -> Flask:
         configure_logging(app)
         _configure_paths(app)
         _init_extensions(app)
+        _init_jwt(app)  # Initialize JWT before blueprints
         _init_database(app)
         register_error_handlers(app)
         register_blueprints(app)

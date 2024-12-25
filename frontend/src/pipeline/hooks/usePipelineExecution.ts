@@ -1,91 +1,120 @@
+// src/pipeline/hooks/usePipelineExecution.ts
 import { useMutation, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
 import { pipelineApi } from '../api/pipelineApi';
 import { updatePipelineStatus } from '../store/pipelineSlice';
-import type { PipelineRun } from '../types/pipeline';
+import type { PipelineRun, PipelineError, PipelineStatus } from '../types/pipeline';
 
 export function usePipelineExecution(pipelineId: string) {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
 
+  const updateStatus = (status: PipelineStatus, previousStatus: PipelineStatus) => {
+    dispatch(updatePipelineStatus({
+      id: pipelineId,
+      status,
+      previousStatus,
+      timestamp: new Date().toISOString()
+    }));
+  };
+
+  const invalidateQueries = () => {
+    queryClient.invalidateQueries(['pipeline', pipelineId]);
+    queryClient.invalidateQueries(['pipelineRuns', pipelineId]);
+    queryClient.invalidateQueries(['pipeline-status', pipelineId]);
+    queryClient.invalidateQueries(['pipeline-metrics', pipelineId]);
+  };
+
+  const handleError = (error: unknown) => {
+    console.error('Pipeline execution error:', error);
+    const pipelineError = error as PipelineError;
+    return pipelineError;
+  };
+
   const startPipeline = useMutation<
     PipelineRun,
-    Error,
+    PipelineError,
     { mode?: string; params?: Record<string, unknown> }
   >(
     async (options) => {
-      const response = await pipelineApi.startPipeline(pipelineId, options);
-      dispatch(updatePipelineStatus({ id: pipelineId, status: 'running' }));
-      return response;
+      try {
+        const currentStatus = queryClient.getQueryData(['pipeline-status', pipelineId]) as { status: PipelineStatus } | undefined;
+        const response = await pipelineApi.startPipeline(pipelineId, options);
+        updateStatus('running', currentStatus?.status || 'idle');
+        return response.data;
+      } catch (error) {
+        throw handleError(error);
+      }
     },
     {
-      onSuccess: () => {
-        // Invalidate relevant queries
-        queryClient.invalidateQueries(['pipeline', pipelineId]);
-        queryClient.invalidateQueries(['pipelineRuns', pipelineId]);
-      },
+      onSuccess: () => invalidateQueries(),
       onError: (error) => {
-        console.error('Failed to start pipeline:', error);
-        dispatch(updatePipelineStatus({ id: pipelineId, status: 'failed' }));
+        updateStatus('failed', 'running');
       }
     }
   );
 
-  const stopPipeline = useMutation<void, Error>(
+  const stopPipeline = useMutation<void, PipelineError>(
     async () => {
-      await pipelineApi.stopPipeline(pipelineId);
-      dispatch(updatePipelineStatus({ id: pipelineId, status: 'cancelled' }));
+      try {
+        const currentStatus = queryClient.getQueryData(['pipeline-status', pipelineId]) as { status: PipelineStatus } | undefined;
+        await pipelineApi.stopPipeline(pipelineId);
+        updateStatus('cancelled', currentStatus?.status || 'running');
+      } catch (error) {
+        throw handleError(error);
+      }
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['pipeline', pipelineId]);
-        queryClient.invalidateQueries(['pipelineRuns', pipelineId]);
-      },
+      onSuccess: () => invalidateQueries()
+    }
+  );
+
+  const retryPipeline = useMutation<PipelineRun, PipelineError>(
+    async () => {
+      try {
+        const currentStatus = queryClient.getQueryData(['pipeline-status', pipelineId]) as { status: PipelineStatus } | undefined;
+        const response = await pipelineApi.retryPipeline(pipelineId);
+        updateStatus('running', currentStatus?.status || 'failed');
+        return response.data;
+      } catch (error) {
+        throw handleError(error);
+      }
+    },
+    {
+      onSuccess: () => invalidateQueries(),
       onError: (error) => {
-        console.error('Failed to stop pipeline:', error);
+        updateStatus('failed', 'running');
       }
     }
   );
 
-  const retryPipeline = useMutation<PipelineRun, Error>(
+  const pausePipeline = useMutation<void, PipelineError>(
     async () => {
-      const response = await pipelineApi.retryPipeline(pipelineId);
-      dispatch(updatePipelineStatus({ id: pipelineId, status: 'running' }));
-      return response;
+      try {
+        const currentStatus = queryClient.getQueryData(['pipeline-status', pipelineId]) as { status: PipelineStatus } | undefined;
+        await pipelineApi.pausePipeline(pipelineId);
+        updateStatus('paused', currentStatus?.status || 'running');
+      } catch (error) {
+        throw handleError(error);
+      }
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['pipeline', pipelineId]);
-        queryClient.invalidateQueries(['pipelineRuns', pipelineId]);
-      },
-      onError: (error) => {
-        console.error('Failed to retry pipeline:', error);
-        dispatch(updatePipelineStatus({ id: pipelineId, status: 'failed' }));
-      }
+      onSuccess: () => invalidateQueries()
     }
   );
 
-  const pausePipeline = useMutation<void, Error>(
+  const resumePipeline = useMutation<void, PipelineError>(
     async () => {
-      await pipelineApi.pausePipeline(pipelineId);
-      dispatch(updatePipelineStatus({ id: pipelineId, status: 'paused' }));
+      try {
+        const currentStatus = queryClient.getQueryData(['pipeline-status', pipelineId]) as { status: PipelineStatus } | undefined;
+        await pipelineApi.resumePipeline(pipelineId);
+        updateStatus('running', currentStatus?.status || 'paused');
+      } catch (error) {
+        throw handleError(error);
+      }
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['pipeline', pipelineId]);
-      }
-    }
-  );
-
-  const resumePipeline = useMutation<void, Error>(
-    async () => {
-      await pipelineApi.resumePipeline(pipelineId);
-      dispatch(updatePipelineStatus({ id: pipelineId, status: 'running' }));
-    },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['pipeline', pipelineId]);
-      }
+      onSuccess: () => invalidateQueries()
     }
   );
 
@@ -95,11 +124,12 @@ export function usePipelineExecution(pipelineId: string) {
     retryPipeline,
     pausePipeline,
     resumePipeline,
-    isExecuting: startPipeline.isLoading || 
-                 stopPipeline.isLoading || 
-                 retryPipeline.isLoading ||
-                 pausePipeline.isLoading ||
-                 resumePipeline.isLoading
+    isExecuting: 
+      startPipeline.isLoading || 
+      stopPipeline.isLoading || 
+      retryPipeline.isLoading ||
+      pausePipeline.isLoading ||
+      resumePipeline.isLoading
   } as const;
 }
 

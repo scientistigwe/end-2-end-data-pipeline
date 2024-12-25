@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, List
 from uuid import UUID
 from sqlalchemy.orm import Session
-from .....database.models.analysis import QualityCheck
+from .....database.models.validation import QualityCheck
 from .....database.models.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)

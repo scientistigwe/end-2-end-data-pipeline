@@ -1,6 +1,4 @@
-// src/recommendations/api/recommendationsApi.ts
-import { BaseClient } from '@/common/api/client/baseClient';
-import { API_CONFIG } from '@/common/api/client/config';
+import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   Recommendation,
@@ -16,32 +14,34 @@ import type {
 } from '../types/recommendations';
 import { RECOMMENDATION_EVENTS } from '../types/recommendations';
 
-class RecommendationsApi extends BaseClient {
+class RecommendationsApi {
+  private client = baseAxiosClient;
   private readonly RECOMMENDATION_EVENTS = RECOMMENDATION_EVENTS;
 
   constructor() {
-    super({
-      baseURL: import.meta.env.VITE_RECOMMENDATIONS_API_URL || API_CONFIG.BASE_URL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        'X-Service': 'recommendations'
-      }
-    });
-
+    this.setupRecommendationHeaders();
     this.setupRecommendationInterceptors();
+  }
+
+  private setupRecommendationHeaders() {
+    this.client.setDefaultHeaders({
+      'X-Service': 'recommendations'
+    });
   }
 
   // Interceptors and Error Handling
   private setupRecommendationInterceptors() {
-    this.client.interceptors.request.use(
+    // Add custom interceptor on the axios instance
+    const instance = (this.client as any).client;
+    if (!instance) return;
+
+    instance.interceptors.request.use(
       (config) => {
-        config.headers.set('X-Recommendation-Timestamp', new Date().toISOString());
         return config;
       }
     );
 
-    this.client.interceptors.response.use(
+    instance.interceptors.response.use(
       response => {
         this.handleRecommendationEvents(response);
         return response;
@@ -152,8 +152,8 @@ class RecommendationsApi extends BaseClient {
     pipelineId: string,
     filters?: RecommendationFilters
   ): Promise<ApiResponse<Recommendation[]>> {
-    return this.get(
-      this.getRoute('RECOMMENDATIONS', 'LIST'),
+    return this.client.executeGet(
+      this.client.createRoute('RECOMMENDATIONS', 'LIST'),
       { 
         routeParams: { id: pipelineId },
         params: filters 
@@ -164,8 +164,8 @@ class RecommendationsApi extends BaseClient {
   async getRecommendationDetails(
     recommendationId: string
   ): Promise<ApiResponse<Recommendation>> {
-    return this.get(
-      this.getRoute('RECOMMENDATIONS', 'DETAILS', { id: recommendationId })
+    return this.client.executeGet(
+      this.client.createRoute('RECOMMENDATIONS', 'DETAILS', { id: recommendationId })
     );
   }
 
@@ -174,8 +174,8 @@ class RecommendationsApi extends BaseClient {
     actionId: string,
     parameters?: Record<string, unknown>
   ): Promise<ApiResponse<RecommendationHistory>> {
-    return this.post(
-      this.getRoute('RECOMMENDATIONS', 'APPLY', { id: recommendationId }),
+    return this.client.executePost(
+      this.client.createRoute('RECOMMENDATIONS', 'APPLY', { id: recommendationId }),
       { actionId, parameters }
     );
   }
@@ -184,8 +184,8 @@ class RecommendationsApi extends BaseClient {
     recommendationId: string,
     reason?: string
   ): Promise<ApiResponse<void>> {
-    return this.post(
-      this.getRoute('RECOMMENDATIONS', 'DISMISS', { id: recommendationId }),
+    return this.client.executePost(
+      this.client.createRoute('RECOMMENDATIONS', 'DISMISS', { id: recommendationId }),
       { reason }
     );
   }
@@ -193,16 +193,16 @@ class RecommendationsApi extends BaseClient {
   async getApplicationStatus(
     recommendationId: string
   ): Promise<ApiResponse<RecommendationHistory>> {
-    return this.get(
-      this.getRoute('RECOMMENDATIONS', 'STATUS', { id: recommendationId })
+    return this.client.executeGet(
+      this.client.createRoute('RECOMMENDATIONS', 'STATUS', { id: recommendationId })
     );
   }
 
   async getRecommendationHistory(
     pipelineId: string
   ): Promise<ApiResponse<RecommendationHistory[]>> {
-    return this.get(
-      this.getRoute('RECOMMENDATIONS', 'HISTORY', { id: pipelineId })
+    return this.client.executeGet(
+      this.client.createRoute('RECOMMENDATIONS', 'HISTORY', { id: pipelineId })
     );
   }
 
@@ -279,4 +279,5 @@ class RecommendationsApi extends BaseClient {
   }
 }
 
+// Export singleton instance
 export const recommendationsApi = new RecommendationsApi();

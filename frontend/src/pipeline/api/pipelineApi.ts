@@ -1,8 +1,5 @@
-// src/pipeline/api/pipelineApi.ts
 import { AxiosHeaders } from 'axios';
-import { BaseClient } from '@/common/api/client/baseClient';
-import { API_CONFIG } from '@/common/api/client/config';
-import { RouteHelper, RouteKey } from '@/common/api/routes';
+import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   Pipeline,
@@ -16,40 +13,49 @@ import type {
   PipelineStatus,
   PipelineStatusChangeDetail,
   PipelineRunCompleteDetail,
-  PipelineErrorDetail
+  PipelineErrorDetail,
+  RouteDefinition
 } from '../types/pipeline';
-import { PIPELINE_EVENTS } from '../constants/events';
 
-class PipelineApi extends BaseClient {
-  private readonly PIPELINE_EVENTS = PIPELINE_EVENTS;
-  private readonly MODULE: RouteKey = 'PIPELINES';
+export const PIPELINE_EVENTS = {
+  STATUS_CHANGE: 'pipeline:statusChange',
+  RUN_COMPLETE: 'pipeline:runComplete',
+  ERROR: 'pipeline:error'
+} as const;
+
+class PipelineApi {
+  private client = baseAxiosClient;
+  private readonly MODULE: keyof RouteDefinition = 'PIPELINES';
+  private readonly API_VERSION = 'v1';
+  private readonly BASE_PATH = `/api/${this.API_VERSION}/pipelines`;
 
   constructor() {
-    super({
-      baseURL: import.meta.env.VITE_PIPELINE_API_URL || API_CONFIG.BASE_URL,
-      timeout: API_CONFIG.TIMEOUT,
-      headers: {
-        ...API_CONFIG.DEFAULT_HEADERS,
-        'X-Service': 'pipeline'
-      }
-    });
-
+    this.setupPipelineHeaders();
     this.setupPipelineInterceptors();
+  }
+
+  private setupPipelineHeaders() {
+    this.client.setDefaultHeaders({
+      'X-Service': 'pipeline'
+    });
   }
 
   // Interceptors and Error Handling
   private setupPipelineInterceptors(): void {
-    this.client.interceptors.request.use(
+    // Add custom interceptor on the axios instance
+    const instance = (this.client as any).client;
+    if (!instance) return;
+
+    instance.interceptors.request.use(
       (config) => {
         const headers = new AxiosHeaders(config.headers || {});
-        headers.set('X-Pipeline-Timestamp', new Date().toISOString());
         config.headers = headers;
         return config;
       },
       (error) => Promise.reject(error)
     );
 
-    this.client.interceptors.response.use(
+    instance.interceptors.response.use(
       response => response,
       error => {
         const enhancedError = this.handlePipelineError(error);
@@ -70,8 +76,9 @@ class PipelineApi extends BaseClient {
     if (error instanceof Error) {
       return {
         ...baseError,
-        ...error,
-        message: error.message
+        message: error.message,
+        stack: error.stack,
+        name: 'PipelineError'
       };
     }
 
@@ -110,10 +117,117 @@ class PipelineApi extends BaseClient {
     return baseError;
   }
 
+  // Pipeline CRUD Operations aligned with backend routes
+  async listPipelines(params?: {
+    page?: number;
+    limit?: number;
+    status?: PipelineStatus[];
+    mode?: string[];
+  }): Promise<ApiResponse<Pipeline[]>> {
+    return this.client.executeGet(this.BASE_PATH, { params });
+  }
+
+  async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
+    return this.client.executePost(this.BASE_PATH, config);
+  }
+
+  async getPipeline(id: string): Promise<ApiResponse<Pipeline>> {
+    return this.client.executeGet(`${this.BASE_PATH}/${id}`);
+  }
+
+  async updatePipeline(
+    id: string,
+    updates: Partial<PipelineConfig>
+  ): Promise<ApiResponse<Pipeline>> {
+    return this.client.executePut(`${this.BASE_PATH}/${id}`, updates);
+  }
+
+  async deletePipeline(id: string): Promise<ApiResponse<void>> {
+    return this.client.executeDelete(`${this.BASE_PATH}/${id}`);
+  }
+
+  // Pipeline Execution Controls
+  async startPipeline(
+    id: string,
+    options?: { 
+      mode?: string; 
+      params?: Record<string, unknown>
+    }
+  ): Promise<ApiResponse<PipelineRun>> {
+    return this.client.executePost(`${this.BASE_PATH}/${id}/start`, options);
+  }
+
+  async stopPipeline(id: string): Promise<ApiResponse<void>> {
+    return this.client.executePost(`${this.BASE_PATH}/${id}/stop`);
+  }
+
+  async pausePipeline(id: string): Promise<ApiResponse<void>> {
+    return this.client.executePost(`${this.BASE_PATH}/${id}/pause`);
+  }
+
+  async resumePipeline(id: string): Promise<ApiResponse<void>> {
+    return this.client.executePost(`${this.BASE_PATH}/${id}/resume`);
+  }
+
+  async retryPipeline(id: string): Promise<ApiResponse<PipelineRun>> {
+    return this.client.executePost(`${this.BASE_PATH}/${id}/retry`);
+  }
+
+  // Pipeline Status and Monitoring
+  async getPipelineStatus(id: string): Promise<ApiResponse<{
+    status: PipelineStatus;
+    progress: number;
+    currentStep?: string;
+  }>> {
+    return this.client.executeGet(`${this.BASE_PATH}/${id}/status`);
+  }
+
+  async getPipelineLogs(
+    id: string,
+    options?: {
+      startTime?: string;
+      endTime?: string;
+      level?: string;
+      limit?: number;
+      page?: number;
+    }
+  ): Promise<ApiResponse<PipelineLogs>> {
+    return this.client.executeGet(`${this.BASE_PATH}/${id}/logs`, { params: options });
+  }
+
+  async getPipelineMetrics(
+    id: string,
+    timeRange?: {
+      start: string;
+      end: string;
+    }
+  ): Promise<ApiResponse<PipelineMetrics[]>> {
+    return this.client.executeGet(`${this.BASE_PATH}/${id}/metrics`, { params: timeRange });
+  }
+
+  async getPipelineRuns(
+    id: string,
+    options?: {
+      limit?: number;
+      page?: number;
+      status?: PipelineStatus;
+    }
+  ): Promise<ApiResponse<PipelineRun[]>> {
+    return this.client.executeGet(`${this.BASE_PATH}/${id}/runs`, { params: options });
+  }
+
+  // Validation
+  async validatePipelineConfig(config: PipelineConfig): Promise<ApiResponse<{
+    valid: boolean;
+    errors?: string[];
+  }>> {
+    return this.client.executePost(`${this.BASE_PATH}/validate`, config);
+  }
+
   // Event Notification Methods
   private notifyError(error: PipelineError): void {
     window.dispatchEvent(
-      new CustomEvent<PipelineErrorDetail>(this.PIPELINE_EVENTS.ERROR, {
+      new CustomEvent<PipelineErrorDetail>(PIPELINE_EVENTS.ERROR, {
         detail: {
           error: error.message,
           code: error.code
@@ -128,11 +242,12 @@ class PipelineApi extends BaseClient {
     previousStatus: PipelineStatus
   ): void {
     window.dispatchEvent(
-      new CustomEvent<PipelineStatusChangeDetail>(this.PIPELINE_EVENTS.STATUS_CHANGE, {
+      new CustomEvent<PipelineStatusChangeDetail>(PIPELINE_EVENTS.STATUS_CHANGE, {
         detail: {
           pipelineId,
           status,
-          previousStatus
+          previousStatus,
+          timestamp: new Date().toISOString()
         }
       })
     );
@@ -140,192 +255,27 @@ class PipelineApi extends BaseClient {
 
   private notifyRunComplete(pipelineId: string, status: PipelineStatus): void {
     window.dispatchEvent(
-      new CustomEvent<PipelineRunCompleteDetail>(this.PIPELINE_EVENTS.RUN_COMPLETE, {
+      new CustomEvent<PipelineRunCompleteDetail>(PIPELINE_EVENTS.RUN_COMPLETE, {
         detail: {
           pipelineId,
-          status
+          status,
+          timestamp: new Date().toISOString()
         }
       })
     );
   }
 
-  // Pipeline CRUD Operations
-  async listPipelines(params?: {
-    page?: number;
-    limit?: number;
-    status?: string[];
-    mode?: string[];
-  }): Promise<ApiResponse<Pipeline[]>> {
-    return this.get(
-      RouteHelper.getRoute(this.MODULE, 'LIST'),
-      { params }
-    );
-  }
-
-  async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'CREATE'),
-      config
-    );
-  }
-
-  async getPipeline(id: string): Promise<ApiResponse<Pipeline>> {
-    return this.get(
-      RouteHelper.getRoute(this.MODULE, 'GET', { pipeline_id: id })
-    );
-  }
-
-  async updatePipeline(
-    id: string,
-    updates: Partial<PipelineConfig>
-  ): Promise<ApiResponse<Pipeline>> {
-    return this.put(
-      RouteHelper.getRoute(this.MODULE, 'UPDATE', { pipeline_id: id }),
-      updates
-    );
-  }
-
-  async deletePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.delete(
-      RouteHelper.getRoute(this.MODULE, 'DELETE', { pipeline_id: id })
-    );
-  }
-
-  // Pipeline Execution Controls
-  async startPipeline(
-    id: string,
-    options?: { 
-      mode?: string; 
-      params?: Record<string, unknown>
-    }
-  ): Promise<ApiResponse<PipelineRun>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'START', { pipeline_id: id }),
-      options
-    );
-  }
-
-  async stopPipeline(id: string): Promise<ApiResponse<void>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'STOP', { pipeline_id: id })
-    );
-  }
-
-  async pausePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'PAUSE', { pipeline_id: id })
-    );
-  }
-
-  async resumePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'RESUME', { pipeline_id: id })
-    );
-  }
-
-  async retryPipeline(id: string): Promise<ApiResponse<PipelineRun>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'RETRY', { pipeline_id: id })
-    );
-  }
-
-  // Pipeline Monitoring
-  async getPipelineLogs(
-    id: string,
-    options?: {
-      startTime?: string;
-      endTime?: string;
-      level?: string;
-      limit?: number;
-      page?: number;
-    }
-  ): Promise<ApiResponse<PipelineLogs>> {
-    return this.get(
-      RouteHelper.getRoute(this.MODULE, 'LOGS', { pipeline_id: id }),
-      { params: options }
-    );
-  }
-
-  async getPipelineMetrics(
-    id: string,
-    timeRange?: {
-      start: string;
-      end: string;
-    }
-  ): Promise<ApiResponse<PipelineMetrics[]>> {
-    return this.get(
-      RouteHelper.getRoute(this.MODULE, 'METRICS', { pipeline_id: id }),
-      { params: timeRange }
-    );
-  }
-
-  async getPipelineRuns(
-    id: string,
-    options?: {
-      limit?: number;
-      page?: number;
-      status?: string;
-    }
-  ): Promise<ApiResponse<PipelineRun[]>> {
-    return this.get(
-      RouteHelper.getRoute(this.MODULE, 'RUNS'),
-      { params: { ...options, pipeline_id: id } }
-    );
-  }
-
-  // Validation
-  async validatePipelineConfig(config: PipelineConfig): Promise<ApiResponse<{
-    valid: boolean;
-    errors?: string[];
-  }>> {
-    return this.post(
-      RouteHelper.getRoute(this.MODULE, 'VALIDATE'),
-      config
-    );
+  // Event Subscription with type safety
+  subscribeToEvents<E extends PipelineEventName>(
+    event: E,
+    callback: (event: PipelineEventMap[E]) => void
+  ): () => void {
+    const handler = (e: Event) => callback(e as PipelineEventMap[E]);
+    window.addEventListener(event, handler);
+    return () => window.removeEventListener(event, handler);
   }
 
   // Helper Methods
-  private async checkCompletion(
-    id: string,
-    startTime: number,
-    interval: number,
-    timeout: number
-  ): Promise<ApiResponse<PipelineRun>> {
-    if (Date.now() - startTime >= timeout) {
-      throw this.handlePipelineError({
-        message: 'Pipeline execution timeout',
-        code: 'EXECUTION_TIMEOUT'
-      });
-    }
-
-    const response = await this.getPipeline(id);
-    const status = response.data.status;
-
-    if (status === 'completed' || status === 'failed') {
-      this.notifyRunComplete(id, status);
-      const runsResponse = await this.getPipelineRuns(id, { limit: 1 });
-      return {
-        ...runsResponse,
-        data: runsResponse.data[0]
-      };
-    }
-
-    await new Promise(resolve => setTimeout(resolve, interval));
-    return this.checkCompletion(id, startTime, interval, timeout);
-  }
-
-  async waitForPipelineCompletion(
-    id: string,
-    options?: {
-      pollingInterval?: number;
-      timeout?: number;
-    }
-  ): Promise<ApiResponse<PipelineRun>> {
-    const interval = options?.pollingInterval || 5000;
-    const timeout = options?.timeout || 300000; // 5 minutes default
-    return this.checkCompletion(id, Date.now(), interval, timeout);
-  }
-
   async getPipelineDashboard(id: string) {
     const [pipeline, metrics, runs, logs] = await Promise.all([
       this.getPipeline(id),
@@ -341,16 +291,7 @@ class PipelineApi extends BaseClient {
       logs: logs.data
     };
   }
-
-  // Event Subscription
-  subscribeToEvents<E extends PipelineEventName>(
-    event: E,
-    callback: (event: PipelineEventMap[E]) => void
-  ): () => void {
-    const handler = (e: Event) => callback(e as PipelineEventMap[E]);
-    window.addEventListener(event, handler);
-    return () => window.removeEventListener(event, handler);
-  }
 }
 
+// Export singleton instance
 export const pipelineApi = new PipelineApi();

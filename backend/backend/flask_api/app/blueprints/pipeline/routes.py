@@ -1,6 +1,5 @@
 # app/blueprints/pipeline/routes.py
 from flask import Blueprint, request, g
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from ...schemas.pipeline import (
     PipelineListResponseSchema,
@@ -31,7 +30,6 @@ def get_pipeline_service():
     return g.pipeline_service
 
 @pipeline_bp.route('/', methods=['GET'])
-@jwt_required()
 def list_pipelines():
     """List all pipelines."""
     try:
@@ -46,14 +44,13 @@ def list_pipelines():
         return ResponseBuilder.error("Failed to list pipelines", status_code=500)
 
 @pipeline_bp.route('/', methods=['POST'])
-@jwt_required()
 def create_pipeline():
     """Create a new pipeline."""
     try:
         pipeline_service = get_pipeline_service()
         schema = PipelineRequestSchema()
         data = schema.load(request.get_json())
-        data['owner_id'] = get_jwt_identity()
+        data['owner_id'] = g.current_user.id  # JWT identity will be available in g.current_user
         
         pipeline = pipeline_service.create_pipeline(data)
         return ResponseBuilder.success(
@@ -65,8 +62,9 @@ def create_pipeline():
         logger.error(f"Error creating pipeline: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Failed to create pipeline", status_code=500)
 
+# ... rest of the routes without @jwt_required decorators ...
+
 @pipeline_bp.route('/<pipeline_id>', methods=['GET'])
-@jwt_required()
 def get_pipeline(pipeline_id):
     """Get pipeline details."""
     try:
@@ -82,7 +80,6 @@ def get_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to get pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>', methods=['PUT'])
-@jwt_required()
 def update_pipeline(pipeline_id):
     """Update pipeline configuration."""
     try:
@@ -101,7 +98,6 @@ def update_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to update pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/start', methods=['POST'])
-@jwt_required()
 def start_pipeline(pipeline_id):
     """Start pipeline execution."""
     try:
@@ -122,7 +118,6 @@ def start_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to start pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/stop', methods=['POST'])
-@jwt_required()
 def stop_pipeline(pipeline_id):
     """Stop pipeline execution."""
     try:
@@ -141,7 +136,6 @@ def stop_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to stop pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/pause', methods=['POST'])
-@jwt_required()
 def pause_pipeline(pipeline_id):
     """Pause pipeline execution."""
     try:
@@ -160,7 +154,6 @@ def pause_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to pause pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/resume', methods=['POST'])
-@jwt_required()
 def resume_pipeline(pipeline_id):
     """Resume pipeline execution."""
     try:
@@ -179,7 +172,6 @@ def resume_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to resume pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/retry', methods=['POST'])
-@jwt_required()
 def retry_pipeline(pipeline_id):
     """Retry failed pipeline."""
     try:
@@ -195,7 +187,6 @@ def retry_pipeline(pipeline_id):
         return ResponseBuilder.error("Failed to retry pipeline", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/status', methods=['GET'])
-@jwt_required()
 def get_pipeline_status(pipeline_id):
     """Get pipeline execution status."""
     try:
@@ -211,7 +202,6 @@ def get_pipeline_status(pipeline_id):
         return ResponseBuilder.error("Failed to get pipeline status", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/logs', methods=['GET'])
-@jwt_required()
 def get_pipeline_logs(pipeline_id):
     """Get pipeline execution logs."""
     try:
@@ -237,7 +227,6 @@ def get_pipeline_logs(pipeline_id):
         return ResponseBuilder.error("Failed to get pipeline logs", status_code=500)
 
 @pipeline_bp.route('/<pipeline_id>/metrics', methods=['GET'])
-@jwt_required()
 def get_pipeline_metrics(pipeline_id):
     """Get pipeline performance metrics."""
     try:
@@ -253,7 +242,6 @@ def get_pipeline_metrics(pipeline_id):
         return ResponseBuilder.error("Failed to get pipeline metrics", status_code=500)
 
 @pipeline_bp.route('/validate', methods=['POST'])
-@jwt_required()
 def validate_pipeline():
     """Validate pipeline configuration."""
     try:

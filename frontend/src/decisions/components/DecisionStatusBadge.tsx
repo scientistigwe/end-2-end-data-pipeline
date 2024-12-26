@@ -1,7 +1,7 @@
 // src/decisions/components/status/DecisionStatusBadge.tsx
 import React from "react";
 import { Badge } from "../../common/components/ui/badge";
-import type { DecisionStatus } from "../types/decisions";
+import type { DecisionStatus } from "../types/base";
 
 interface DecisionStatusBadgeProps {
   status: DecisionStatus;

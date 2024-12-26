@@ -1,26 +1,26 @@
 // src/monitoring/providers/MonitoringProvider.tsx
-import React, { useState, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
-import { MonitoringContext } from '../context/MonitoringContext';
-import { MonitoringService } from '../services/monitoringService';
-import { handleApiError } from '../../common/utils/api/apiUtils';
-import { MONITORING_MESSAGES } from '../constants';
+import React, { useState, useCallback } from "react";
+import { useDispatch } from "react-redux";
+import { MonitoringContext } from "../context/MonitoringContext";
+import { MonitoringService } from "../services/monitoringService";
+import { handleApiError } from "../../common/utils/api/apiUtils";
+import { MONITORING_MESSAGES } from "../constants";
 import {
   setMetrics,
   setSystemHealth,
   setAlerts,
   setResources,
   setLoading,
-  setError
-} from '../store/monitoringSlice';
+  setError,
+} from "../store/monitoringSlice";
 import type {
   MetricsData,
   SystemHealth,
   ResourceUsage,
   Alert,
   MonitoringConfig,
-  AlertConfig
-} from '../types/monitoring';
+  AlertConfig,
+} from "../types/metrics";
 
 interface MonitoringProviderProps {
   children: React.ReactNode;
@@ -29,7 +29,7 @@ interface MonitoringProviderProps {
 
 export const MonitoringProvider: React.FC<MonitoringProviderProps> = ({
   children,
-  pipelineId
+  pipelineId,
 }) => {
   const dispatch = useDispatch();
 
@@ -42,76 +42,89 @@ export const MonitoringProvider: React.FC<MonitoringProviderProps> = ({
   const [error, setErrorState] = useState<Error | null>(null);
 
   // Actions
-  const startMonitoring = useCallback(async (config: MonitoringConfig) => {
-    setIsLoading(true);
-    dispatch(setLoading(true));
-    
-    try {
-      await MonitoringService.startMonitoring(pipelineId, config);
-      await refreshAll();
-      setErrorState(null);
-    } catch (err) {
-      handleApiError(err);
-      const errorMessage = MONITORING_MESSAGES.ERRORS.START_FAILED;
-      setErrorState(new Error(errorMessage));
-      dispatch(setError(errorMessage));
-    } finally {
-      setIsLoading(false);
-      dispatch(setLoading(false));
-    }
-  }, [dispatch, pipelineId]);
+  const startMonitoring = useCallback(
+    async (config: MonitoringConfig) => {
+      setIsLoading(true);
+      dispatch(setLoading(true));
 
-  const configureAlerts = useCallback(async (config: AlertConfig) => {
-    try {
-      await MonitoringService.configureAlerts(pipelineId, config);
-      const alerts = await MonitoringService.getAlertHistory(pipelineId);
-      setAlertsState(alerts);
-      dispatch(setAlerts(alerts));
-      setErrorState(null);
-    } catch (err) {
-      handleApiError(err);
-      throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_CONFIG_FAILED);
-    }
-  }, [dispatch, pipelineId]);
+      try {
+        await MonitoringService.startMonitoring(pipelineId, config);
+        await refreshAll();
+        setErrorState(null);
+      } catch (err) {
+        handleApiError(err);
+        const errorMessage = MONITORING_MESSAGES.ERRORS.START_FAILED;
+        setErrorState(new Error(errorMessage));
+        dispatch(setError(errorMessage));
+      } finally {
+        setIsLoading(false);
+        dispatch(setLoading(false));
+      }
+    },
+    [dispatch, pipelineId]
+  );
 
-  const acknowledgeAlert = useCallback(async (alertId: string) => {
-    try {
-      await MonitoringService.acknowledgeAlert(pipelineId, alertId);
-      const alerts = await MonitoringService.getAlertHistory(pipelineId);
-      setAlertsState(alerts);
-      dispatch(setAlerts(alerts));
-      setErrorState(null);
-    } catch (err) {
-      handleApiError(err);
-      throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_ACKNOWLEDGE_FAILED);
-    }
-  }, [dispatch, pipelineId]);
+  const configureAlerts = useCallback(
+    async (config: AlertConfig) => {
+      try {
+        await MonitoringService.configureAlerts(pipelineId, config);
+        const alerts = await MonitoringService.getAlertHistory(pipelineId);
+        setAlertsState(alerts);
+        dispatch(setAlerts(alerts));
+        setErrorState(null);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_CONFIG_FAILED);
+      }
+    },
+    [dispatch, pipelineId]
+  );
 
-  const resolveAlert = useCallback(async (
-    alertId: string,
-    resolution?: { comment?: string; action?: string }
-  ) => {
-    try {
-      await MonitoringService.resolveAlert(pipelineId, alertId, resolution);
-      const alerts = await MonitoringService.getAlertHistory(pipelineId);
-      setAlertsState(alerts);
-      dispatch(setAlerts(alerts));
-      setErrorState(null);
-    } catch (err) {
-      handleApiError(err);
-      throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_RESOLVE_FAILED);
-    }
-  }, [dispatch, pipelineId]);
+  const acknowledgeAlert = useCallback(
+    async (alertId: string) => {
+      try {
+        await MonitoringService.acknowledgeAlert(pipelineId, alertId);
+        const alerts = await MonitoringService.getAlertHistory(pipelineId);
+        setAlertsState(alerts);
+        dispatch(setAlerts(alerts));
+        setErrorState(null);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_ACKNOWLEDGE_FAILED);
+      }
+    },
+    [dispatch, pipelineId]
+  );
+
+  const resolveAlert = useCallback(
+    async (
+      alertId: string,
+      resolution?: { comment?: string; action?: string }
+    ) => {
+      try {
+        await MonitoringService.resolveAlert(pipelineId, alertId, resolution);
+        const alerts = await MonitoringService.getAlertHistory(pipelineId);
+        setAlertsState(alerts);
+        dispatch(setAlerts(alerts));
+        setErrorState(null);
+      } catch (err) {
+        handleApiError(err);
+        throw new Error(MONITORING_MESSAGES.ERRORS.ALERT_RESOLVE_FAILED);
+      }
+    },
+    [dispatch, pipelineId]
+  );
 
   const refreshAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [metricsData, healthData, resourcesData, alertsData] = await Promise.all([
-        MonitoringService.getMetrics(pipelineId),
-        MonitoringService.getHealth(pipelineId),
-        MonitoringService.getResourceUsage(pipelineId),
-        MonitoringService.getAlertHistory(pipelineId)
-      ]);
+      const [metricsData, healthData, resourcesData, alertsData] =
+        await Promise.all([
+          MonitoringService.getMetrics(pipelineId),
+          MonitoringService.getHealth(pipelineId),
+          MonitoringService.getResourceUsage(pipelineId),
+          MonitoringService.getAlertHistory(pipelineId),
+        ]);
 
       setMetricsState(metricsData);
       setHealthState(healthData);
@@ -126,7 +139,7 @@ export const MonitoringProvider: React.FC<MonitoringProviderProps> = ({
       setErrorState(null);
     } catch (err) {
       handleApiError(err);
-      const errorMessage = 'Failed to refresh monitoring data';
+      const errorMessage = "Failed to refresh monitoring data";
       setErrorState(new Error(errorMessage));
       dispatch(setError(errorMessage));
     } finally {
@@ -154,7 +167,7 @@ export const MonitoringProvider: React.FC<MonitoringProviderProps> = ({
     acknowledgeAlert,
     resolveAlert,
     refreshAll,
-    clearError
+    clearError,
   };
 
   return (
@@ -163,4 +176,3 @@ export const MonitoringProvider: React.FC<MonitoringProviderProps> = ({
     </MonitoringContext.Provider>
   );
 };
-

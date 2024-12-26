@@ -8,11 +8,7 @@ import {
   setLoading,
 } from "../store/decisionsSlice";
 import { DECISION_MESSAGES } from "../constants";
-import type {
-  Decision,
-  DecisionFilters,
-  DecisionVote,
-} from "../types/decisions";
+import type { Decision, DecisionFilters, DecisionVote } from "../types/base";
 
 interface DecisionContextType {
   // State

@@ -2,7 +2,7 @@
 import type { 
     Recommendation, 
     RecommendationFilters 
-  } from '../types/recommendations';
+  } from '../types/events';
   
   export const applyRecommendationFilters = (
     recommendations: Recommendation[],

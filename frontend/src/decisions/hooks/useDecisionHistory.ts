@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { decisionsApi } from '../api/decisionsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import type { DecisionHistoryEntry } from '../types/decisions';
+import type { DecisionHistoryEntry } from '../types/base';
 
 export const useDecisionHistory = (decisionId: string) => {
   const [history, setHistory] = useState<DecisionHistoryEntry[]>([]);

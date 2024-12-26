@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { useForm } from "react-hook-form";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 import {
   Card,
   CardHeader,
@@ -14,7 +14,7 @@ import {
   AlertDescription,
 } from "../../../common/components/ui/alert";
 import { useS3Source } from "../../hooks/useS3Source";
-import type { S3SourceConfig } from "../../types/dataSources";
+import type { S3SourceConfig } from "../../types/base";
 
 interface S3SourceFormData {
   config: S3SourceConfig["config"];
@@ -25,7 +25,10 @@ interface S3SourceFormProps {
   onCancel: () => void;
 }
 
-export const S3SourceForm: React.FC<S3SourceFormProps> = ({ onSubmit, onCancel }) => {
+export const S3SourceForm: React.FC<S3SourceFormProps> = ({
+  onSubmit,
+  onCancel,
+}) => {
   const [error, setError] = React.useState<Error | null>(null);
   const { isConnecting } = useS3Source();
 
@@ -42,22 +45,23 @@ export const S3SourceForm: React.FC<S3SourceFormProps> = ({ onSubmit, onCancel }
         setError(null);
         const s3SourceConfig: S3SourceConfig = {
           id: uuidv4(),
-          name: 'New S3 Source',
-          type: 's3',
+          name: "New S3 Source",
+          type: "s3",
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(), 
-          status: 'active',
+          updatedAt: new Date().toISOString(),
+          status: "active",
           config: data.config,
         };
         await onSubmit(s3SourceConfig);
         reset();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('S3 connection failed'));
+        setError(
+          err instanceof Error ? err : new Error("S3 connection failed")
+        );
       }
     },
-    [onSubmit, reset],
+    [onSubmit, reset]
   );
-    
 
   return (
     <Card>
@@ -118,7 +122,9 @@ export const S3SourceForm: React.FC<S3SourceFormProps> = ({ onSubmit, onCancel }
             <div className="space-y-2">
               <label className="text-sm font-medium">Region</label>
               <select
-                {...register("config.region", { required: "Region is required" })}
+                {...register("config.region", {
+                  required: "Region is required",
+                })}
                 className="block w-full rounded border-gray-300 shadow-sm"
               >
                 <option value="">Select region...</option>
@@ -176,8 +182,8 @@ export const S3SourceForm: React.FC<S3SourceFormProps> = ({ onSubmit, onCancel }
               />
             </div>
           </div>
-          </CardContent>
-        
+        </CardContent>
+
         <CardFooter className="flex justify-end space-x-4">
           <Button variant="outline" onClick={onCancel}>
             Cancel

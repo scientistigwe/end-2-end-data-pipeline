@@ -24,7 +24,7 @@ import type {
   DataSourceType,
   DataSourceConfig,
   ApiSourceConfig, // Import ApiSourceConfig type
-} from "../types/dataSources";
+} from "../types/base";
 
 // Components
 import {

@@ -1,6 +1,6 @@
 // src/decisions/utils/validators.ts
 import { DECISION_CONFIG } from '../constants';
-import type { Decision, DecisionOption } from '../types/decisions';
+import type { Decision, DecisionOption } from '../types/base';
 
 export const validateDecisionData = (data: Partial<Decision>): {
   isValid: boolean;

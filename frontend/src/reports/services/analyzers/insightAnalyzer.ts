@@ -1,6 +1,6 @@
 // src/report/services/analyzers/insightAnalyzer.ts
 import { BaseAnalyzer } from './baseAnalyzer';
-import type { Report, ReportMetric } from '../../types/report';
+import type { Report, ReportMetric } from '../../types/models';
 
 export class InsightAnalyzer extends BaseAnalyzer {
   analyze(report: Report): ReportMetric[] {

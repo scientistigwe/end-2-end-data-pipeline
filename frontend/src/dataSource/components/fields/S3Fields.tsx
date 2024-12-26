@@ -3,7 +3,7 @@ import React from "react";
 import { UseFormRegister, FieldErrors } from "react-hook-form";
 import { Input } from "@/common/components//ui/inputs/input";
 import { Switch } from "@/common/components/ui/switch";
-import type { S3SourceConfig } from "../../types/dataSources";
+import type { S3SourceConfig } from "../../types/base";
 
 interface S3SourceFieldsProps {
   register: UseFormRegister<S3SourceConfig>;

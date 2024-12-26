@@ -13,7 +13,7 @@ import {
   AlertDescription,
 } from "../../../common/components/ui/alert";
 import { useDBSource } from "../../hooks/useDBSource";
-import type { DBSourceConfig } from "../../types/dataSources";
+import type { DBSourceConfig } from "../../types/base";
 import { v4 as uuidv4 } from "uuid";
 
 interface DBSourceFormData {

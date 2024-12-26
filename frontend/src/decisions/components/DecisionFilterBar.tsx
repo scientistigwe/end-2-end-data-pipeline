@@ -7,7 +7,7 @@ import {
   DECISION_STATUSES,
   DECISION_URGENCIES,
 } from "../constants";
-import type { DecisionFilters } from "../types/decisions";
+import type { DecisionFilters } from "../types/base";
 
 interface DecisionFilterBarProps {
   filters: DecisionFilters;

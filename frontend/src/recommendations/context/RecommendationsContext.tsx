@@ -1,10 +1,10 @@
 // src/recommendations/context/RecommendationContext.tsx
-import { createContext, useContext } from 'react';
+import { createContext, useContext } from "react";
 import type {
   Recommendation,
   RecommendationFilters,
-  RecommendationHistory
-} from '../types/recommendations';
+  RecommendationHistory,
+} from "../types/events";
 
 interface RecommendationContextValue {
   // State
@@ -16,18 +16,28 @@ interface RecommendationContextValue {
 
   // Actions
   loadRecommendations: (pipelineId: string) => Promise<void>;
-  applyRecommendation: (recommendationId: string, actionId: string) => Promise<void>;
-  dismissRecommendation: (recommendationId: string, reason?: string) => Promise<void>;
+  applyRecommendation: (
+    recommendationId: string,
+    actionId: string
+  ) => Promise<void>;
+  dismissRecommendation: (
+    recommendationId: string,
+    reason?: string
+  ) => Promise<void>;
   setFilters: (filters: RecommendationFilters) => void;
   clearError: () => void;
 }
 
-export const RecommendationContext = createContext<RecommendationContextValue | undefined>(undefined);
+export const RecommendationContext = createContext<
+  RecommendationContextValue | undefined
+>(undefined);
 
 export const useRecommendationContext = () => {
   const context = useContext(RecommendationContext);
   if (!context) {
-    throw new Error('useRecommendationContext must be used within RecommendationProvider');
+    throw new Error(
+      "useRecommendationContext must be used within RecommendationProvider"
+    );
   }
   return context;
 };

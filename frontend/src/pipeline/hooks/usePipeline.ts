@@ -20,7 +20,7 @@ import type {
   PipelineLogs,
   PipelineMetrics,
   PipelineRun
-} from '../types/pipeline';
+} from '../types';
 import { PIPELINE_EVENTS } from '../api/pipelineApi';
 
 export function usePipeline(pipelineId?: string) {

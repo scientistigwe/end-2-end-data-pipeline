@@ -18,7 +18,7 @@ import type {
   MonitoringConfig,
   AlertConfig,
   MetricsData
-} from '../types/monitoring';
+} from '../types/metrics';
 
 interface UseMonitoringOptions {
   pipelineId: string;

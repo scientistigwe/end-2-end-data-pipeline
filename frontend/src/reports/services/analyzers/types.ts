@@ -1,5 +1,5 @@
 // src/report/services/analyzers/types.ts
-import type { Report, ReportMetric, ReportMetadata } from '../../types/report';
+import type { Report, ReportMetric, ReportMetadata } from '../../types/models';
 
 export interface MetricAnalyzer {
   analyze(report: Report): ReportMetric[];

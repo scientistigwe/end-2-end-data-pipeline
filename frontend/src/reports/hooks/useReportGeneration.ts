@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
 import { reportsApi } from '../api/reportsApi';
 import { updateReportStatus } from '../store/reportSlice';
-import type { ReportStatus } from '../types/report';
+import type { ReportStatus } from '../types/models';
 
 export function useReportGeneration(reportId: string) {
   const dispatch = useDispatch();

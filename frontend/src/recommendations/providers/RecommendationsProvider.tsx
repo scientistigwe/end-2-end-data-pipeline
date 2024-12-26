@@ -9,7 +9,7 @@ import type {
   Recommendation,
   RecommendationFilters,
   RecommendationHistory,
-} from "../types/recommendations";
+} from "../types/events";
 
 export const RecommendationsProvider: React.FC<{
   children: React.ReactNode;

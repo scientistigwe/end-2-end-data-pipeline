@@ -1,16 +1,16 @@
 // src/monitoring/components/charts/MetricsChart.tsx
-import React from 'react';
-import { Card } from '../../../common/components/ui/card';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
-} from 'recharts';
-import type { TimeSeriesData } from '../../types/monitoring';
+import React from "react";
+import { Card } from "../../../common/components/ui/card";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import type { TimeSeriesData } from "../../types/metrics";
 
 interface MetricsChartProps {
   data: TimeSeriesData;
@@ -21,7 +21,7 @@ interface MetricsChartProps {
 export const MetricsCard: React.FC<MetricsChartProps> = ({
   data,
   title,
-  className = ''
+  className = "",
 }) => {
   return (
     <Card className={className}>
@@ -31,19 +31,22 @@ export const MetricsCard: React.FC<MetricsChartProps> = ({
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data.series[0].data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="timestamp" 
+              <XAxis
+                dataKey="timestamp"
                 tickFormatter={(value) => new Date(value).toLocaleTimeString()}
               />
               <YAxis />
-              <Tooltip 
+              <Tooltip
                 labelFormatter={(value) => new Date(value).toLocaleString()}
-                formatter={(value: number) => [value.toFixed(2), data.series[0].name]}
+                formatter={(value: number) => [
+                  value.toFixed(2),
+                  data.series[0].name,
+                ]}
               />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke="#8884d8" 
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#8884d8"
                 dot={false}
               />
             </LineChart>
@@ -53,4 +56,3 @@ export const MetricsCard: React.FC<MetricsChartProps> = ({
     </Card>
   );
 };
-

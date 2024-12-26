@@ -4,7 +4,7 @@ import {
     ResourceUsage, 
     TimeSeriesData,
     MetricStatus 
-  } from '../types/monitoring';
+  } from '../types/metrics';
   import { MONITORING_CONFIG } from '../constants';
   
   export const calculateAverageMetric = (metrics: MetricsData[], key: string): number => {

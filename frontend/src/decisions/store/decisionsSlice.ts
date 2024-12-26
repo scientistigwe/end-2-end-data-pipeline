@@ -7,7 +7,7 @@ import type {
   DecisionFilters,
   DecisionComment,
   DecisionImpactAnalysis
-} from '../types/decisions';
+} from '../types/base';
 
 interface DecisionsState {
   decisions: Record<string, Decision>;

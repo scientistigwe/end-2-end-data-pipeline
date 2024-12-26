@@ -6,7 +6,7 @@ import type {
   PipelineRun, 
   PipelineLogs, 
   PipelineMetrics 
-} from '../types/pipeline';
+} from '../types/metrics';
 import type { PipelineState } from './pipelineSlice';
 
 // Base selectors

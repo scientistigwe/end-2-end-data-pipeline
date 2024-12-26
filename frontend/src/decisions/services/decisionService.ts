@@ -10,7 +10,7 @@ import type {
   DecisionComment,
   DecisionHistoryEntry,
   DecisionImpactAnalysis
-} from '../types/decisions';
+} from '../types/base';
 
 export class DecisionService {
   static async listDecisions(pipelineId: string, filters?: DecisionFilters): Promise<Decision[]> {

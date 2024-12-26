@@ -1,5 +1,5 @@
 // src/pipeline/utils/pipelineUtils.ts
-import type { Pipeline, PipelineStep, PipelineConfig } from '../types/pipeline';
+import type { Pipeline, PipelineStep, PipelineConfig } from '../types/metrics';
 
 /**
  * Pipeline Configuration Utils

@@ -1,6 +1,6 @@
 // src/decisions/context/DecisionContext.tsx
 import React, { createContext, useContext, useState, useCallback } from "react";
-import type { Decision, DecisionFilters } from "../types/decisions";
+import type { Decision, DecisionFilters } from "../types/base";
 
 interface DecisionContextValue {
   selectedDecision: Decision | null;

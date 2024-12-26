@@ -1,6 +1,6 @@
 // src/components/dataSource/preview/ApiPreview.tsx
 import React, { useState } from "react";
-import type { ApiSourceConfig } from "../../types/dataSources";
+import type { ApiSourceConfig } from "../../types/base";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Button } from "@/common/components/ui/button";
 import { Textarea } from "@/common/components/ui/textarea";

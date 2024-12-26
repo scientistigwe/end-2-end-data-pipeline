@@ -7,7 +7,7 @@ import type {
   Recommendation,
   RecommendationHistory,
   RecommendationFilters
-} from '../types/recommendations';
+} from '../types/events';
 
 export class RecommendationService {
   static async listRecommendations(

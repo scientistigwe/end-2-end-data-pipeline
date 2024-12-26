@@ -1,5 +1,5 @@
 // src/decisions/constants.ts
-import { DecisionType, DecisionStatus, DecisionUrgency } from './types/decisions';
+import { DecisionType, DecisionStatus, DecisionUrgency } from './types/base';
 
 export const DECISION_TYPES: DecisionType[] = [
   'quality',

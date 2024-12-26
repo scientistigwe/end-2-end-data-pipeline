@@ -1,7 +1,7 @@
 // src/components/decisions/DecisionTimeline.tsx
 import React from "react";
 import { Card } from "../../common/components/ui/card";
-import type { DecisionHistoryEntry } from "../types/decisions";
+import type { DecisionHistoryEntry } from "../types/base";
 
 interface DecisionTimelineProps {
   history: DecisionHistoryEntry[];

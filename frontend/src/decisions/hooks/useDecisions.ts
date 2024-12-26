@@ -20,7 +20,7 @@ import type {
   DecisionDetails,
   DecisionFilters,
   DecisionVote,
-} from '../types/decisions';
+} from '../types/base';
 
 interface UseDecisionsResult {
     // Data

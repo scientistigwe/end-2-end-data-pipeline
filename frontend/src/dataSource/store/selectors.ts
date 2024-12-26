@@ -1,6 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '../../store/types';
-import type { DataSourceMetadata, DataSourceType } from '../types/dataSources';
+import type { DataSourceMetadata, DataSourceType } from '../types/base';
 
 // Basic selectors
 export const selectSources = (state: RootState) => state.dataSources.sources;

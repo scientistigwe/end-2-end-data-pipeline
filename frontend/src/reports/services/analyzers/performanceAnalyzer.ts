@@ -1,6 +1,6 @@
 // src/report/services/analyzers/performanceAnalyzer.ts
 import { BaseAnalyzer } from './baseAnalyzer';
-import type { Report, ReportMetric } from '../../types/report';
+import type { Report, ReportMetric } from '../../types/models';
 
 export class PerformanceAnalyzer extends BaseAnalyzer {
   analyze(report: Report): ReportMetric[] {

@@ -1,10 +1,10 @@
 // src/pipeline/components/PipelineList.tsx
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card } from '@/common/components/ui/card';
-import { Badge } from '@/common/components/ui/badge';
-import type { Pipeline } from '../types/pipeline';
-import { getStatusColor } from '../utils/formatters';
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { Card } from "@/common/components/ui/card";
+import { Badge } from "@/common/components/ui/badge";
+import type { Pipeline } from "../types/metrics";
+import { getStatusColor } from "../utils/formatters";
 
 interface PipelineListProps {
   pipelines: Pipeline[];
@@ -16,9 +16,8 @@ interface PipelineListProps {
 export const PipelineList: React.FC<PipelineListProps> = ({
   pipelines,
   onPipelineSelect,
-  className = '',
-  isLoading = false
-  
+  className = "",
+  isLoading = false,
 }) => {
   const navigate = useNavigate();
 
@@ -50,19 +49,29 @@ export const PipelineList: React.FC<PipelineListProps> = ({
                 <p className="text-sm text-gray-600">{pipeline.description}</p>
               )}
               <div className="flex space-x-2 text-sm text-gray-500">
-                <span>Created: {new Date(pipeline.createdAt).toLocaleDateString()}</span>
+                <span>
+                  Created: {new Date(pipeline.createdAt).toLocaleDateString()}
+                </span>
                 <span>•</span>
                 <span>Mode: {pipeline.mode}</span>
               </div>
             </div>
-            
+
             <div className="text-right">
               <div className="text-sm text-gray-600">
-                Last run: {pipeline.lastRun ? new Date(pipeline.lastRun).toLocaleString() : 'Never'}
+                Last run:{" "}
+                {pipeline.lastRun
+                  ? new Date(pipeline.lastRun).toLocaleString()
+                  : "Never"}
               </div>
               {pipeline.stats && (
                 <div className="mt-2 text-sm">
-                  Success rate: {((pipeline.stats.successfulRuns / pipeline.stats.totalRuns) * 100).toFixed(1)}%
+                  Success rate:{" "}
+                  {(
+                    (pipeline.stats.successfulRuns / pipeline.stats.totalRuns) *
+                    100
+                  ).toFixed(1)}
+                  %
                 </div>
               )}
             </div>
@@ -72,5 +81,3 @@ export const PipelineList: React.FC<PipelineListProps> = ({
     </div>
   );
 };
-
-

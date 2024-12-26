@@ -7,7 +7,7 @@ import { RECOMMENDATION_MESSAGES } from '../constants';
 import type { 
   Recommendation, 
   RecommendationFilters 
-} from '../types/recommendations';
+} from '../types/events';
 
 import { recommendationsApi } from '../api';
 

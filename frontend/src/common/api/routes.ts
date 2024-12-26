@@ -151,7 +151,10 @@ export const APIRoutes = {
     HISTORY: '/decisions/pipeline/:pipeline_id/history',
     ANALYZE_IMPACT: '/decisions/:decision_id/options/:option_id/impact',
     LOCK: '/decisions/:decision_id/lock',
-    STATE: '/decisions/:decision_id/state'
+    STATE: '/decisions/:decision_id/state',
+    UPDATE: '/decisions/:decision_id', 
+    COMMENT: '/decisions/:decision_id/comments',
+    DELETE: '/decisions/:decision_id'
   },
 
   SETTINGS: {

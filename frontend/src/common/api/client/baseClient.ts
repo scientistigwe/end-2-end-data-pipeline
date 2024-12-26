@@ -4,7 +4,6 @@ import axios, {
   CreateAxiosDefaults,
   AxiosHeaders,
   InternalAxiosRequestConfig,
-  AxiosHeaderValue,
   RawAxiosRequestHeaders,
   AxiosResponse
 } from 'axios';
@@ -152,6 +151,10 @@ export class BaseClient {
     return RouteHelper.getNestedRoute(module, section, route, params);
   }
 
+  public getAxiosInstance(): AxiosInstance {
+    return this.client;
+  }
+
   protected resolveRoute<T extends RouteKey>(
     config: RouteConfig<T>
   ): string {
@@ -163,31 +166,37 @@ export class BaseClient {
     endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
-  ): Promise<T> {
+): Promise<T> {
     try {
-      const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
-      
-      const headers: RawAxiosRequestHeaders = {
-        ...(axiosConfig?.headers as RawAxiosRequestHeaders || {}),
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
+        const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
+        
+        // Remove any leading slash to prevent double slashes
+        const cleanEndpoint = endpoint.replace(/^\/+/, '');
+        
+        // Remove duplicate api/v1 if it exists in the endpoint
+        const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
 
-      const requestConfig: AxiosRequestConfig = {
-        method: method.toLowerCase(),
-        url: endpoint,
-        data,
-        ...axiosConfig,
-        headers,
-        onUploadProgress
-      };
+        const headers: RawAxiosRequestHeaders = {
+            ...(axiosConfig?.headers as RawAxiosRequestHeaders || {}),
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        };
 
-      const response = await this.client.request<ApiResponse<T>>(requestConfig);
-      return response.data.data;
+        const requestConfig: AxiosRequestConfig = {
+            method: method.toLowerCase(),
+            url: normalizedEndpoint, // Use the normalized endpoint
+            data,
+            ...axiosConfig,
+            headers,
+            onUploadProgress
+        };
+
+        const response = await this.client.request<ApiResponse<T>>(requestConfig);
+        return response.data.data;
     } catch (error) {
-      throw this.handleApiError(error);
+        throw this.handleApiError(error);
     }
-  }
+}
 
   // Private Methods
   private initializeClient(config?: CreateAxiosDefaults): AxiosInstance {
@@ -354,6 +363,7 @@ export class BaseClient {
   
     if (axios.isAxiosError(error)) {
       const errorResponse = error.response?.data as ErrorResponse;
+      console.log('Full error response:', error.response?.data);
       return new Error(
         errorResponse?.error?.message || 
         errorResponse?.message || 

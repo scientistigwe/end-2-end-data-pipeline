@@ -8,7 +8,7 @@ import { ReportBreadcrumbs } from "../components/ReportBreadcrumbs";
 import { useReport } from "../hooks/useReport";
 import { useReportNavigation } from "../routes/navigationUtils";
 import { REPORT_CONSTANTS } from "../constants";
-import type { ReportType, ReportStatus } from "../types/report";
+import type { ReportType, ReportStatus } from "../types/models";
 
 const ReportsPage: React.FC = () => {
   const { reports, isLoading, exportReport, deleteReport } = useReport();

@@ -8,7 +8,7 @@ import type {
   Alert,
   TimeRange,
   MonitoringFilters
-} from '../types/monitoring';
+} from '../types/metrics';
 
 const initialState: MonitoringState = {
   metrics: null,

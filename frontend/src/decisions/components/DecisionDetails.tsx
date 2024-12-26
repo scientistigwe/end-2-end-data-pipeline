@@ -9,7 +9,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "../../common/components/ui/tabs";
-import type { DecisionDetails as DecisionDetailsType } from "../types/decisions";
+import type { DecisionDetails as DecisionDetailsType } from "../types/base";
 
 interface DecisionDetailsProps {
   details: DecisionDetailsType;

@@ -1,7 +1,7 @@
 // src/report/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '../../store/rootReducer';
-import type { Report, ReportMetadata, ReportStatus, ScheduleConfig } from '../types/report';
+import type { Report, ReportMetadata, ReportStatus, ScheduleConfig } from '../types/models';
 import type { reportState } from './reportSlice';
 
 // Base selectors with proper state path and typing

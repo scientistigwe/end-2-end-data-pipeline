@@ -1,5 +1,5 @@
 // src/monitoring/utils/alerts.ts
-import type { Alert, AlertSeverity } from '../types/monitoring';
+import type { Alert, AlertSeverity } from '../types/metrics';
 
 export const groupAlertsBySeverity = (alerts: Alert[]): Record<AlertSeverity, Alert[]> => {
   return alerts.reduce((acc, alert) => {

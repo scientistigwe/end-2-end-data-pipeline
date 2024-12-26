@@ -1,9 +1,13 @@
 // src/dataSource/components/validation/ValidationResult.tsx
-import React from 'react';
-import { Alert, AlertTitle, AlertDescription } from '../../../common/components/ui/alert';
-import { Badge } from '../../../common/components/ui/badge';
-import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
-import type { ValidationResult as ValidationResultType } from '../../types/dataSources';
+import React from "react";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "../../../common/components/ui/alert";
+import { Badge } from "../../../common/components/ui/badge";
+import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import type { ValidationResult as ValidationResultType } from "../../types/base";
 
 interface ValidationResultProps {
   validation: ValidationResultType;
@@ -12,13 +16,13 @@ interface ValidationResultProps {
 
 export const ValidationResult: React.FC<ValidationResultProps> = ({
   validation,
-  className = ''
+  className = "",
 }) => {
   const getIcon = (severity: string) => {
     switch (severity) {
-      case 'error':
+      case "error":
         return <AlertCircle className="h-4 w-4" />;
-      case 'warning':
+      case "warning":
         return <AlertTriangle className="h-4 w-4" />;
       default:
         return <Info className="h-4 w-4" />;
@@ -27,12 +31,12 @@ export const ValidationResult: React.FC<ValidationResultProps> = ({
 
   const getVariant = (severity: string) => {
     switch (severity) {
-      case 'error':
-        return 'destructive';
-      case 'warning':
-        return 'warning';
+      case "error":
+        return "destructive";
+      case "warning":
+        return "warning";
       default:
-        return 'default';
+        return "default";
     }
   };
 
@@ -40,7 +44,9 @@ export const ValidationResult: React.FC<ValidationResultProps> = ({
     return (
       <Alert className={className}>
         <AlertTitle>Validation Passed</AlertTitle>
-        <AlertDescription>All validation checks passed successfully.</AlertDescription>
+        <AlertDescription>
+          All validation checks passed successfully.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -53,9 +59,7 @@ export const ValidationResult: React.FC<ValidationResultProps> = ({
             {getIcon(issue.severity)}
             <div>
               <div className="flex items-center gap-2">
-                {issue.field && (
-                  <Badge variant="outline">{issue.field}</Badge>
-                )}
+                {issue.field && <Badge variant="outline">{issue.field}</Badge>}
                 <span>{issue.type}</span>
               </div>
               <p className="mt-1 text-sm">{issue.message}</p>

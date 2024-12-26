@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import type { DBSourceConfig } from "../../types/dataSources";
+import type { DBSourceConfig } from "../../types/base";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Button } from "@/common/components/ui/button";
 import { Textarea } from "@/common/components/ui/textarea";
-
 
 interface DatabasePreviewProps {
   source: DBSourceConfig;

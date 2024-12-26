@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { useForm } from "react-hook-form";
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 import {
   Card,
   CardHeader,
@@ -14,7 +14,7 @@ import {
   AlertDescription,
 } from "../../../common/components/ui/alert";
 import { useStreamSource } from "../../hooks/useStreamSource";
-import type { StreamSourceConfig } from "../../types/dataSources";
+import type { StreamSourceConfig } from "../../types/base";
 
 interface StreamSourceFormData {
   config: StreamSourceConfig["config"];
@@ -45,20 +45,22 @@ export const StreamSourceForm: React.FC<StreamSourceFormProps> = ({
         setError(null);
         const streamSourceConfig: StreamSourceConfig = {
           id: uuidv4(),
-          name: 'New Stream Source',
-          type: 'stream',
+          name: "New Stream Source",
+          type: "stream",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          status: 'active',
+          status: "active",
           config: data.config,
         };
         await onSubmit(streamSourceConfig);
         reset();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('Stream connection failed'));
+        setError(
+          err instanceof Error ? err : new Error("Stream connection failed")
+        );
       }
     },
-    [onSubmit, reset],
+    [onSubmit, reset]
   );
 
   return (

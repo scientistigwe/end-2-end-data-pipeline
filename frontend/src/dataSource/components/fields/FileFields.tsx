@@ -2,7 +2,7 @@ import { UseFormRegister, FieldErrors } from "react-hook-form";
 import { Input } from "@/common/components//ui/inputs/input";
 import { Select } from "@/common/components/ui/inputs/select";
 import { Switch } from "@/common/components/ui/switch";
-import type { FileSourceConfig } from "../../types/dataSources";
+import type { FileSourceConfig } from "../../types/base";
 
 interface FileSourceFieldsProps {
   register: UseFormRegister<FileSourceConfig>;

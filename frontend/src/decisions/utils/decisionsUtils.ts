@@ -6,7 +6,7 @@ import type {
   DecisionOption, 
   DecisionDetails,
   DecisionHistoryEntry 
-} from '../types/decisions';
+} from '../types/base';
 
 export const isExpiringSoon = (decision: Decision): boolean => {
   if (!decision.deadline) return false;

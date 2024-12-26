@@ -1,9 +1,13 @@
 // src/dataSource/components/cards/StreamSourceCard.tsx
-import React from 'react';
-import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
-import { Badge } from '../../../common/components/ui/badge';
-import { Activity } from 'lucide-react';
-import type { StreamSourceConfig } from '../../types/dataSources';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+} from "../../../common/components/ui/card";
+import { Badge } from "../../../common/components/ui/badge";
+import { Activity } from "lucide-react";
+import type { StreamSourceConfig } from "../../types/base";
 
 interface StreamSourceCardProps {
   source: StreamSourceConfig;
@@ -22,9 +26,9 @@ interface StreamSourceCardProps {
 
 export const StreamSourceCard: React.FC<StreamSourceCardProps> = ({
   source,
-  status = 'disconnected',
+  status = "disconnected",
   metrics,
-  className = ''
+  className = "",
 }) => {
   return (
     <Card className={className}>
@@ -36,9 +40,7 @@ export const StreamSourceCard: React.FC<StreamSourceCardProps> = ({
             <h3 className="text-lg font-medium mt-2">{source.name}</h3>
           </div>
         </div>
-        <Badge 
-          variant={status === 'connected' ? 'success' : 'secondary'}
-        >
+        <Badge variant={status === "connected" ? "success" : "secondary"}>
           {status}
         </Badge>
       </CardHeader>
@@ -46,9 +48,9 @@ export const StreamSourceCard: React.FC<StreamSourceCardProps> = ({
       <CardContent>
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground space-y-1">
-            <p>Hosts: {source.config.connection.hosts.join(', ')}</p>
+            <p>Hosts: {source.config.connection.hosts.join(", ")}</p>
             {source.config.topics?.length && (
-              <p>Topics: {source.config.topics.join(', ')}</p>
+              <p>Topics: {source.config.topics.join(", ")}</p>
             )}
             {source.config.consumer?.groupId && (
               <p>Consumer Group: {source.config.consumer.groupId}</p>
@@ -60,11 +62,15 @@ export const StreamSourceCard: React.FC<StreamSourceCardProps> = ({
               <div className="grid grid-cols-2 gap-4 pt-2 border-t">
                 <div className="text-sm">
                   <p className="text-muted-foreground">Messages/sec</p>
-                  <p className="font-medium">{metrics.messagesPerSecond.toFixed(2)}</p>
+                  <p className="font-medium">
+                    {metrics.messagesPerSecond.toFixed(2)}
+                  </p>
                 </div>
                 <div className="text-sm">
                   <p className="text-muted-foreground">Bytes/sec</p>
-                  <p className="font-medium">{(metrics.bytesPerSecond / 1024).toFixed(2)} KB/s</p>
+                  <p className="font-medium">
+                    {(metrics.bytesPerSecond / 1024).toFixed(2)} KB/s
+                  </p>
                 </div>
               </div>
 

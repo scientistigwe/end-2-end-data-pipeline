@@ -13,7 +13,7 @@ import { Input } from "@/common/components/ui/inputs/input";
 import { Button } from "@/common/components/ui/button";
 import { Select } from "@/common/components/ui/inputs/select";
 import { Plus, Trash2 } from "lucide-react";
-import type { PipelineConfig } from "../types/pipeline";
+import type { PipelineConfig } from "../types/metrics";
 import { PIPELINE_CONSTANTS } from "../constants";
 import { validatePipelineConfig } from "../api/validation";
 
@@ -62,9 +62,9 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
   }, [isDirty, onChange]);
 
   const getErrorMessage = (error: any) => {
-    if (typeof error === 'string') return error;
+    if (typeof error === "string") return error;
     if (error?.message) return error.message;
-    return '';
+    return "";
   };
 
   return (
@@ -73,9 +73,7 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
         <h2 className="text-2xl font-bold">
           {initialData ? "Edit Pipeline" : "Create Pipeline"}
         </h2>
-        {error && (
-          <p className="text-sm text-red-500 mt-2">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-500 mt-2">{error}</p>}
       </CardHeader>
 
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -88,7 +86,9 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
               className={errors.name ? "border-red-500" : ""}
             />
             {errors.name && (
-              <p className="text-sm text-red-500">{getErrorMessage(errors.name)}</p>
+              <p className="text-sm text-red-500">
+                {getErrorMessage(errors.name)}
+              </p>
             )}
           </div>
 
@@ -99,7 +99,9 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
               placeholder="Enter pipeline description"
             />
             {errors.description && (
-              <p className="text-sm text-red-500">{getErrorMessage(errors.description)}</p>
+              <p className="text-sm text-red-500">
+                {getErrorMessage(errors.description)}
+              </p>
             )}
           </div>
 
@@ -113,7 +115,9 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
               ))}
             </Select>
             {errors.mode && (
-              <p className="text-sm text-red-500">{getErrorMessage(errors.mode)}</p>
+              <p className="text-sm text-red-500">
+                {getErrorMessage(errors.mode)}
+              </p>
             )}
           </div>
 
@@ -149,7 +153,9 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
                         <Input
                           {...register(`steps.${index}.name`)}
                           placeholder="Step name"
-                          className={errors.steps?.[index]?.name ? "border-red-500" : ""}
+                          className={
+                            errors.steps?.[index]?.name ? "border-red-500" : ""
+                          }
                         />
                         {errors.steps?.[index]?.name && (
                           <p className="text-sm text-red-500 mt-1">
@@ -158,9 +164,11 @@ export const PipelineForm: React.FC<PipelineFormProps> = ({
                         )}
                       </div>
                       <div>
-                        <Select 
+                        <Select
                           {...register(`steps.${index}.type`)}
-                          className={errors.steps?.[index]?.type ? "border-red-500" : ""}
+                          className={
+                            errors.steps?.[index]?.type ? "border-red-500" : ""
+                          }
                         >
                           <option value="">Select type</option>
                           {Object.entries(PIPELINE_CONSTANTS.STEPS.TYPES).map(

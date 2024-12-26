@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ReportForm } from "../components/ReportForm";
 import { ReportBreadcrumbs } from "../components/ReportBreadcrumbs";
 import { useReport } from "../hooks/useReport";
-import type { ReportConfig } from "../types/report";
+import type { ReportConfig } from "../types/models";
 
 const ReportGenerationPage: React.FC = () => {
   const navigate = useNavigate();

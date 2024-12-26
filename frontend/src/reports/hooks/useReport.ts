@@ -10,7 +10,7 @@ import {
   setError,
   setReportMetadata
 } from '../store/reportSlice';
-import type { Report, ReportConfig, ReportGenerationOptions } from '../types/report';
+import type { Report, ReportConfig, ReportGenerationOptions } from '../types/models';
 
 export function useReport(reportId?: string) {
   const dispatch = useDispatch();

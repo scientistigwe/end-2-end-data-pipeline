@@ -17265,3 +17265,254 @@ CREATE TABLE pipeline_steps (
 2024-12-25 07:54:33,312 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 07:54:33] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
 2024-12-25 07:54:38,389 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
 2024-12-25 07:54:38,391 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 07:54:38] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-25 12:02:24,383 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:02:24,390 - request_logger - INFO - Request: OPTIONS /api/v1/api/v1/pipelines Status: 200 Duration: 0.02s
+2024-12-25 12:02:24,397 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:02:24] "OPTIONS /api/v1/api/v1/pipelines HTTP/1.1" 200 -
+2024-12-25 12:02:25,464 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:02:25,464 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:02:25,465 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:02:25] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:02:26,795 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:02:26,803 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.01s
+2024-12-25 12:02:26,805 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:02:26] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:02:27,999 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:02:28,000 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:02:28,001 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:02:28] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:02:29,338 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:02:29,340 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:02:29,341 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:02:29] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:21:34,456 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:21:34,460 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:21:34,461 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:21:34] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:21:35,479 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:21:35,480 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:21:35,481 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:21:35] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:21:37,804 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:21:37,805 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:21:37,806 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:21:37] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 12:21:41,813 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 12:21:41,813 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 12:21:41,814 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 12:21:41] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 13:02:00,534 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 13:02:00,536 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 13:02:00,537 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 13:02:00] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 21:23:15,712 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:23:15,718 - request_logger - INFO - Request: OPTIONS /api/v1/api/v1/pipelines Status: 200 Duration: 0.01s
+2024-12-25 21:23:15,720 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:23:15] "OPTIONS /api/v1/api/v1/pipelines HTTP/1.1" 200 -
+2024-12-25 21:23:16,637 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:23:16,639 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 21:23:16,640 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:23:16] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 21:23:17,659 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:23:17,660 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 21:23:17,661 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:23:17] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 21:52:14,124 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:14,126 - request_logger - INFO - Request: GET /api/v1/api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-25 21:52:14,126 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:14] "[33mGET /api/v1/api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-25 21:52:15,292 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:15,294 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-25 21:52:15,295 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:15] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-25 21:52:15,554 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:15,556 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines/ Status: 200 Duration: 0.00s
+2024-12-25 21:52:15,557 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:15] "OPTIONS /api/v1/pipelines/ HTTP/1.1" 200 -
+2024-12-25 21:52:15,565 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:15,567 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:52:15,568 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:15] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:52:16,782 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:16,783 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:52:16,783 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:16] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:52:17,793 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:17,794 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:52:17,795 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:17] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:52:20,124 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:52:20,132 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.01s
+2024-12-25 21:52:20,133 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:52:20] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:31,300 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:31,301 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:31,302 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:31] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:32,345 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:32,346 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:32,346 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:32] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:33,695 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:33,697 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:33,698 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:33] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:34,722 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:34,724 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:34,726 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:34] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:37,060 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:37,061 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:37,061 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:37] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:41,083 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 21:57:41,085 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 21:57:41,086 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:41] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 21:57:45,424 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.01s
+2024-12-25 21:57:45,425 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:45] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-25 21:57:45,781 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.04s
+2024-12-25 21:57:45,781 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 21:57:45] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-25 22:23:59,094 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\utils\\route_registry.py', reloading
+2024-12-25 22:23:59,423 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:24:00,537 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:24:00,539 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:24:00,539 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:24:00,803 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:24:00,804 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:24:01,479 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:24:01,484 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:24:01,488 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:24:01,492 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:24:01,494 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:24:01,496 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:24:01,499 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:24:01,501 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:24:01,503 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:24:01,504 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:24:01,504 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:24:01,529 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:24:01,534 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 22:24:06,971 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:06,973 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:06,973 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:06] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:07,483 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:07,484 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:07,484 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:07] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:08,818 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:08,820 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:08,821 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:08] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:09,110 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:09,110 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:09,111 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:09] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:10,435 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:10,438 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:10,439 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:10] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:12,449 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:12,449 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:12,450 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:12] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:16,776 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:24:16,778 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:24:16,779 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:16] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:24:20,923 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-25 22:24:20,923 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:24:20] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-25 22:26:47,129 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:26:47,130 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:26:47,131 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:26:47] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:26:48,137 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:26:48,139 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:26:48,140 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:26:48] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:26:50,470 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:26:50,471 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:26:50,471 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:26:50] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:30:31,058 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:30:31,059 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:30:31,060 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:30:31] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:39:21,297 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app.py', reloading
+2024-12-25 22:39:21,437 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:39:21,938 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:39:21,939 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:39:21,939 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:39:22,153 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:39:22,154 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:39:22,592 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:39:22,597 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:39:22,602 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:39:22,606 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:39:22,609 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:39:22,611 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:39:22,614 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:39:22,617 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:39:22,619 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:39:22,619 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:39:22,620 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:39:22,633 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:39:22,637 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 22:44:55,673 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app.py', reloading
+2024-12-25 22:44:55,831 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:44:56,348 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:44:56,349 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:44:56,349 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:44:56,564 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:44:56,564 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:44:57,016 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:44:57,021 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:44:57,025 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:44:57,029 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:44:57,030 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:44:57,033 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:44:57,035 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:44:57,037 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:44:57,039 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:44:57,039 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:44:57,040 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:44:57,052 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:44:57,055 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 22:45:10,825 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app.py', reloading
+2024-12-25 22:45:10,991 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:45:11,496 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:45:11,497 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:45:11,497 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:45:11,823 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:45:11,823 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:45:12,272 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:45:12,277 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:45:12,280 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:45:12,284 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:45:12,286 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:45:12,288 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:45:12,291 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:45:12,299 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:45:12,301 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:45:12,302 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:45:12,302 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:45:12,314 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:45:12,318 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 22:47:28,392 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app.py', reloading
+2024-12-25 22:47:28,584 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:47:29,089 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:47:29,089 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:47:29,089 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:47:29,320 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:47:29,321 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:47:29,785 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:47:29,790 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:47:29,793 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:47:29,798 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:47:29,799 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:47:29,802 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:47:29,804 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:47:29,807 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:47:29,808 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:47:29,809 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:47:29,810 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:47:29,824 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:47:29,828 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 22:47:37,123 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:47:37,124 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:47:37,125 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:47:37] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:47:38,134 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:47:38,134 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:47:38,135 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:47:38] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:47:40,467 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:47:40,469 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:47:40,470 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:47:40] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:47:44,490 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 22:47:44,490 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 22:47:44,491 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:47:44] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 22:47:49,486 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-25 22:47:49,486 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 22:47:49] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-25 22:53:52,226 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\utils\\route_registry.py', reloading
+2024-12-25 22:53:52,387 - werkzeug - INFO -  * Restarting with stat
+2024-12-25 22:53:52,922 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-25 22:53:52,927 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-25 22:53:52,928 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-25 22:53:53,175 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-25 22:53:53,175 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-25 22:53:53,618 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-25 22:53:53,623 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-25 22:53:53,627 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-25 22:53:53,631 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-25 22:53:53,638 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-25 22:53:53,640 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-25 22:53:53,642 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-25 22:53:53,644 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-25 22:53:53,646 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-25 22:53:53,647 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-25 22:53:53,647 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-25 22:53:53,659 - werkzeug - WARNING -  * Debugger is active!
+2024-12-25 22:53:53,663 - werkzeug - INFO -  * Debugger PIN: 734-212-460

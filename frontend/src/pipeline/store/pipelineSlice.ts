@@ -5,7 +5,7 @@ import type {
   PipelineLogs,
   PipelineMetrics,
   PipelineStatus
-} from '../types/pipeline';
+} from '../types/metrics';
 
 // Define the state interface
 export interface PipelineState {

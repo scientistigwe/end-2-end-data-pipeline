@@ -11,7 +11,7 @@ import {
 import { PipelineMetricsChart } from "../components/PipelineMetricsChart";
 import { PipelineRuns } from "./PipelineRuns";
 import { PipelineLogs } from "./PipelineLogs";
-import type { Pipeline } from "../types/pipeline";
+import type { Pipeline } from "../types/metrics";
 import { getStatusColor } from "../utils/formatters";
 
 interface PipelineDetailsProps {

@@ -18,7 +18,7 @@ import {
   RECOMMENDATION_CONFIG,
 } from "../constants";
 import { IMPACT_LEVELS, IMPACT_LEVEL_LABELS } from "@/common/types/common";
-import type { RecommendationFilters as FilterType } from "../types/recommendations";
+import type { RecommendationFilters as FilterType } from "../types/events";
 
 interface RecommendationFiltersProps {
   filters: FilterType;

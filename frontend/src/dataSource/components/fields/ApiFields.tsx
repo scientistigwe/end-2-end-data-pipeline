@@ -4,7 +4,7 @@ import { UseFormRegister, FieldErrors } from "react-hook-form";
 import { Input } from "@/common/components//ui/inputs/input";
 import { Select } from "@/common/components/ui/inputs/select";
 import { Textarea } from "@/common/components/ui/textarea";
-import type { ApiSourceConfig } from "../../types/dataSources";
+import type { ApiSourceConfig } from "../../types/base";
 
 interface ApiSourceFieldsProps {
   register: UseFormRegister<ApiSourceConfig>;

@@ -1,5 +1,5 @@
 // src/monitoring/components/tables/MetricsTable.tsx
-import React from 'react';
+import React from "react";
 import {
   Table,
   TableBody,
@@ -7,9 +7,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../../common/components/ui/table';
-import { Badge } from '../../../common/components/ui/badge';
-import type { MetricsData, MetricStatus } from '../../types/monitoring';
+} from "../../../common/components/ui/table";
+import { Badge } from "../../../common/components/ui/badge";
+import type { MetricsData, MetricStatus } from "../../types/metrics";
 
 interface MetricsTableProps {
   metrics: MetricsData[];
@@ -18,18 +18,18 @@ interface MetricsTableProps {
 
 export const MetricsTable: React.FC<MetricsTableProps> = ({
   metrics,
-  className = ''
+  className = "",
 }) => {
   const getStatusColor = (status: MetricStatus) => {
     switch (status) {
-      case 'healthy':
-        return 'bg-green-100 text-green-800';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'critical':
-        return 'bg-red-100 text-red-800';
+      case "healthy":
+        return "bg-green-100 text-green-800";
+      case "warning":
+        return "bg-yellow-100 text-yellow-800";
+      case "critical":
+        return "bg-red-100 text-red-800";
       default:
-        return 'bg-gray-100 text-gray-800';
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -70,4 +70,3 @@ export const MetricsTable: React.FC<MetricsTableProps> = ({
     </div>
   );
 };
-

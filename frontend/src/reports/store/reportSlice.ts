@@ -5,7 +5,7 @@ import type {
   ReportMetadata,
   ReportStatus,
   ScheduleConfig
-} from '../types/report';
+} from '../types/models';
 
 interface ReportState {
   reports: Record<string, Report>;

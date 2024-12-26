@@ -4,7 +4,7 @@ import { useMutation } from 'react-query';
 import { DataSourceService } from '../services/dataSourceService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { DATASOURCE_MESSAGES } from '../constants';
-import type { FileSourceConfig } from '../types/dataSources';
+import type { FileSourceConfig } from '../types/base';
 
 export const useFileSource = () => {
   const [uploadProgress, setUploadProgress] = useState(0);

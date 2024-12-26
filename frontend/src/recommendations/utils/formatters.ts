@@ -4,7 +4,7 @@ import type {
   Recommendation,
   RecommendationType,
   RecommendationStatus
-} from '../types/recommendations';
+} from '../types/events';
 import {
   RECOMMENDATION_TYPE_LABELS,
   RECOMMENDATION_STATUS_LABELS

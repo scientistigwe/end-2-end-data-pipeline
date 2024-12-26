@@ -10,7 +10,7 @@ import type {
   AlertConfig,
   Alert,
   ResourceUsage,
-} from '../types/monitoring';
+} from '../types/metrics';
 
 export class MonitoringService {
   static async startMonitoring(

@@ -10,9 +10,13 @@ import { usePipeline } from "../hooks/usePipeline";
 import { useModal } from "@/common/hooks/useModal";
 import { PIPELINE_CONSTANTS } from "../constants";
 import { selectModalById } from "@/common/store/ui/selectors";
-import type { PipelineConfig, PipelineStatus, PipelineMode } from "../types/pipeline";
+import type {
+  PipelineConfig,
+  PipelineStatus,
+  PipelineMode,
+} from "../types/metrics";
 
-const MODAL_ID = 'create-pipeline-modal';
+const MODAL_ID = "create-pipeline-modal";
 
 interface FilterState {
   status: PipelineStatus | "";
@@ -28,7 +32,11 @@ interface FormState {
 
 const PipelinesPage: React.FC = () => {
   // Global hooks
-  const { pipelines, createPipeline: { mutateAsync: createPipeline }, isLoading } = usePipeline();
+  const {
+    pipelines,
+    createPipeline: { mutateAsync: createPipeline },
+    isLoading,
+  } = usePipeline();
   const activeModal = useSelector(selectModalById(MODAL_ID));
 
   // Local state
@@ -41,34 +49,36 @@ const PipelinesPage: React.FC = () => {
   const [formState, setFormState] = useState<FormState>({
     initialData: undefined,
     isDirty: false,
-    error: null
+    error: null,
   });
 
   // Modal handlers
   const handleModalOpen = useCallback(() => {
     setFormState({
       initialData: {
-        name: '',
-        mode: 'development',
+        name: "",
+        mode: "development",
         steps: [],
-        sourceId: '',
-        description: ''
+        sourceId: "",
+        description: "",
       },
       isDirty: false,
-      error: null
+      error: null,
     });
   }, []);
 
   const handleModalClose = useCallback(() => {
     if (formState.isDirty) {
-      const confirm = window.confirm('You have unsaved changes. Are you sure you want to close?');
+      const confirm = window.confirm(
+        "You have unsaved changes. Are you sure you want to close?"
+      );
       if (!confirm) return false;
     }
-    
+
     setFormState({
       initialData: undefined,
       isDirty: false,
-      error: null
+      error: null,
     });
 
     return true;
@@ -77,7 +87,7 @@ const PipelinesPage: React.FC = () => {
   const modal = useModal({
     id: MODAL_ID,
     onOpen: handleModalOpen,
-    onClose: handleModalClose
+    onClose: handleModalClose,
   });
 
   // Check if our modal is active
@@ -87,28 +97,29 @@ const PipelinesPage: React.FC = () => {
   const handleCreatePipeline = async (data: PipelineConfig) => {
     try {
       await createPipeline(data);
-      setFormState(prev => ({ ...prev, isDirty: false, error: null }));
+      setFormState((prev) => ({ ...prev, isDirty: false, error: null }));
       modal.close();
     } catch (error) {
-      console.error('Failed to create pipeline:', error);
-      setFormState(prev => ({
+      console.error("Failed to create pipeline:", error);
+      setFormState((prev) => ({
         ...prev,
-        error: error instanceof Error ? error.message : 'Failed to create pipeline'
+        error:
+          error instanceof Error ? error.message : "Failed to create pipeline",
       }));
     }
   };
 
   const handleFormChange = useCallback((isDirty: boolean) => {
-    setFormState(prev => ({ ...prev, isDirty, error: null }));
+    setFormState((prev) => ({ ...prev, isDirty, error: null }));
   }, []);
 
   // Filter handlers
-  const handleFilterChange = useCallback((
-    key: keyof FilterState,
-    value: string
-  ) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  }, []);
+  const handleFilterChange = useCallback(
+    (key: keyof FilterState, value: string) => {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    },
+    []
+  );
 
   const handleResetFilters = useCallback(() => {
     setFilters({
@@ -125,7 +136,8 @@ const PipelinesPage: React.FC = () => {
     return pipelines.filter((pipeline) => {
       const statusMatch = !filters.status || pipeline.status === filters.status;
       const modeMatch = !filters.mode || pipeline.mode === filters.mode;
-      const searchMatch = !filters.search || 
+      const searchMatch =
+        !filters.search ||
         pipeline.name.toLowerCase().includes(filters.search.toLowerCase());
 
       return statusMatch && modeMatch && searchMatch;
@@ -135,17 +147,17 @@ const PipelinesPage: React.FC = () => {
   // Keyboard shortcuts
   React.useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+      if ((event.ctrlKey || event.metaKey) && event.key === "n") {
         event.preventDefault();
         if (!isModalOpen) modal.open();
       }
-      if (event.key === 'Escape' && isModalOpen) {
+      if (event.key === "Escape" && isModalOpen) {
         modal.close();
       }
     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
   }, [isModalOpen, modal]);
 
   return (
@@ -155,17 +167,11 @@ const PipelinesPage: React.FC = () => {
         <h1 className="text-2xl font-bold">Pipelines</h1>
         <div className="space-x-2">
           {Object.values(filters).some(Boolean) && (
-            <Button 
-              variant="outline" 
-              onClick={handleResetFilters}
-            >
+            <Button variant="outline" onClick={handleResetFilters}>
               Reset Filters
             </Button>
           )}
-          <Button 
-            onClick={() => modal.open()}
-            disabled={isLoading}
-          >
+          <Button onClick={() => modal.open()} disabled={isLoading}>
             Create Pipeline
           </Button>
         </div>
@@ -176,12 +182,14 @@ const PipelinesPage: React.FC = () => {
         <Input
           placeholder="Search pipelines..."
           value={filters.search}
-          onChange={(e) => handleFilterChange('search', e.target.value)}
+          onChange={(e) => handleFilterChange("search", e.target.value)}
           className="max-w-xs"
         />
         <Select
           value={filters.status}
-          onChange={(e) => handleFilterChange('status', e.target.value as PipelineStatus)}
+          onChange={(e) =>
+            handleFilterChange("status", e.target.value as PipelineStatus)
+          }
           className="w-[200px]"
         >
           <option value="">All Status</option>
@@ -193,7 +201,9 @@ const PipelinesPage: React.FC = () => {
         </Select>
         <Select
           value={filters.mode}
-          onChange={(e) => handleFilterChange('mode', e.target.value as PipelineMode)}
+          onChange={(e) =>
+            handleFilterChange("mode", e.target.value as PipelineMode)
+          }
           className="w-[200px]"
         >
           <option value="">All Modes</option>
@@ -206,10 +216,7 @@ const PipelinesPage: React.FC = () => {
       </div>
 
       {/* Pipeline List */}
-      <PipelineList 
-        pipelines={filteredPipelines} 
-        isLoading={isLoading}
-      />
+      <PipelineList pipelines={filteredPipelines} isLoading={isLoading} />
 
       {/* Create Pipeline Modal */}
       {isModalOpen && (
@@ -226,4 +233,4 @@ const PipelinesPage: React.FC = () => {
   );
 };
 
-export default PipelinesPage
+export default PipelinesPage;

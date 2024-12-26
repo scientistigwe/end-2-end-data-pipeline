@@ -8,7 +8,7 @@ import type {
   PipelineError, 
   PipelineStatus,
   PipelineStepRun
-} from '../types/pipeline';
+} from '../types';
 import { PIPELINE_CONSTANTS } from '../constants';
 
 interface UsePipelineRunsOptions {

@@ -1,5 +1,5 @@
   // src/report/utils/dataTransforms.ts
-  import type { Report, ReportMetric } from '../types/report';
+  import type { Report, ReportMetric } from '../types/models';
   
   export function transformMetricsForChart(metrics: ReportMetric[]): {
     labels: string[];

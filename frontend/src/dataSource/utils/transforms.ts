@@ -1,7 +1,7 @@
 import type { 
   PreviewData, 
   SchemaInfo 
-} from '../types/dataSources';
+} from '../types/base';
 
 interface DataRow {
   [key: string]: unknown;

@@ -1,5 +1,12 @@
+// src/report/api/reportsApi.ts
+import { RouteHelper } from '@/common/api/routes';
 import { baseAxiosClient } from '@/common/api/client/baseClient';
-import type { ApiResponse } from '@/common/types/api';
+import { 
+  ApiResponse, 
+  HTTP_STATUS,
+  ERROR_CODES 
+} from '@/common/types/api';
+import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type {
   Report,
   ReportConfig,
@@ -14,48 +21,78 @@ import type {
   ReportExportReadyDetail,
   ReportStatusChangeDetail,
   ReportErrorDetail
-} from '../types/report';
-import { REPORT_EVENTS } from '../types/report';
+} from '../types';
+import { REPORT_EVENTS } from '../types';
+
+interface ReportErrorMetadata {
+  retryable: boolean;
+  critical: boolean;
+  code: string;
+}
 
 class ReportsApi {
   private client = baseAxiosClient;
-  private readonly REPORT_EVENTS = REPORT_EVENTS;
+  private static readonly ERROR_METADATA: Record<number, ReportErrorMetadata> = {
+    [HTTP_STATUS.NOT_FOUND]: {
+      retryable: false,
+      critical: true,
+      code: 'REPORT_NOT_FOUND'
+    },
+    [HTTP_STATUS.BAD_REQUEST]: {
+      retryable: false,
+      critical: true,
+      code: 'INVALID_CONFIG'
+    }
+  };
 
   constructor() {
     this.setupReportHeaders();
     this.setupReportInterceptors();
   }
 
-  private setupReportHeaders() {
+  private setupReportHeaders(): void {
     this.client.setDefaultHeaders({
       'X-Service': 'reports'
     });
   }
 
-  // Interceptors and Error Handling
-  private setupReportInterceptors() {
-    // Add custom interceptor on the axios instance
-    const instance = (this.client as any).client;
+  private setupReportInterceptors(): void {
+    const instance = this.client.getAxiosInstance();
     if (!instance) return;
 
     instance.interceptors.request.use(
-      (config) => {
-        return config;
-      }
+      this.handleRequestInterceptor,
+      this.handleRequestError
     );
 
     instance.interceptors.response.use(
-      response => {
-        this.handleReportEvents(response);
-        return response;
-      },
-      error => {
-        const enhancedError = this.handleReportError(error);
-        this.notifyError(enhancedError);
-        throw enhancedError;
-      }
+      this.handleResponseInterceptor,
+      this.handleResponseError
     );
   }
+
+  private handleRequestInterceptor = (
+    config: InternalAxiosRequestConfig
+  ): InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig> => {
+    return config;
+  };
+
+  private handleRequestError = (error: unknown): Promise<never> => {
+    return Promise.reject(this.handleReportError(error));
+  };
+
+  private handleResponseInterceptor = (
+    response: AxiosResponse
+  ): AxiosResponse | Promise<AxiosResponse> => {
+    this.handleReportEvents(response);
+    return response;
+  };
+
+  private handleResponseError = (error: unknown): Promise<never> => {
+    const enhancedError = this.handleReportError(error);
+    this.notifyError(enhancedError);
+    throw enhancedError;
+  };
 
   private handleReportError(error: unknown): ReportError {
     const baseError: ReportError = {
@@ -68,9 +105,9 @@ class ReportsApi {
 
     if (error instanceof Error) {
       return {
-        ...error,
         ...baseError,
-        message: error.message
+        message: error.message,
+        stack: error.stack
       };
     }
 
@@ -80,19 +117,14 @@ class ReportsApi {
         baseError.details.reportId = errorObj.config.routeParams.id;
       }
 
-      if (errorObj.response?.status === 404) {
-        return {
-          ...baseError,
-          message: 'Report not found',
-          code: 'REPORT_NOT_FOUND'
-        };
-      }
+      const status = errorObj.response?.status;
+      const errorMetadata = ReportsApi.ERROR_METADATA[status];
 
-      if (errorObj.response?.status === 400) {
+      if (errorMetadata) {
         return {
           ...baseError,
-          message: `Invalid report configuration: ${errorObj.response.data?.message}`,
-          code: 'INVALID_CONFIG'
+          code: errorMetadata.code,
+          message: this.getErrorMessage(errorMetadata.code, errorObj.response?.data)
         };
       }
     }
@@ -100,10 +132,22 @@ class ReportsApi {
     return baseError;
   }
 
-  // Event Management
-  private handleReportEvents(response: any) {
+  private getErrorMessage(code: string, data?: any): string {
+    switch (code) {
+      case 'REPORT_NOT_FOUND':
+        return 'Report not found';
+      case 'INVALID_CONFIG':
+        return `Invalid report configuration: ${data?.message || ''}`;
+      default:
+        return 'An error occurred during report operation';
+    }
+  }
+
+  private handleReportEvents(response: AxiosResponse): void {
     const url = response.config.url;
-    if (url?.includes('/status') && response.data?.status === 'completed') {
+    if (!url) return;
+
+    if (url.includes('/status') && response.data?.status === 'completed') {
       this.notifyGenerationComplete(
         response.data.id,
         response.data.status,
@@ -112,13 +156,14 @@ class ReportsApi {
     }
   }
 
+  // Event Notification Methods
   private notifyError(error: ReportError): void {
     window.dispatchEvent(
-      new CustomEvent<ReportErrorDetail>(this.REPORT_EVENTS.ERROR, {
+      new CustomEvent<ReportErrorDetail>(REPORT_EVENTS.ERROR, {
         detail: {
           error: error.message,
           code: error.code,
-          reportId: error.details.reportId || 'unknown'
+          reportId: error.details.reportId
         }
       })
     );
@@ -131,7 +176,7 @@ class ReportsApi {
   ): void {
     window.dispatchEvent(
       new CustomEvent<ReportGenerationCompleteDetail>(
-        this.REPORT_EVENTS.GENERATION_COMPLETE,
+        REPORT_EVENTS.GENERATION_COMPLETE,
         {
           detail: { reportId, status, metadata }
         }
@@ -141,7 +186,7 @@ class ReportsApi {
 
   private notifyExportReady(exports: Array<{ id: string; downloadUrl: string }>): void {
     window.dispatchEvent(
-      new CustomEvent<ReportExportReadyDetail>(this.REPORT_EVENTS.EXPORT_READY, {
+      new CustomEvent<ReportExportReadyDetail>(REPORT_EVENTS.EXPORT_READY, {
         detail: { exports }
       })
     );
@@ -154,24 +199,13 @@ class ReportsApi {
     progress?: number
   ): void {
     window.dispatchEvent(
-      new CustomEvent<ReportStatusChangeDetail>(this.REPORT_EVENTS.STATUS_CHANGE, {
+      new CustomEvent<ReportStatusChangeDetail>(REPORT_EVENTS.STATUS_CHANGE, {
         detail: { reportId, status, previousStatus, progress }
       })
     );
   }
 
-  // Report Status
-  async getReportStatus(id: string): Promise<ApiResponse<{
-    status: string;
-    progress?: number;
-    error?: string;
-  }>> {
-    return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'STATUS', { id })
-    );
-  }
-
-  // CRUD Operations
+  // Core API Methods
   async listReports(params?: {
     page?: number;
     limit?: number;
@@ -179,7 +213,7 @@ class ReportsApi {
     status?: string[];
   }): Promise<ApiResponse<Report[]>> {
     return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'LIST'),
+      RouteHelper.getRoute('REPORTS', 'LIST'),
       { params }
     );
   }
@@ -189,14 +223,14 @@ class ReportsApi {
     options?: ReportGenerationOptions
   ): Promise<ApiResponse<Report>> {
     return this.client.executePost(
-      this.client.createRoute('REPORTS', 'CREATE'),
+      RouteHelper.getRoute('REPORTS', 'CREATE'),
       { config, options }
     );
   }
 
   async getReport(id: string): Promise<ApiResponse<Report>> {
     return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'DETAIL', { id })
+      RouteHelper.getRoute('REPORTS', 'GET', { report_id: id })
     );
   }
 
@@ -205,14 +239,25 @@ class ReportsApi {
     updates: Partial<ReportConfig>
   ): Promise<ApiResponse<Report>> {
     return this.client.executePut(
-      this.client.createRoute('REPORTS', 'UPDATE', { id }),
+      RouteHelper.getRoute('REPORTS', 'UPDATE', { report_id: id }),
       updates
     );
   }
 
   async deleteReport(id: string): Promise<ApiResponse<void>> {
     return this.client.executeDelete(
-      this.client.createRoute('REPORTS', 'DELETE', { id })
+      RouteHelper.getRoute('REPORTS', 'DELETE', { report_id: id })
+    );
+  }
+
+  // Status & Monitoring
+  async getReportStatus(id: string): Promise<ApiResponse<{
+    status: string;
+    progress?: number;
+    error?: string;
+  }>> {
+    return this.client.executeGet(
+      RouteHelper.getRoute('REPORTS', 'STATUS', { report_id: id })
     );
   }
 
@@ -222,7 +267,7 @@ class ReportsApi {
     options: ExportOptions
   ): Promise<ApiResponse<{ downloadUrl: string }>> {
     return this.client.executePost(
-      this.client.createRoute('REPORTS', 'EXPORT', { id }),
+      RouteHelper.getRoute('REPORTS', 'EXPORT', { report_id: id }),
       options
     );
   }
@@ -247,7 +292,7 @@ class ReportsApi {
   // Schedule Operations
   async scheduleReport(config: ScheduleConfig): Promise<ApiResponse<Report>> {
     return this.client.executePost(
-      this.client.createRoute('REPORTS', 'SCHEDULE'),
+      RouteHelper.getRoute('REPORTS', 'SCHEDULE'),
       config
     );
   }
@@ -257,15 +302,15 @@ class ReportsApi {
     updates: Partial<ScheduleConfig>
   ): Promise<ApiResponse<Report>> {
     return this.client.executePut(
-      this.client.createRoute('REPORTS', 'SCHEDULE', { id }),
+      RouteHelper.getRoute('REPORTS', 'SCHEDULE', { report_id: id }),
       updates
     );
   }
 
-  // Metadata and Preview
+  // Metadata & Preview
   async getReportMetadata(id: string): Promise<ApiResponse<ReportMetadata>> {
     return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'METADATA', { id })
+      RouteHelper.getRoute('REPORTS', 'METADATA', { report_id: id })
     );
   }
 
@@ -274,7 +319,7 @@ class ReportsApi {
     section?: string
   ): Promise<ApiResponse<{ content: string }>> {
     return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'PREVIEW', { id }),
+      RouteHelper.getRoute('REPORTS', 'PREVIEW', { report_id: id }),
       { params: { section } }
     );
   }
@@ -286,11 +331,30 @@ class ReportsApi {
     type: string;
   }>>> {
     return this.client.executeGet(
-      this.client.createRoute('REPORTS', 'TEMPLATES')
+      RouteHelper.getRoute('REPORTS', 'TEMPLATES')
     );
   }
 
   // Generation Monitoring
+  async waitForReportGeneration(
+    id: string,
+    options?: {
+      pollingInterval?: number;
+      timeout?: number;
+      onProgress?: (progress: number) => void;
+    }
+  ): Promise<ApiResponse<Report>> {
+    const interval = options?.pollingInterval || 2000;
+    const timeout = options?.timeout || 300000;
+    return this.checkGenerationStatus(
+      id,
+      Date.now(),
+      interval,
+      timeout,
+      options?.onProgress
+    );
+  }
+
   private async checkGenerationStatus(
     id: string,
     startTime: number,
@@ -328,25 +392,6 @@ class ReportsApi {
     return this.checkGenerationStatus(id, startTime, interval, timeout, onProgress);
   }
 
-  async waitForReportGeneration(
-    id: string,
-    options?: {
-      pollingInterval?: number;
-      timeout?: number;
-      onProgress?: (progress: number) => void;
-    }
-  ): Promise<ApiResponse<Report>> {
-    const interval = options?.pollingInterval || 2000;
-    const timeout = options?.timeout || 300000;
-    return this.checkGenerationStatus(
-      id,
-      Date.now(),
-      interval,
-      timeout,
-      options?.onProgress
-    );
-  }
-
   // Event Subscription
   subscribeToEvents<E extends ReportEventName>(
     event: E,
@@ -358,5 +403,4 @@ class ReportsApi {
   }
 }
 
-// Export singleton instance
 export const reportsApi = new ReportsApi();

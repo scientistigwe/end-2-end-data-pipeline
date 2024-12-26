@@ -1,10 +1,14 @@
-import React from 'react';
-import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
-import { Badge } from '../../../common/components/ui/badge';
-import { Progress } from '../../../common/components/ui/progress';
-import { FileIcon, CheckCircle2 } from 'lucide-react';
-import { formatBytes } from '@/common';
-import type { FileSourceConfig } from '../../types/dataSources';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+} from "../../../common/components/ui/card";
+import { Badge } from "../../../common/components/ui/badge";
+import { Progress } from "../../../common/components/ui/progress";
+import { FileIcon, CheckCircle2 } from "lucide-react";
+import { formatBytes } from "@/common";
+import type { FileSourceConfig } from "../../types/base";
 
 interface FileMetadata {
   filename: string;
@@ -24,11 +28,14 @@ export const FileSourceCard: React.FC<FileSourceCardProps> = ({
   source,
   metadata,
   uploadProgress,
-  className = ''
+  className = "",
 }) => {
-  const renderMetadataItem = (label: string, value: string | number | undefined) => {
+  const renderMetadataItem = (
+    label: string,
+    value: string | number | undefined
+  ) => {
     if (value === undefined) return null;
-    
+
     return (
       <div className="flex justify-between text-sm">
         <span className="text-muted-foreground">{label}:</span>
@@ -69,11 +76,15 @@ export const FileSourceCard: React.FC<FileSourceCardProps> = ({
       <CardContent>
         <div className="space-y-4">
           <div className="space-y-2">
-            {renderMetadataItem('Size', formatBytes(metadata.size))}
-            {renderMetadataItem('Rows', metadata.rowCount?.toLocaleString())}
-            {renderMetadataItem('Last Modified', new Date(metadata.lastModified).toLocaleString())}
-            {source.config.hasHeader && renderMetadataItem('Has Header', 'Yes')}
-            {source.config.delimiter && renderMetadataItem('Delimiter', source.config.delimiter)}
+            {renderMetadataItem("Size", formatBytes(metadata.size))}
+            {renderMetadataItem("Rows", metadata.rowCount?.toLocaleString())}
+            {renderMetadataItem(
+              "Last Modified",
+              new Date(metadata.lastModified).toLocaleString()
+            )}
+            {source.config.hasHeader && renderMetadataItem("Has Header", "Yes")}
+            {source.config.delimiter &&
+              renderMetadataItem("Delimiter", source.config.delimiter)}
           </div>
 
           {renderUploadProgress()}

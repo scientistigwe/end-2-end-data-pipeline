@@ -1,5 +1,5 @@
 import React from "react";
-import type { FileSourceConfig, PreviewData } from "../../types/dataSources";
+import type { FileSourceConfig, PreviewData } from "../../types/base";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Progress } from "@/common/components/ui/progress";
 

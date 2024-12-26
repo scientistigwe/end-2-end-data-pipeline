@@ -1,5 +1,5 @@
 // src/recommendations/utils/validators.ts
-import type { Recommendation } from '../types/recommendations';
+import type { Recommendation } from '../types/events';
 
 export const validateRecommendation = (
   data: Partial<Recommendation>

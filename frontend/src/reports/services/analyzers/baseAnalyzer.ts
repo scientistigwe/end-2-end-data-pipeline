@@ -1,5 +1,5 @@
 // src/report/services/analyzers/baseAnalyzer.ts
-import type { Report, ReportMetric, ReportMetadata } from '../../types/report';
+import type { Report, ReportMetric, ReportMetadata } from '../../types/models';
 import type { MetricAnalyzer } from './types';
 
 export abstract class BaseAnalyzer implements MetricAnalyzer {

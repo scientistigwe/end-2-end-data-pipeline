@@ -1,9 +1,13 @@
 // src/dataSource/components/cards/S3SourceCard.tsx
-import React from 'react';
-import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
-import { Badge } from '../../../common/components/ui/badge';
-import { Cloud } from 'lucide-react';
-import type { S3SourceConfig } from '../../types/dataSources';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+} from "../../../common/components/ui/card";
+import { Badge } from "../../../common/components/ui/badge";
+import { Cloud } from "lucide-react";
+import type { S3SourceConfig } from "../../types/base";
 
 interface S3SourceCardProps {
   source: S3SourceConfig;
@@ -22,14 +26,14 @@ interface S3SourceCardProps {
 
 export const S3SourceCard: React.FC<S3SourceCardProps> = ({
   source,
-  status = 'disconnected',
+  status = "disconnected",
   metrics,
-  className = ''
+  className = "",
 }) => {
   const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
@@ -44,9 +48,7 @@ export const S3SourceCard: React.FC<S3SourceCardProps> = ({
             <h3 className="text-lg font-medium mt-2">{source.name}</h3>
           </div>
         </div>
-        <Badge 
-          variant={status === 'connected' ? 'success' : 'secondary'}
-        >
+        <Badge variant={status === "connected" ? "success" : "secondary"}>
           {status}
         </Badge>
       </CardHeader>
@@ -65,24 +67,32 @@ export const S3SourceCard: React.FC<S3SourceCardProps> = ({
               {metrics.objectCount !== undefined && (
                 <div className="text-sm">
                   <p className="text-muted-foreground">Objects</p>
-                  <p className="font-medium">{metrics.objectCount.toLocaleString()}</p>
+                  <p className="font-medium">
+                    {metrics.objectCount.toLocaleString()}
+                  </p>
                 </div>
               )}
               {metrics.totalSize !== undefined && (
                 <div className="text-sm">
                   <p className="text-muted-foreground">Total Size</p>
-                  <p className="font-medium">{formatBytes(metrics.totalSize)}</p>
+                  <p className="font-medium">
+                    {formatBytes(metrics.totalSize)}
+                  </p>
                 </div>
               )}
               {metrics.bandwidth && (
                 <>
                   <div className="text-sm">
                     <p className="text-muted-foreground">Upload</p>
-                    <p className="font-medium">{formatBytes(metrics.bandwidth.upload)}/s</p>
+                    <p className="font-medium">
+                      {formatBytes(metrics.bandwidth.upload)}/s
+                    </p>
                   </div>
                   <div className="text-sm">
                     <p className="text-muted-foreground">Download</p>
-                    <p className="font-medium">{formatBytes(metrics.bandwidth.download)}/s</p>
+                    <p className="font-medium">
+                      {formatBytes(metrics.bandwidth.download)}/s
+                    </p>
                   </div>
                 </>
               )}

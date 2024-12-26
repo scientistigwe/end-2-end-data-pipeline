@@ -1,12 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Card } from '@/common/components/ui/card';
-import { Badge } from '@/common/components/ui/badge';
-import { Button } from '@/common/components/ui/button';
-import { Select } from '@/common/components/ui/inputs/select';
-import { Download, RefreshCw } from 'lucide-react';
-import { usePipelineLogs } from '../hooks/usePipelineLogs';
-import { getLogLevelColor } from '../utils/formatters';
-import type { LogLevel } from '../types/pipeline';
+import React, { useEffect, useRef, useState } from "react";
+import { Card } from "@/common/components/ui/card";
+import { Badge } from "@/common/components/ui/badge";
+import { Button } from "@/common/components/ui/button";
+import { Select } from "@/common/components/ui/inputs/select";
+import { Download, RefreshCw } from "lucide-react";
+import { usePipelineLogs } from "../hooks/usePipelineLogs";
+import { getLogLevelColor } from "../utils/formatters";
+import type { LogLevel } from "../types/metrics";
 
 interface PipelineLogsProps {
   pipelineId: string;
@@ -15,17 +15,12 @@ interface PipelineLogsProps {
 
 export const PipelineLogs: React.FC<PipelineLogsProps> = ({
   pipelineId,
-  className = ''
+  className = "",
 }) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const [logLevel, setLogLevel] = useState<LogLevel>('info');
-  const { 
-    logs, 
-    isLoading, 
-    refresh, 
-    download 
-  } = usePipelineLogs(pipelineId, {
-    level: logLevel
+  const [logLevel, setLogLevel] = useState<LogLevel>("info");
+  const { logs, isLoading, refresh, download } = usePipelineLogs(pipelineId, {
+    level: logLevel,
   });
 
   useEffect(() => {
@@ -37,7 +32,7 @@ export const PipelineLogs: React.FC<PipelineLogsProps> = ({
 
   useEffect(() => {
     if (logs) {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs]);
 
@@ -45,19 +40,21 @@ export const PipelineLogs: React.FC<PipelineLogsProps> = ({
     try {
       await refresh();
     } catch (error) {
-      console.error('Failed to refresh logs:', error);
+      console.error("Failed to refresh logs:", error);
     }
   };
 
   const handleDownload = async () => {
     try {
-      await download('txt');
+      await download("txt");
     } catch (error) {
-      console.error('Failed to download logs:', error);
+      console.error("Failed to download logs:", error);
     }
   };
 
-  const handleLogLevelChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleLogLevelChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
     setLogLevel(event.target.value as LogLevel);
   };
 
@@ -77,18 +74,20 @@ export const PipelineLogs: React.FC<PipelineLogsProps> = ({
           </Select>
         </div>
         <div className="flex space-x-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleRefresh}
             disabled={isLoading}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleDownload}
             disabled={isLoading}
           >
@@ -102,7 +101,9 @@ export const PipelineLogs: React.FC<PipelineLogsProps> = ({
         {isLoading ? (
           <div className="text-center py-4">Loading logs...</div>
         ) : logs?.logs.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">No logs available</div>
+          <div className="text-center py-4 text-gray-500">
+            No logs available
+          </div>
         ) : (
           logs?.logs.map((log, index) => (
             <div key={index} className="py-1 flex items-start space-x-2">
@@ -112,9 +113,7 @@ export const PipelineLogs: React.FC<PipelineLogsProps> = ({
               <Badge className={getLogLevelColor(log.level)}>
                 {log.level.toUpperCase()}
               </Badge>
-              {log.step && (
-                <Badge variant="outline">{log.step}</Badge>
-              )}
+              {log.step && <Badge variant="outline">{log.step}</Badge>}
               <span className="flex-1 whitespace-pre-wrap">{log.message}</span>
             </div>
           ))

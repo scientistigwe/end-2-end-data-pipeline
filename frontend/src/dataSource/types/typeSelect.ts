@@ -1,3 +1,4 @@
+// frontend\src\dataSource\types\typeSelect.ts
 import React from 'react';
 import { Select } from '@/common/components/ui/inputs/select';
 

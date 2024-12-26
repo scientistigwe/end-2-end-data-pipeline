@@ -1,7 +1,7 @@
-import React from 'react';
-import { RecommendationCard } from './RecommendationCard';
-import { Alert } from '@/common/components/ui/alert';
-import type { Recommendation } from '../types/recommendations';
+import React from "react";
+import { RecommendationCard } from "./RecommendationCard";
+import { Alert } from "@/common/components/ui/alert";
+import type { Recommendation } from "../types/events";
 
 interface RecommendationListProps {
   recommendations: Recommendation[];
@@ -12,7 +12,7 @@ interface RecommendationListProps {
 export const RecommendationList: React.FC<RecommendationListProps> = ({
   recommendations,
   onSelect,
-  className = ''
+  className = "",
 }) => {
   if (!recommendations.length) {
     return (

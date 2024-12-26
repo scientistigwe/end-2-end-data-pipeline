@@ -4,7 +4,7 @@ import { useMutation, useQuery } from 'react-query';
 import { DataSourceService } from '../services/dataSourceService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { DATASOURCE_MESSAGES } from '../constants';
-import type { DBSourceConfig, SchemaInfo } from '../types/dataSources';
+import type { DBSourceConfig, SchemaInfo } from '../types/base';
 
 export const useDBSource = () => {
   const [connectionId, setConnectionId] = useState<string | null>(null);

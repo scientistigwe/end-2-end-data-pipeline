@@ -1,8 +1,12 @@
 // src/dataSource/components/cards/ApiSourceCard.tsx
-import React from 'react';
-import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
-import { Badge } from '../../../common/components/ui/badge';
-import type { ApiSourceConfig } from '../../types/dataSources';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+} from "../../../common/components/ui/card";
+import { Badge } from "../../../common/components/ui/badge";
+import type { ApiSourceConfig } from "../../types/base";
 
 interface ApiSourceCardProps {
   source: ApiSourceConfig;
@@ -17,9 +21,9 @@ interface ApiSourceCardProps {
 
 export const ApiSourceCard: React.FC<ApiSourceCardProps> = ({
   source,
-  status = 'disconnected',
+  status = "disconnected",
   metrics,
-  className = ''
+  className = "",
 }) => {
   return (
     <Card className={className}>
@@ -28,8 +32,8 @@ export const ApiSourceCard: React.FC<ApiSourceCardProps> = ({
           <Badge variant="outline">{source.config.method}</Badge>
           <h3 className="text-lg font-medium mt-2">{source.name}</h3>
         </div>
-        <Badge 
-          variant={status === 'connected' ? 'success' : 'secondary'}
+        <Badge
+          variant={status === "connected" ? "success" : "secondary"}
           className="ml-2"
         >
           {status}
@@ -58,7 +62,9 @@ export const ApiSourceCard: React.FC<ApiSourceCardProps> = ({
               <div>
                 <p className="text-muted-foreground">Last Success</p>
                 <p className="font-medium">
-                  {metrics.lastSuccess ? new Date(metrics.lastSuccess).toLocaleString() : 'Never'}
+                  {metrics.lastSuccess
+                    ? new Date(metrics.lastSuccess).toLocaleString()
+                    : "Never"}
                 </p>
               </div>
             </div>
@@ -68,4 +74,3 @@ export const ApiSourceCard: React.FC<ApiSourceCardProps> = ({
     </Card>
   );
 };
-

@@ -5,7 +5,7 @@ import { PipelineContext } from "../context/PipelineContext";
 import { usePipeline } from "../hooks/usePipeline";
 import { usePipelineExecution } from "../hooks/usePipelineExecution";
 import { selectPipelines } from "../store/selectors";
-import type { Pipeline, PipelineConfig } from "../types/pipeline";
+import type { Pipeline, PipelineConfig } from "../types/metrics";
 
 interface PipelineProviderProps {
   children: React.ReactNode;

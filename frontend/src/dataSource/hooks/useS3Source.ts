@@ -4,7 +4,7 @@ import { useMutation, useQuery } from 'react-query';
 import { DataSourceService } from '../services/dataSourceService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { DATASOURCE_MESSAGES } from '../constants';
-import type { S3SourceConfig, S3BucketInfo } from '../types/dataSources';
+import type { S3SourceConfig, S3BucketInfo } from '../types/base';
 
 export const useS3Source = () => {
   const [connectionId, setConnectionId] = useState<string | null>(null);

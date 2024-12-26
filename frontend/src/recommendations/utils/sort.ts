@@ -1,5 +1,5 @@
 // src/recommendations/utils/sort.ts
-import type { Recommendation } from '../types/recommendations';
+import type { Recommendation } from '../types/events';
 
 export const sortRecommendations = (
   recommendations: Recommendation[],

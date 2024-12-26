@@ -3,7 +3,7 @@ import type {
   DataSourceMetadata, 
   DataSourceType,
   DataSourceStatus 
-} from '../types/dataSources';
+} from '../types/base';
 
 export const formatSourceType = (type: DataSourceType): string => {
   const typeMap: Record<DataSourceType, string> = {

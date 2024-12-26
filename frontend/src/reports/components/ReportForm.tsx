@@ -12,7 +12,7 @@ import { Button } from "@/common/components/ui/button";
 import { Select } from "@/common/components/ui/inputs/select";
 import { DateTimePicker } from "@/common/components/ui/dateTimePicker";
 import { REPORT_CONSTANTS } from "../constants";
-import type { ReportConfig } from "../types/report";
+import type { ReportConfig } from "../types/models";
 
 interface ReportFormProps {
   onSubmit: (data: ReportConfig) => void;

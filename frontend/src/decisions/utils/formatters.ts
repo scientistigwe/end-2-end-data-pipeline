@@ -5,7 +5,7 @@ import type {
   DecisionType, 
   DecisionStatus, 
   DecisionUrgency 
-} from '../types/decisions';
+} from '../types/base';
 
 export const formatDecisionType = (type: DecisionType): string => {
   const typeMap: Record<DecisionType, string> = {

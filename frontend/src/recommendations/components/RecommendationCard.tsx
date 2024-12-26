@@ -13,7 +13,7 @@ import {
   RECOMMENDATION_STATUS_LABELS,
 } from "../constants";
 import { IMPACT_LEVEL_LABELS } from "@/common/types/common";
-import type { Recommendation } from "../types/recommendations";
+import type { Recommendation } from "../types/events";
 
 interface RecommendationCardProps {
   recommendation: Recommendation;

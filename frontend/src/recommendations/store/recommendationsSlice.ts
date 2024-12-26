@@ -4,7 +4,7 @@ import type {
   Recommendation, 
   RecommendationHistory, 
   RecommendationFilters 
-} from '../types/recommendations';
+} from '../types/events';
 
 interface RecommendationsState {
   recommendations: Record<string, Recommendation>;

@@ -16,7 +16,7 @@ import type {
   DataSourceMetadata,
   DataSourceStatus,
   DataSourceType,
-} from "../types/dataSources";
+} from "../types/base";
 
 interface DataSourceListProps {
   sources: DataSourceMetadata[];

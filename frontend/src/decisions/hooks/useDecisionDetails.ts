@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { decisionsApi } from '../api/decisionsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
-import type { DecisionDetails } from '../types/decisions';
+import type { DecisionDetails } from '../types/base';
 
 export const useDecisionDetails = (decisionId: string | null) => {
   const [details, setDetails] = useState<DecisionDetails | null>(null);

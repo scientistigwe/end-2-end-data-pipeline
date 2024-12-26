@@ -1,9 +1,13 @@
 // src/dataSource/components/cards/DBSourceCard.tsx
-import React from 'react';
-import { Card, CardHeader, CardContent } from '../../../common/components/ui/card';
-import { Badge } from '../../../common/components/ui/badge';
-import { Database } from 'lucide-react';
-import type { DBSourceConfig } from '../../types/dataSources';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+} from "../../../common/components/ui/card";
+import { Badge } from "../../../common/components/ui/badge";
+import { Database } from "lucide-react";
+import type { DBSourceConfig } from "../../types/base";
 
 interface DBSourceCardProps {
   source: DBSourceConfig;
@@ -25,9 +29,9 @@ interface DBSourceCardProps {
 
 export const DBSourceCard: React.FC<DBSourceCardProps> = ({
   source,
-  status = 'disconnected',
+  status = "disconnected",
   metrics,
-  className = ''
+  className = "",
 }) => {
   return (
     <Card className={className}>
@@ -39,9 +43,7 @@ export const DBSourceCard: React.FC<DBSourceCardProps> = ({
             <h3 className="text-lg font-medium mt-2">{source.name}</h3>
           </div>
         </div>
-        <Badge 
-          variant={status === 'connected' ? 'success' : 'secondary'}
-        >
+        <Badge variant={status === "connected" ? "success" : "secondary"}>
           {status}
         </Badge>
       </CardHeader>
@@ -49,7 +51,9 @@ export const DBSourceCard: React.FC<DBSourceCardProps> = ({
       <CardContent>
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground space-y-1">
-            <p>Host: {source.config.host}:{source.config.port}</p>
+            <p>
+              Host: {source.config.host}:{source.config.port}
+            </p>
             <p>Database: {source.config.database}</p>
             {source.config.schema && <p>Schema: {source.config.schema}</p>}
             {source.config.ssl && <p>SSL: Enabled</p>}

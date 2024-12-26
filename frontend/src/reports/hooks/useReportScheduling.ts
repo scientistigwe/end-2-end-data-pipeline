@@ -3,7 +3,7 @@ import { useMutation } from 'react-query';
 import { useDispatch } from 'react-redux';
 import { reportsApi } from '../api/reportsApi';
 import { setReportSchedule } from '../store/reportSlice';
-import type { ScheduleConfig } from '../types/report';
+import type { ScheduleConfig } from '../types/models';
 
 export function useReportScheduling(reportId: string) {
   const dispatch = useDispatch();

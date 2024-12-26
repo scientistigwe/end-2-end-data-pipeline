@@ -1,5 +1,5 @@
 import React from "react";
-import type { S3SourceConfig } from "../../types/dataSources";
+import type { S3SourceConfig } from "../../types/base";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Folder, File } from "lucide-react";

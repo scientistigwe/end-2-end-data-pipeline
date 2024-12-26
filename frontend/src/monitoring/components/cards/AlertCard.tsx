@@ -1,10 +1,15 @@
 // src/monitoring/components/alerts/AlertCard.tsx
-import React from 'react';
-import { Card, CardHeader, CardContent, CardFooter } from '../../../common/components/ui/card';
-import { Button } from '../../../common/components/ui/button';
-import { Badge } from '../../../common/components/ui/badge';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
-import type { Alert } from '../../types/monitoring';
+import React from "react";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
+} from "../../../common/components/ui/card";
+import { Button } from "../../../common/components/ui/button";
+import { Badge } from "../../../common/components/ui/badge";
+import { AlertTriangle, CheckCircle } from "lucide-react";
+import type { Alert } from "../../types/metrics";
 
 interface AlertCardProps {
   alert: Alert;
@@ -17,18 +22,18 @@ export const AlertCard: React.FC<AlertCardProps> = ({
   alert,
   onAcknowledge,
   onResolve,
-  className = ''
+  className = "",
 }) => {
   const getSeverityColor = () => {
     switch (alert.severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-800';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'info':
-        return 'bg-blue-100 text-blue-800';
+      case "critical":
+        return "bg-red-100 text-red-800";
+      case "warning":
+        return "bg-yellow-100 text-yellow-800";
+      case "info":
+        return "bg-blue-100 text-blue-800";
       default:
-        return 'bg-gray-100 text-gray-800';
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -36,15 +41,13 @@ export const AlertCard: React.FC<AlertCardProps> = ({
     <Card className={className}>
       <CardHeader className="flex flex-row items-start justify-between">
         <div className="flex items-center space-x-2">
-          {alert.severity === 'critical' ? (
+          {alert.severity === "critical" ? (
             <AlertTriangle className="h-5 w-5 text-red-500" />
           ) : (
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
           )}
           <div>
-            <Badge className={getSeverityColor()}>
-              {alert.severity}
-            </Badge>
+            <Badge className={getSeverityColor()}>{alert.severity}</Badge>
             <h3 className="text-lg font-medium mt-1">{alert.metric}</h3>
           </div>
         </div>
@@ -59,7 +62,9 @@ export const AlertCard: React.FC<AlertCardProps> = ({
       <CardContent className="space-y-2">
         <p>{alert.message}</p>
         <div className="text-sm text-muted-foreground">
-          <p>Value: {alert.value} | Threshold: {alert.threshold}</p>
+          <p>
+            Value: {alert.value} | Threshold: {alert.threshold}
+          </p>
           <p>Time: {new Date(alert.timestamp).toLocaleString()}</p>
           {alert.resolved && alert.resolvedAt && (
             <p>Resolved at: {new Date(alert.resolvedAt).toLocaleString()}</p>
@@ -79,10 +84,7 @@ export const AlertCard: React.FC<AlertCardProps> = ({
             </Button>
           )}
           {onResolve && (
-            <Button
-              size="sm"
-              onClick={() => onResolve(alert.id)}
-            >
+            <Button size="sm" onClick={() => onResolve(alert.id)}>
               Resolve
             </Button>
           )}

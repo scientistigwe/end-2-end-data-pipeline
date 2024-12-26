@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 class APIRoutes(Enum):
     # Auth Routes
-    AUTH_REGISTER = 'auth/register'
+    AUTH_REGISTER = '/auth/register'
     AUTH_LOGIN = '/auth/login'
     AUTH_REFRESH = '/auth/refresh'
     AUTH_LOGOUT = '/auth/logout'
@@ -138,6 +138,7 @@ class APIRoutes(Enum):
     SETTINGS_APPEARANCE = '/settings/appearance'
     SETTINGS_VALIDATE = '/settings/validate'
     SETTINGS_RESET = '/settings/reset'
+    HEALTH_CHECK = '/health'
 
     @classmethod
     def get_route(cls, route_name: str, **kwargs: Dict[str, Any]) -> str:

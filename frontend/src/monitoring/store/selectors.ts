@@ -1,7 +1,7 @@
 // src/monitoring/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '../../store/store';
-import type { MetricsData, Alert, MetricStatus } from '../types/monitoring';
+import type { MetricsData, Alert, MetricStatus } from '../types/metrics';
 
 // Basic selectors
 export const selectMetrics = (state: RootState) => state.monitoring.metrics;

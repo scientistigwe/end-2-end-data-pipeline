@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
 import { pipelineApi } from '../api/pipelineApi';
 import { updatePipelineStatus } from '../store/pipelineSlice';
-import type { PipelineRun, PipelineError, PipelineStatus } from '../types/pipeline';
+import type { PipelineRun, PipelineError, PipelineStatus } from '../types';
 
 export function usePipelineExecution(pipelineId: string) {
   const dispatch = useDispatch();

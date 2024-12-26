@@ -7,7 +7,7 @@ import type {
   ReportMetadata,
   ScheduleConfig,
   ExportOptions,
-} from "../types/report";
+} from "../types/models";
 
 interface ReportContextValue {
   // Report State

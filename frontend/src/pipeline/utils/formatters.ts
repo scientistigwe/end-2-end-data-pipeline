@@ -1,6 +1,6 @@
 import { dateUtils } from '@/common';
 import { PIPELINE_CONSTANTS } from '../constants';
-import type { PipelineStatus, LogLevel } from '../types/pipeline';
+import type { PipelineStatus, LogLevel } from '../types/metrics';
 
 /**
  * Status and Level Formatting

@@ -15,7 +15,7 @@ import {
 import { Input } from "@/common/components//ui/inputs/input";
 import { Select } from "@/common/components/ui/inputs/select";
 import { useApiSource } from "../../hooks/useApiSource";
-import type { ApiSourceConfig } from "../../types/dataSources";
+import type { ApiSourceConfig } from "../../types/base";
 
 interface ApiSourceFormData {
   config: {

@@ -6,7 +6,7 @@ import type {
     PipelineRun,
     PipelineMetrics,
     PipelineStatus
-  } from '../types/pipeline';
+  } from '../types/metrics';
   import { pipelineApi } from '../api/pipelineApi';
   import { PIPELINE_CONSTANTS } from '../constants';
   

@@ -4,7 +4,7 @@ import {
   ReportFormat, 
   ReportType,
   MetricStatus 
-} from '../types/report';
+} from '../types/models';
 import { REPORT_CONSTANTS } from '../constants';
 
 /**

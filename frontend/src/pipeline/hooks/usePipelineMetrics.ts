@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { pipelineApi } from '../api/pipelineApi';
 import { setPipelineMetrics } from '../store/pipelineSlice';
 import { PIPELINE_CONSTANTS } from '../constants';
-import type { PipelineMetrics } from '../types/pipeline';
+import type { PipelineMetrics } from '../types/metrics';
 
 interface UsePipelineMetricsOptions {
   timeRange?: {

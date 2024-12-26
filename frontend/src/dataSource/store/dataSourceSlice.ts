@@ -6,7 +6,7 @@ import type {
   DataSourceFilters,
   ValidationResult,
   PreviewData
-} from '../types/dataSources';
+} from '../types/base';
 import { dataSourceApi } from '../api';
 
 // Define error interface

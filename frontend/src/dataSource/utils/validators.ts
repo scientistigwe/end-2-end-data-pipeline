@@ -8,7 +8,7 @@ import type {
   DBSourceConfig,
   S3SourceConfig,
   StreamSourceConfig 
-} from '../types/dataSources';
+} from '../types/base';
 
 interface ValidationIssue {
   field?: string;

@@ -1,4 +1,8 @@
-import { AxiosHeaders } from 'axios';
+import {   AxiosHeaders } from 'axios';
+import type {
+  AxiosResponse,
+  InternalAxiosRequestConfig 
+} from 'axios';
 import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
@@ -15,7 +19,7 @@ import type {
   PipelineRunCompleteDetail,
   PipelineErrorDetail,
   RouteDefinition
-} from '../types/pipeline';
+} from '../types';
 
 export const PIPELINE_EVENTS = {
   STATUS_CHANGE: 'pipeline:statusChange',
@@ -41,30 +45,29 @@ class PipelineApi {
   }
 
   // Interceptors and Error Handling
-  private setupPipelineInterceptors(): void {
-    // Add custom interceptor on the axios instance
-    const instance = (this.client as any).client;
-    if (!instance) return;
+// src/pipeline/api/pipelineApi.ts
+private setupPipelineInterceptors(): void {
+  const instance = this.client.getAxiosInstance();
+  if (!instance) return;
 
-    instance.interceptors.request.use(
-      (config) => {
-        const headers = new AxiosHeaders(config.headers || {});
-        config.headers = headers;
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+  instance.interceptors.request.use(
+    (config: InternalAxiosRequestConfig) => {
+      const headers = new AxiosHeaders(config.headers || {});
+      config.headers = headers;
+      return config;
+    },
+    (error: unknown) => Promise.reject(this.handlePipelineError(error))
+  );
 
-    instance.interceptors.response.use(
-      response => response,
-      error => {
-        const enhancedError = this.handlePipelineError(error);
-        this.notifyError(enhancedError);
-        throw enhancedError;
-      }
-    );
-  }
-
+  instance.interceptors.response.use(
+    (response: AxiosResponse) => response,
+    (error: unknown) => {
+      const enhancedError = this.handlePipelineError(error);
+      this.notifyError(enhancedError);
+      throw enhancedError;
+    }
+  );
+}
   private handlePipelineError(error: unknown): PipelineError {
     const baseError: PipelineError = {
       name: 'PipelineError',

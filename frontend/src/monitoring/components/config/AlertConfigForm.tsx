@@ -10,7 +10,7 @@ import {
 import { Input } from "../../../common/components/ui/inputs/input";
 import { Select } from "../../../common/components/ui/inputs/select";
 import { Button } from "../../../common/components/ui/button";
-import type { AlertConfig, AlertSeverity } from "../../types/monitoring";
+import type { AlertConfig, AlertSeverity } from "../../types/metrics";
 
 interface AlertConfigFormProps {
   onSubmit: (config: AlertConfig) => void;

@@ -1,5 +1,5 @@
   // src/report/utils/validators.ts
-  import { ReportConfig, ScheduleConfig } from '../types/report';
+  import { ReportConfig, ScheduleConfig } from '../types/models';
   
   export function validateTimeRange(start: Date, end: Date): boolean {
     return start < end && start >= new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);

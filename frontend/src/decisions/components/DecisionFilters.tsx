@@ -4,7 +4,7 @@ import { Input } from "../../common/components/ui/inputs/input";
 import { Select } from "../../common/components/ui/inputs/select";
 import { Button } from "../../common/components/ui/button/Button";
 import { X } from "lucide-react";
-import { DecisionFilters as IDecisionFilters } from "../types/decisions";
+import { DecisionFilters as IDecisionFilters } from "../types/base";
 
 interface DecisionFiltersProps {
   filters: IDecisionFilters;

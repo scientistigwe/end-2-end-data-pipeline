@@ -3,7 +3,7 @@ import { Badge } from "@/common/components/ui/badge";
 import { Card } from "@/common/components/ui/card";
 import { Progress } from "@/common/components/ui/progress";
 import { dateUtils } from "@/common"; // Import dateUtils
-import type { DataSourceStatus as SourceStatus } from "../../types/dataSources";
+import type { DataSourceStatus as SourceStatus } from "../../types/base";
 
 interface StatusMetrics {
   syncProgress?: number;
@@ -66,13 +66,21 @@ export const DataSourceStatus: React.FC<StatusComponentProps> = ({
               {metrics.lastSync && (
                 <div>
                   <span className="text-gray-500">Last Sync</span>
-                  <p>{dateUtils.formatDate(metrics.lastSync, { includeTime: true })}</p>
+                  <p>
+                    {dateUtils.formatDate(metrics.lastSync, {
+                      includeTime: true,
+                    })}
+                  </p>
                 </div>
               )}
               {metrics.nextSync && (
                 <div>
                   <span className="text-gray-500">Next Sync</span>
-                  <p>{dateUtils.formatDate(metrics.nextSync, { includeTime: true })}</p>
+                  <p>
+                    {dateUtils.formatDate(metrics.nextSync, {
+                      includeTime: true,
+                    })}
+                  </p>
                 </div>
               )}
             </div>

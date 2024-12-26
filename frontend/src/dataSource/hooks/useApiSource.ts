@@ -4,7 +4,7 @@ import { useMutation } from 'react-query';
 import { DataSourceService } from '../services/dataSourceService';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { DATASOURCE_MESSAGES } from '../constants';
-import type { ApiSourceConfig } from '../types/dataSources';
+import type { ApiSourceConfig } from '../types/base';
 
 export const useApiSource = () => {
   const [connectionId, setConnectionId] = useState<string | null>(null);

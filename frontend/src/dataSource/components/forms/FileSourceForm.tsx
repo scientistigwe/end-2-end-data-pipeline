@@ -15,7 +15,7 @@ import {
 import { Progress } from "../../../common/components/ui/progress";
 import { Upload } from "lucide-react";
 import { useFileSource } from "../../hooks/useFileSource";
-import type { FileSourceConfig } from "../../types/dataSources";
+import type { FileSourceConfig } from "../../types/base";
 import { v4 as uuidv4 } from "uuid";
 
 interface FileSourceFormData {

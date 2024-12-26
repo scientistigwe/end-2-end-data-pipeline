@@ -10,7 +10,7 @@ import { Button } from "../../common/components/ui/button";
 import { Badge } from "../../common/components/ui/badge";
 import { Alert } from "../../common/components/ui/alert";
 import { Clock, AlertTriangle } from "lucide-react";
-import type { Decision } from "../types/decisions";
+import type { Decision } from "../types/base";
 
 interface DecisionCardProps {
   decision: Decision;

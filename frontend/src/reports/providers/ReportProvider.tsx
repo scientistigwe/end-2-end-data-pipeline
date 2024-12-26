@@ -9,7 +9,7 @@ import {
   addReport,
   updateReport as updateReportState,
   removeReport,
-  setError
+  setError,
 } from "../store/reportSlice";
 import { selectSelectedReportId } from "../store/selectors";
 import type {
@@ -19,7 +19,7 @@ import type {
   ScheduleConfig,
   ExportOptions,
   ReportStatus,
-} from "../types/report";
+} from "../types/models";
 
 interface ReportProviderProps {
   children: React.ReactNode;

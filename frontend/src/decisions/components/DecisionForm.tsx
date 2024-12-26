@@ -6,7 +6,7 @@ import { Input } from "../../common/components//ui/inputs/input";
 import { Button } from "../../common/components/ui/button/Button";
 import { Select } from "../../common/components/ui/inputs/select";
 import { DECISION_TYPES, DECISION_URGENCIES } from "../constants";
-import type { Decision } from "../types/decisions";
+import type { Decision } from "../types/base";
 import { cn } from "../../common/utils/cn";
 
 interface DecisionFormProps {

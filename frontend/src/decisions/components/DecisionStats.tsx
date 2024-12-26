@@ -14,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import type { Decision } from "../types/decisions";
+import type { Decision } from "../types/base";
 
 interface DecisionStats {
   total: number;

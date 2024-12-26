@@ -1,7 +1,7 @@
 // src/decisions/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@/store/rootReducer';
-import type { Decision, DecisionFilters, DecisionHistoryEntry, DecisionDetails } from '@/decisions/types/decisions';
+import type { Decision, DecisionFilters, DecisionHistoryEntry, DecisionDetails } from '@/decisions/types/base';
 
 // Base selectors with type assertions
 const selectDecisionsState = (state: RootState) => state.decisions;

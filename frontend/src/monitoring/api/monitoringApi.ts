@@ -1,5 +1,12 @@
+// src/monitoring/api/monitoringApi.ts
+import { RouteHelper } from '@/common/api/routes';
 import { baseAxiosClient } from '@/common/api/client/baseClient';
-import type { ApiResponse } from '@/common/types/api';
+import { 
+  ApiResponse,
+  HTTP_STATUS,
+  ERROR_CODES 
+} from '@/common/types/api';
+import type { AxiosResponse, InternalAxiosRequestConfig  } from 'axios';
 import type {
   MonitoringConfig,
   MetricsData,
@@ -11,15 +18,21 @@ import type {
   TimeSeriesData,
   WebSocketError,
   MonitoringError
-} from '../types/monitoring';
+} from '../types';
+
+interface WebSocketHandlers {
+  onMetrics: (data: MetricsData) => void;
+  onError?: (error: Error) => void;
+}
 
 class MonitoringApi {
   private client = baseAxiosClient;
   private metricsSocket: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private readonly MAX_RECONNECT_ATTEMPTS = 5;
-  private readonly RECONNECT_DELAY = 1000;
-  private readonly MONITORING_EVENTS = {
+
+  private static readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private static readonly RECONNECT_DELAY = 1000;
+  private static readonly MONITORING_EVENTS = {
     METRICS_UPDATE: 'monitoring:metricsUpdate',
     ERROR: 'monitoring:error',
     STATUS_CHANGE: 'monitoring:statusChange'
@@ -30,35 +43,48 @@ class MonitoringApi {
     this.setupMonitoringInterceptors();
   }
 
-  private setupMonitoringHeaders() {
+  private setupMonitoringHeaders = (): void => {
     this.client.setDefaultHeaders({
       'X-Service': 'monitoring'
     });
-  }
+  };
 
-  // Interceptors
-  private setupMonitoringInterceptors() {
-    // Add custom interceptor on the axios instance
-    const instance = (this.client as any).client;
+  private setupMonitoringInterceptors = (): void => {
+    const instance = this.client.getAxiosInstance();
     if (!instance) return;
 
     instance.interceptors.request.use(
-      (config) => {
-        return config;
-      }
+      this.handleRequestInterceptor,
+      this.handleRequestError
     );
 
     instance.interceptors.response.use(
-      response => response,
-      error => {
-        const enhancedError = this.handleMonitoringError(error);
-        this.notifyError(enhancedError);
-        throw enhancedError;
-      }
+      this.handleResponseInterceptor,
+      this.handleResponseError
     );
-  }
+  };
 
-  // Error Handling
+  private handleRequestInterceptor = (
+    config: InternalAxiosRequestConfig
+  ): InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig> => {
+    return config;
+  };
+
+  private handleRequestError = (error: unknown): Promise<never> => {
+    return Promise.reject(this.handleMonitoringError(error));
+  };
+
+  private handleResponseInterceptor = (
+    response: AxiosResponse
+  ): AxiosResponse | Promise<AxiosResponse> => {
+    return response;
+  };
+
+  private handleResponseError = (error: unknown): Promise<never> => {
+    const enhancedError = this.handleMonitoringError(error);
+    this.notifyError(enhancedError);
+    throw enhancedError;
+  };
   private handleMonitoringError(error: unknown): MonitoringError {
     const baseError: MonitoringError = {
       name: 'MonitoringError',
@@ -77,18 +103,18 @@ class MonitoringApi {
 
     if (typeof error === 'object' && error !== null) {
       const errorObj = error as Record<string, any>;
-      if (errorObj.response?.status === 429) {
+      if (errorObj.response?.status === HTTP_STATUS.TOO_MANY_REQUESTS) {
         return {
           ...baseError,
           message: 'Monitoring rate limit exceeded. Please try again later.',
-          code: 'RATE_LIMIT_EXCEEDED'
+          code: ERROR_CODES.RATE_LIMIT_EXCEEDED
         };
       }
-      if (errorObj.response?.status === 503) {
+      if (errorObj.response?.status === HTTP_STATUS.SERVICE_UNAVAILABLE) {
         return {
           ...baseError,
           message: 'Monitoring service is temporarily unavailable.',
-          code: 'SERVICE_UNAVAILABLE'
+          code: ERROR_CODES.SERVICE_UNAVAILABLE
         };
       }
     }
@@ -124,7 +150,7 @@ class MonitoringApi {
 
   private notifyError(error: Error): void {
     window.dispatchEvent(
-      new CustomEvent(this.MONITORING_EVENTS.ERROR, {
+      new CustomEvent(MonitoringApi.MONITORING_EVENTS.ERROR, {
         detail: { error: error.message }
       })
     );
@@ -132,27 +158,27 @@ class MonitoringApi {
 
   // Core Monitoring Operations
   async startMonitoring(pipelineId: string, config: MonitoringConfig): Promise<ApiResponse<void>> {
-    return this.client.executePost<void>(
-      this.client.createRoute('MONITORING', 'START', { id: pipelineId }),
+    return this.client.executePost(
+      RouteHelper.getRoute('MONITORING', 'START', { pipeline_id: pipelineId }),
       config
     );
   }
 
   async getMetrics(pipelineId: string): Promise<ApiResponse<MetricsData>> {
-    return this.client.executeGet<MetricsData>(
-      this.client.createRoute('MONITORING', 'METRICS', { id: pipelineId })
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'METRICS', { pipeline_id: pipelineId })
     );
   }
 
   async getHealth(pipelineId: string): Promise<ApiResponse<SystemHealth>> {
-    return this.client.executeGet<SystemHealth>(
-      this.client.createRoute('MONITORING', 'HEALTH', { id: pipelineId })
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'HEALTH', { pipeline_id: pipelineId })
     );
   }
 
   async getPerformance(pipelineId: string): Promise<ApiResponse<PerformanceMetrics>> {
-    return this.client.executeGet<PerformanceMetrics>(
-      this.client.createRoute('MONITORING', 'PERFORMANCE', { id: pipelineId })
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'PERFORMANCE', { pipeline_id: pipelineId })
     );
   }
 
@@ -163,8 +189,8 @@ class MonitoringApi {
       duration?: string;
     }
   ): Promise<ApiResponse<ResourceUsage>> {
-    return this.client.executeGet<ResourceUsage>(
-      this.client.createRoute('MONITORING', 'RESOURCES', { id: pipelineId }),
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'RESOURCES', { pipeline_id: pipelineId }),
       { params }
     );
   }
@@ -179,16 +205,16 @@ class MonitoringApi {
       interval?: string;
     }
   ): Promise<ApiResponse<TimeSeriesData>> {
-    return this.client.executeGet<TimeSeriesData>(
-      this.client.createRoute('MONITORING', 'TIME_SERIES', { id: pipelineId }),
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'TIME_SERIES', { pipeline_id: pipelineId }),
       { params }
     );
   }
 
   // Alert Operations
   async configureAlerts(pipelineId: string, config: AlertConfig): Promise<ApiResponse<void>> {
-    return this.client.executePost<void>(
-      this.client.createRoute('MONITORING', 'ALERTS_CONFIG', { id: pipelineId }),
+    return this.client.executePost(
+      RouteHelper.getRoute('MONITORING', 'ALERTS_CONFIG', { pipeline_id: pipelineId }),
       config
     );
   }
@@ -202,8 +228,8 @@ class MonitoringApi {
       limit?: number;
     }
   ): Promise<ApiResponse<Alert[]>> {
-    return this.client.executeGet<Alert[]>(
-      this.client.createRoute('MONITORING', 'ALERTS_HISTORY', { id: pipelineId }),
+    return this.client.executeGet(
+      RouteHelper.getRoute('MONITORING', 'ALERTS_HISTORY', { pipeline_id: pipelineId }),
       { params }
     );
   }
@@ -211,76 +237,68 @@ class MonitoringApi {
   // WebSocket Management
   startRealtimeMonitoring(
     pipelineId: string,
-    onMetrics: (data: MetricsData) => void,
-    onError?: (error: Error) => void
+    handlers: WebSocketHandlers
   ): () => void {
     const wsUrl = `${import.meta.env.VITE_WS_URL}/monitoring/${pipelineId}`;
-    
-    const connect = () => {
-      this.metricsSocket = new WebSocket(wsUrl);
-      this.setupWebSocketHandlers(pipelineId, onMetrics, onError);
-    };
-
-    connect();
+    this.initializeWebSocket(wsUrl, handlers);
     return () => this.stopRealtimeMonitoring();
   }
 
-  private setupWebSocketHandlers(
-    pipelineId: string,
-    onMetrics: (data: MetricsData) => void,
-    onError?: (error: Error) => void
-  ): void {
+  private initializeWebSocket(wsUrl: string, handlers: WebSocketHandlers): void {
+    this.metricsSocket = new WebSocket(wsUrl);
+    this.setupWebSocketHandlers(handlers);
+  }
+
+  private setupWebSocketHandlers(handlers: WebSocketHandlers): void {
     if (!this.metricsSocket) return;
 
     this.metricsSocket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as MetricsData;
-        onMetrics(data);
+        handlers.onMetrics(data);
         this.dispatchMetricsUpdate(data);
       } catch (error) {
         const parsedError = this.handleMonitoringError(error);
-        onError?.(parsedError);
+        handlers.onError?.(parsedError);
         this.notifyError(parsedError);
       }
     };
 
     this.metricsSocket.onerror = (event) => {
       const error = this.handleWebSocketError(event);
-      onError?.(error);
-      this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
+      handlers.onError?.(error);
+      this.handleWebSocketReconnect(handlers);
     };
 
     this.metricsSocket.onclose = (event) => {
       const error = this.handleWebSocketError(event);
-      onError?.(error);
-      this.handleWebSocketReconnect(pipelineId, onMetrics, onError);
+      handlers.onError?.(error);
+      this.handleWebSocketReconnect(handlers);
     };
   }
 
-  private handleWebSocketReconnect(
-    pipelineId: string,
-    onMetrics: (data: MetricsData) => void,
-    onError?: (error: Error) => void
-  ): void {
-    if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+  private handleWebSocketReconnect(handlers: WebSocketHandlers): void {
+    if (this.reconnectAttempts < MonitoringApi.MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
-      const delay = this.RECONNECT_DELAY * this.reconnectAttempts;
+      const delay = MonitoringApi.RECONNECT_DELAY * this.reconnectAttempts;
 
       setTimeout(() => {
-        this.startRealtimeMonitoring(pipelineId, onMetrics, onError);
+        if (this.metricsSocket) {
+          this.setupWebSocketHandlers(handlers);
+        }
       }, delay);
       
       this.notifyError(new Error(`Reconnecting... Attempt ${this.reconnectAttempts}`));
     } else {
       const error = new Error('Max reconnection attempts reached');
-      onError?.(error);
+      handlers.onError?.(error);
       this.notifyError(error);
     }
   }
 
   private dispatchMetricsUpdate(data: MetricsData): void {
     window.dispatchEvent(
-      new CustomEvent(this.MONITORING_EVENTS.METRICS_UPDATE, {
+      new CustomEvent(MonitoringApi.MONITORING_EVENTS.METRICS_UPDATE, {
         detail: { metrics: data }
       })
     );
@@ -315,12 +333,12 @@ class MonitoringApi {
 
   // Event Subscription
   subscribeToMonitoringEvents(
-    event: keyof typeof this.MONITORING_EVENTS,
+    event: keyof typeof MonitoringApi.MONITORING_EVENTS,
     callback: (event: CustomEvent) => void
   ): () => void {
     const handler = (e: Event) => callback(e as CustomEvent);
-    window.addEventListener(this.MONITORING_EVENTS[event], handler);
-    return () => window.removeEventListener(this.MONITORING_EVENTS[event], handler);
+    window.addEventListener(MonitoringApi.MONITORING_EVENTS[event], handler);
+    return () => window.removeEventListener(MonitoringApi.MONITORING_EVENTS[event], handler);
   }
 }
 

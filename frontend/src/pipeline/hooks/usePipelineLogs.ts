@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { useState, useEffect } from 'react';
 import { pipelineApi } from '../api/pipelineApi';
 import { setPipelineLogs } from '../store/pipelineSlice';
-import type { PipelineLogs, PipelineError, LogLevel } from '../types/pipeline';
+import type { PipelineLogs, PipelineError, LogLevel } from '../types';
 import { PIPELINE_CONSTANTS } from '../constants';
 
 interface UsePipelineLogsOptions {

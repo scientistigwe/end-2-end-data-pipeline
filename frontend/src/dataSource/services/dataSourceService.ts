@@ -9,7 +9,7 @@ import type {
   PreviewData,
   DataSourceFilters,
   SourceConnectionResponse,
-} from '../types/dataSources';
+} from '../types/base';
 import { DATASOURCE_MESSAGES } from '../constants';
 
 export class DataSourceService {

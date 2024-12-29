@@ -1,8 +1,8 @@
-// src/auth/hooks/useAuth.ts
+// auth/hooks/useAuth.ts
 import { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useMutation, useQueryClient } from 'react-query';
-import { authApi } from '../api';
+import { authApi } from '../api/authApi';
 import { storageUtils } from '@/common/utils/storage/storageUtils';
 import { 
   clearAuth, 
@@ -20,12 +20,12 @@ import {
 import type { 
   LoginCredentials, 
   RegisterData, 
-  AuthTokens, 
-  ForgotPasswordData,
-  ResetPasswordData
+  AuthTokens,
+  ProfileUpdateData,
+  ChangePasswordData,
+  ResetPasswordData,
+  VerifyEmailData,
 } from '../types/auth';
-import type { User } from '@/common/types/user';
-import type { ApiResponse } from '@/common/types/api';
 
 const AUTH_STORAGE_KEY = 'auth_tokens';
 
@@ -33,14 +33,12 @@ export function useAuth() {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
   
-  // Selectors
   const user = useSelector(selectUser);
   const error = useSelector(selectAuthError);
   const tokens = useSelector(selectAuthTokens);
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isInitialized = useSelector(selectIsInitialized);
 
-  // Error Handler
   const handleAuthError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : 'An error occurred';
     dispatch(setError(message));
@@ -51,10 +49,10 @@ export function useAuth() {
   useEffect(() => {
     if (!isInitialized) {
       const storedTokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-      if (storedTokens?.accessToken) {
+      if (storedTokens?.access_token) {
         authApi.getProfile()
-          .then((response) => {
-            dispatch(setAuth({ user: response.data, tokens: storedTokens }));
+          .then((user) => {
+            dispatch(setAuth({ user, tokens: storedTokens }));
           })
           .catch(() => {
             storageUtils.removeItem(AUTH_STORAGE_KEY);
@@ -69,29 +67,38 @@ export function useAuth() {
     }
   }, [dispatch, isInitialized]);
 
-  // Auth Mutations
-  const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
-    async (credentials: LoginCredentials): Promise<ApiResponse<{ user: User; tokens: AuthTokens }>> => {
-      try {
-        const response = await authApi.login(credentials);
-        const { user, ...tokens } = response.data;
-        storageUtils.setItem(AUTH_STORAGE_KEY, tokens);
-        dispatch(setAuth({ user, tokens }));
-        return response;
-      } catch (error) {
-        handleAuthError(error);
-        throw error;
+  // Login mutation
+const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
+  async (credentials: LoginCredentials) => {
+    try {
+      const response = await authApi.login(credentials);
+      
+      // Check for required properties
+      if (!response.tokens || !response.user) {
+        throw new Error('Invalid login response format');
       }
-    }
-  );
 
+      // Update auth state
+      dispatch(setAuth({ 
+        user: response.user, 
+        tokens: response.tokens 
+      }));
+
+      return response;
+    } catch (error) {
+      handleAuthError(error);
+      throw error;
+    }
+  }
+);
+
+  // Register mutation
   const { mutateAsync: register, isLoading: isRegistering } = useMutation(
-    async (data: RegisterData): Promise<ApiResponse<{ user: User; tokens: AuthTokens }>> => {
+    async (data: RegisterData) => {
       try {
         const response = await authApi.register(data);
-        const { user, ...tokens } = response.data;
-        storageUtils.setItem(AUTH_STORAGE_KEY, tokens);
-        dispatch(setAuth({ user, tokens }));
+        const { data: responseData } = response;
+        dispatch(setAuth({ user: responseData.user, tokens: responseData.tokens }));
         return response;
       } catch (error) {
         handleAuthError(error);
@@ -100,14 +107,15 @@ export function useAuth() {
     }
   );
 
+  // Update profile mutation
   const { mutateAsync: updateProfile, isLoading: isUpdatingProfile } = useMutation(
-    async (data: Partial<User>): Promise<ApiResponse<User>> => {
+    async (data: ProfileUpdateData) => {
       try {
-        const response = await authApi.updateProfile(data);
-        if (response.data && tokens) {
-          dispatch(setAuth({ user: response.data, tokens }));
+        const updatedUser = await authApi.updateProfile(data);
+        if (tokens) {
+          dispatch(setAuth({ user: updatedUser, tokens }));
         }
-        return response;
+        return updatedUser;
       } catch (error) {
         handleAuthError(error);
         throw error;
@@ -115,10 +123,11 @@ export function useAuth() {
     }
   );
 
-  const { mutateAsync: forgotPassword, isLoading: isRequestingReset } = useMutation(
-    async (data: ForgotPasswordData): Promise<ApiResponse<void>> => {
+  // Change password mutation
+  const { mutateAsync: changePassword, isLoading: isChangingPassword } = useMutation(
+    async (data: ChangePasswordData) => {
       try {
-        return await authApi.forgotPassword(data);
+        await authApi.changePassword(data);
       } catch (error) {
         handleAuthError(error);
         throw error;
@@ -126,10 +135,11 @@ export function useAuth() {
     }
   );
 
+  // Reset password mutation
   const { mutateAsync: resetPassword, isLoading: isResettingPassword } = useMutation(
-    async (data: ResetPasswordData): Promise<ApiResponse<void>> => {
+    async (data: ResetPasswordData) => {
       try {
-        return await authApi.resetPassword(data);
+        await authApi.resetPassword(data);
       } catch (error) {
         handleAuthError(error);
         throw error;
@@ -137,6 +147,19 @@ export function useAuth() {
     }
   );
 
+  // Verify email mutation
+  const { mutateAsync: verifyEmail, isLoading: isVerifyingEmail } = useMutation(
+    async (data: VerifyEmailData) => {
+      try {
+        await authApi.verifyEmail(data);
+      } catch (error) {
+        handleAuthError(error);
+        throw error;
+      }
+    }
+  );
+
+  // Logout handler
   const logout = useCallback(async () => {
     try {
       if (isAuthenticated) {
@@ -146,20 +169,20 @@ export function useAuth() {
       handleAuthError(error);
     } finally {
       storageUtils.removeItem(AUTH_STORAGE_KEY);
-      queryClient.clear(); // Clear all React Query cache
+      queryClient.clear();
       dispatch(clearAuth());
     }
   }, [dispatch, queryClient, isAuthenticated, handleAuthError]);
 
+  // Token refresh handler
   const refreshToken = useCallback(async () => {
     try {
       const currentTokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-      if (!currentTokens?.refreshToken) {
+      if (!currentTokens?.refresh_token) {
         throw new Error('No refresh token available');
       }
 
-      const response = await authApi.refreshToken(currentTokens.refreshToken);
-      const newTokens = response.data;
+      const newTokens = await authApi.refreshToken(currentTokens.refresh_token);
       storageUtils.setItem(AUTH_STORAGE_KEY, newTokens);
       
       if (user) {
@@ -175,29 +198,24 @@ export function useAuth() {
   }, [dispatch, user, logout, handleAuthError]);
 
   return {
-    // State
     user,
     error,
     isAuthenticated,
     isInitialized,
-    
-    // Loading states
     isLoggingIn,
     isRegistering,
     isUpdatingProfile,
-    isRequestingReset,
+    isChangingPassword,
     isResettingPassword,
-
-    // Auth methods
+    isVerifyingEmail,
     login,
     register,
     logout,
     updateProfile,
-    forgotPassword,
+    changePassword,
     resetPassword,
+    verifyEmail,
     refreshToken,
-    
-    // Utils
     handleAuthError
   } as const;
 }

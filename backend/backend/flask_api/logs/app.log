@@ -17516,3 +17516,1092 @@ CREATE TABLE pipeline_steps (
 2024-12-25 22:53:53,647 - backend.flask_api.app - INFO - Application initialized successfully in development mode
 2024-12-25 22:53:53,659 - werkzeug - WARNING -  * Debugger is active!
 2024-12-25 22:53:53,663 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-25 23:00:02,208 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:02,209 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-25 23:00:02,209 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:02] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-25 23:00:02,473 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:02,474 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines/ Status: 200 Duration: 0.00s
+2024-12-25 23:00:02,474 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:02] "OPTIONS /api/v1/pipelines/ HTTP/1.1" 200 -
+2024-12-25 23:00:02,786 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:02,788 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:02,789 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:02] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:03,804 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:03,805 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:03,805 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:03] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:05,000 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:05,001 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:05,002 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:05] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:06,019 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:06,021 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:06,022 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:06] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:08,344 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:08,345 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:08,345 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:08] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:22,085 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-25 23:00:22,086 - request_logger - INFO - Request: GET /api/v1/pipelines/ Status: 404 Duration: 0.00s
+2024-12-25 23:00:22,086 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:22] "[33mGET /api/v1/pipelines/ HTTP/1.1[0m" 404 -
+2024-12-25 23:00:33,423 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-25 23:00:33,423 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:33] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-25 23:00:33,741 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-25 23:00:33,742 - werkzeug - INFO - 127.0.0.1 - - [25/Dec/2024 23:00:33] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-29 06:26:29,344 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 06:26:29,344 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 06:26:29,344 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 06:26:29,814 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 06:26:29,815 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 06:26:30,902 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 06:26:30,909 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 06:26:30,918 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 06:26:30,926 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 06:26:30,930 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 06:26:30,935 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 06:26:30,939 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 06:26:30,941 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 06:26:30,943 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 06:26:30,944 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 06:26:30,945 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 06:26:30,996 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-29 06:26:30,997 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-29 06:26:31,000 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 06:26:31,616 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 06:26:31,616 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 06:26:31,617 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 06:26:32,002 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 06:26:32,003 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 06:26:32,605 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 06:26:32,611 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 06:26:32,619 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 06:26:32,634 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 06:26:32,637 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 06:26:32,644 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 06:26:32,651 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 06:26:32,654 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 06:26:32,657 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 06:26:32,659 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 06:26:32,659 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 06:26:32,677 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 06:26:32,689 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 06:26:41,390 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:26:41,393 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-29 06:26:41,395 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:26:41] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-29 06:26:41,715 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:26:41,717 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:26:41,717 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:26:41] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:26:43,731 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:26:43,732 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:26:43,733 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:26:43] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:26:48,055 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:26:48,057 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:26:48,058 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:26:48] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:27:37,365 - request_logger - INFO - Request: OPTIONS /api/v1/auth/register Status: 200 Duration: 0.00s
+2024-12-29 06:27:37,366 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:27:37] "OPTIONS /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-29 06:27:37,369 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 400 Duration: 0.00s
+2024-12-29 06:27:37,370 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:27:37] "[31m[1mPOST /api/v1/auth/register HTTP/1.1[0m" 400 -
+2024-12-29 06:55:30,661 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\schemas\\auth.py', reloading
+2024-12-29 06:55:30,875 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 06:55:31,678 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 06:55:31,679 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 06:55:31,680 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 06:55:32,012 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 06:55:32,013 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 06:55:32,679 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 06:55:32,685 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 06:55:32,691 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 06:55:32,698 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 06:55:32,702 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 06:55:32,705 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 06:55:32,715 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 06:55:32,724 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 06:55:32,729 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 06:55:32,730 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 06:55:32,731 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 06:55:32,761 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 06:55:32,768 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 06:55:44,256 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:44,259 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:44,260 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:44] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:55:45,174 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:45,176 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:45,176 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:45] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:55:46,512 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:46,514 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:46,515 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:46] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:55:47,105 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:47,106 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:47,106 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:47] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:55:48,363 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:48,365 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:48,366 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:48] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:55:49,392 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:55:49,394 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:55:49,395 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:55:49] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:56:41,372 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:56:41,375 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:56:41,376 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:56:41] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:56:45,390 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 06:56:45,392 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 06:56:45,394 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:56:45] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 06:56:55,140 - request_logger - INFO - Request: POST /api/v1/auth/register Status: 200 Duration: 0.33s
+2024-12-29 06:56:55,141 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:56:55] "POST /api/v1/auth/register HTTP/1.1" 200 -
+2024-12-29 06:57:26,016 - request_logger - INFO - Request: OPTIONS /api/v1/auth/login Status: 200 Duration: 0.00s
+2024-12-29 06:57:26,017 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:57:26] "OPTIONS /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 06:57:26,022 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 400 Duration: 0.00s
+2024-12-29 06:57:26,023 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 06:57:26] "[31m[1mPOST /api/v1/auth/login HTTP/1.1[0m" 400 -
+2024-12-29 07:00:31,052 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\schemas\\auth.py', reloading
+2024-12-29 07:00:31,315 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:00:32,181 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:00:32,183 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:00:32,183 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:00:32,483 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:00:32,483 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:00:32,530 - backend.flask_api.app - ERROR - Error registering blueprints: name 'post_load' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 16, in <module>
+    class RegisterRequestSchema(Schema):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 42, in RegisterRequestSchema
+    @post_load
+     ^^^^^^^^^
+NameError: name 'post_load' is not defined
+2024-12-29 07:00:32,538 - backend.flask_api.app - ERROR - Failed to create application: name 'post_load' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 16, in <module>
+    class RegisterRequestSchema(Schema):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 42, in RegisterRequestSchema
+    @post_load
+     ^^^^^^^^^
+NameError: name 'post_load' is not defined
+2024-12-29 07:03:17,937 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:03:17,938 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:03:17,938 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:03:18,252 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:03:18,252 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:03:18,800 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:03:18,805 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:03:18,814 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:03:18,820 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:03:18,822 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:03:18,826 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:03:18,831 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:03:18,834 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:03:18,836 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:03:18,837 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:03:18,838 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:03:18,873 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-29 07:03:18,874 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-29 07:03:18,877 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:03:19,639 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:03:19,641 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:03:19,641 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:03:20,004 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:03:20,005 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:03:20,534 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:03:20,539 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:03:20,547 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:03:20,552 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:03:20,554 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:03:20,557 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:03:20,563 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:03:20,567 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:03:20,570 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:03:20,571 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:03:20,572 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:03:20,591 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 07:03:20,599 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 07:03:32,930 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:03:32,931 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:03:32,932 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:03:32] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:03:33,945 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:03:33,945 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:03:33,946 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:03:33] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:03:36,262 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:03:36,264 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:03:36,264 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:03:36] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:03:36,450 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.38s
+2024-12-29 07:03:36,450 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:03:36] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 07:03:40,285 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:03:40,286 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:03:40,286 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:03:40] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:05:10,520 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:05:10,522 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:05:10,523 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:05:10] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:05:11,535 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:05:11,537 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:05:11,538 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:05:11] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:05:13,856 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:05:13,859 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:05:13,860 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:05:13] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:08:48,540 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\blueprints\\auth\\routes.py', reloading
+2024-12-29 07:08:48,804 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:08:49,655 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:08:49,657 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:08:49,657 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:08:50,037 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:08:50,038 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:08:50,820 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:08:50,833 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:08:50,842 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:08:50,848 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:08:50,853 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:08:50,857 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:08:50,862 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:08:50,866 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:08:50,870 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:08:50,871 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:08:50,872 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:08:50,896 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 07:08:50,904 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 07:09:55,874 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\schemas\\auth.py', reloading
+2024-12-29 07:09:56,051 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:09:56,775 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:09:56,776 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:09:56,777 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:09:57,118 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:09:57,119 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:09:57,774 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:09:57,781 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:09:57,786 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:09:57,791 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:09:57,794 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:09:57,797 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:09:57,800 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:09:57,805 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:09:57,808 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:09:57,809 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:09:57,809 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:09:57,835 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 07:09:57,840 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 07:10:23,773 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\schemas\\auth.py', reloading
+2024-12-29 07:10:23,942 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:10:24,566 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:10:24,567 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:10:24,567 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:10:24,933 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:10:24,933 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:10:24,972 - backend.flask_api.app - ERROR - Error registering blueprints: name 'TokenResponseSchema' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 11, in <module>
+    class LoginResponseSchema(Schema):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 15, in LoginResponseSchema
+    tokens = fields.Nested(TokenResponseSchema, required=True)
+                           ^^^^^^^^^^^^^^^^^^^
+NameError: name 'TokenResponseSchema' is not defined
+2024-12-29 07:10:24,982 - backend.flask_api.app - ERROR - Failed to create application: name 'TokenResponseSchema' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 11, in <module>
+    class LoginResponseSchema(Schema):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py", line 15, in LoginResponseSchema
+    tokens = fields.Nested(TokenResponseSchema, required=True)
+                           ^^^^^^^^^^^^^^^^^^^
+NameError: name 'TokenResponseSchema' is not defined
+2024-12-29 07:14:39,981 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:14:39,982 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:14:39,983 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:14:40,280 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:14:40,280 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:14:40,318 - backend.flask_api.app - ERROR - Error registering blueprints: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+ImportError: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+2024-12-29 07:14:40,321 - backend.flask_api.app - ERROR - Failed to create application: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\__init__.py", line 5, in <module>
+    from .auth import (
+ImportError: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+2024-12-29 07:15:39,482 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:15:39,482 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:15:39,482 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:15:39,766 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:15:39,767 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:15:39,816 - backend.flask_api.app - ERROR - Error registering blueprints: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+ImportError: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+2024-12-29 07:15:39,819 - backend.flask_api.app - ERROR - Failed to create application: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 11, in <module>
+    from ...schemas.auth import (
+ImportError: cannot import name 'UserProfileUpdateRequestSchema' from 'backend.flask_api.app.schemas.auth' (C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\schemas\auth.py)
+2024-12-29 07:16:48,903 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:16:48,903 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:16:48,904 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:16:49,208 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:16:49,208 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:16:49,790 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:16:49,795 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:16:49,803 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:16:49,811 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:16:49,814 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:16:49,817 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:16:49,821 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:16:49,827 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:16:49,830 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:16:49,831 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:16:49,832 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:16:49,862 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-29 07:16:49,862 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-29 07:16:49,865 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 07:16:50,570 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 07:16:50,571 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 07:16:50,571 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 07:16:50,882 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 07:16:50,883 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 07:16:51,466 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 07:16:51,471 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 07:16:51,480 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 07:16:51,487 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 07:16:51,489 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 07:16:51,493 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 07:16:51,495 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 07:16:51,502 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 07:16:51,504 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 07:16:51,505 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 07:16:51,506 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 07:16:51,526 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 07:16:51,535 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 07:16:56,152 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:16:56,155 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:16:56,156 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:16:56] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:16:59,443 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:16:59,444 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:16:59,445 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:16:59] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:17:00,768 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:17:00,770 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:17:00,770 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:17:00] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:17:02,784 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:17:02,786 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:17:02,787 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:17:02] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:17:07,118 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:17:07,119 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:17:07,119 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:17:07] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:18:12,530 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.29s
+2024-12-29 07:18:12,531 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:18:12] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 07:19:53,670 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:19:53,674 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:19:53,674 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:19:53] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:19:54,686 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:19:54,687 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:19:54,688 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:19:54] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:19:57,017 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:19:57,019 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:19:57,020 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:19:57] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:29:42,220 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:29:42,222 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-29 07:29:42,223 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:29:42] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-29 07:29:42,530 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:29:42,532 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:29:42,533 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:29:42] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:30:17,689 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:30:17,690 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:30:17,691 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:30:17] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 07:30:32,924 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 07:30:32,926 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 07:30:32,926 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 07:30:32] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:32,896 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:32,898 - request_logger - INFO - Request: OPTIONS /api/v1/pipelines Status: 200 Duration: 0.00s
+2024-12-29 11:17:32,899 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:32] "OPTIONS /api/v1/pipelines HTTP/1.1" 200 -
+2024-12-29 11:17:33,327 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:33,328 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:33,329 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:33] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:34,339 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:34,340 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:34,340 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:34] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:36,362 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:36,364 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:36,365 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:36] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:37,383 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:37,385 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:37,385 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:37] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:39,706 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:39,707 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:39,708 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:39] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:43,731 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:17:43,734 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:17:43,736 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:43] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:17:43,869 - request_logger - INFO - Request: OPTIONS /api/v1/auth/login Status: 200 Duration: 0.00s
+2024-12-29 11:17:43,869 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:43] "OPTIONS /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 11:17:44,347 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.17s
+2024-12-29 11:17:44,347 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:17:44] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 11:21:48,149 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:21:48,150 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:21:48,151 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:21:48] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:21:49,158 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:21:49,158 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:21:49,159 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:21:49] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:21:51,478 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:21:51,480 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:21:51,481 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:21:51] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:21:55,501 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:21:55,503 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:21:55,503 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:21:55] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:28:26,416 - request_logger - INFO - Request: OPTIONS /api/v1/auth/profile Status: 200 Duration: 0.00s
+2024-12-29 11:28:26,417 - request_logger - INFO - Request: OPTIONS /api/v1/auth/profile Status: 200 Duration: 0.00s
+2024-12-29 11:28:26,418 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "OPTIONS /api/v1/auth/profile HTTP/1.1" 200 -
+2024-12-29 11:28:26,418 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:28:26,418 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "OPTIONS /api/v1/auth/profile HTTP/1.1" 200 -
+2024-12-29 11:28:26,419 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:28:26,420 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:28:26,447 - request_logger - INFO - Request: OPTIONS /api/v1/auth/profile Status: 200 Duration: 0.00s
+2024-12-29 11:28:26,448 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "OPTIONS /api/v1/auth/profile HTTP/1.1" 200 -
+2024-12-29 11:28:26,449 - request_logger - INFO - Request: OPTIONS /api/v1/auth/profile Status: 200 Duration: 0.00s
+2024-12-29 11:28:26,449 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "OPTIONS /api/v1/auth/profile HTTP/1.1" 200 -
+2024-12-29 11:28:26,679 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:26,699 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.02s
+2024-12-29 11:28:26,699 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:26,726 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:26,728 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:26,728 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:26] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:27,011 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:27,018 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:28:27,019 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:27] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:27,042 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:27,046 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:27,047 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:27] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:27,951 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:28:27,952 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:28:27,952 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:27] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:28:28,262 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:28,265 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:28,265 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:28,574 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:28,577 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:28,577 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:28,883 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:28,885 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:28,885 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:29,193 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:29,199 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:28:29,199 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:29] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:30,005 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:30,007 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:30,007 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:30,270 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:30,272 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:30,273 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:30,703 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:30,706 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:30,707 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:31,015 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:31,017 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:31,018 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:31] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:33,010 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:33,013 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:33,013 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:33] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:33,275 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:33,277 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:33,277 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:33] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:33,693 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:33,696 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:33,696 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:33] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:34,003 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:34,004 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:34,005 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:34] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:38,014 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:38,016 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:38,018 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:38] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:38,282 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:38,288 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:28:38,288 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:38] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:38,326 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:38,328 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:28:38,328 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:38] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:28:38,704 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:28:38,709 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:28:38,710 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:28:38] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:56:46,016 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:46,018 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:56:46,018 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:46] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:56:48,081 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:48,083 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.06s
+2024-12-29 11:56:48,083 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:48] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:56:50,683 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:50,684 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:56:50,684 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:50] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:56:51,694 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:51,698 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:56:51,698 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:51] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:56:54,011 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:54,014 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:56:54,015 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:54] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:56:56,331 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.10s
+2024-12-29 11:56:56,332 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:56] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 11:56:58,342 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:56:58,345 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:56:58,346 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:56:58] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:57:15,495 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.12s
+2024-12-29 11:57:15,496 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:57:15] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 11:57:50,426 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:57:50,426 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:57:50,427 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:57:50] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:57:51,444 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:57:51,446 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:57:51,447 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:57:51] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:57:53,779 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:57:53,780 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:57:53,780 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:57:53] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:57:57,786 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:57:57,787 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:57:57,788 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:57:57] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:16,396 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:16,399 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:16,400 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:16] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:17,406 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:17,407 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:17,407 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:17] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:19,734 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:19,736 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:19,737 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:19] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:27,688 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:27,690 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:27,690 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:27] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:28,003 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:28,004 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:28,006 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:28,014 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:28,014 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:28] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:28,016 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:28,328 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:28,332 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:28,333 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:28,641 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:28,647 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:28,648 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:28,963 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:28,967 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:28,968 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:28] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:29,276 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:29,283 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:29,284 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:29] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:29,337 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:29,338 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:29,338 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:29] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:29,603 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:29,608 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:29,609 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:29] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:29,928 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:29,931 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:29,931 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:29] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:30,238 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:30,241 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:30,241 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:30,550 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:30,556 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:30,557 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:30,872 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:30,874 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:30,875 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:30] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:31,180 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:31,185 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:31,186 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:31] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:31,667 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:31,670 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:31,671 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:31] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:31,933 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:31,937 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:31,938 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:31] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:31,943 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:31,949 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:31,950 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:31] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:32,554 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:32,558 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:32,559 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:32] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:32,821 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:32,827 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:32,827 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:32] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:32,883 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:32,889 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:32,890 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:32] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:33,506 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:33,513 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:33,514 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:33] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:35,681 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:35,683 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:35,685 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:35] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:36,258 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:36,262 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:36,263 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:36] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:36,524 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:36,527 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:36,527 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:36] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:36,573 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:36,575 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:36,575 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:36] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:37,147 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:37,152 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:37,153 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:37] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:37,412 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:37,416 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.00s
+2024-12-29 11:58:37,416 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:37] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:37,523 - backend.flask_api.app.blueprints.auth.routes - ERROR - Profile fetch error: current_user
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 187, in get_profile
+    current_user = g.current_user.id
+                   ^^^^^^^^^^^^^^
+  File "C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask\ctx.py", line 56, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: current_user
+2024-12-29 11:58:37,530 - request_logger - INFO - Request: GET /api/v1/auth/profile Status: 500 Duration: 0.01s
+2024-12-29 11:58:37,531 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:37] "[35m[1mGET /api/v1/auth/profile HTTP/1.1[0m" 500 -
+2024-12-29 11:58:41,083 - request_logger - INFO - Request: POST /api/v1/auth/login Status: 200 Duration: 0.12s
+2024-12-29 11:58:41,084 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:41] "POST /api/v1/auth/login HTTP/1.1" 200 -
+2024-12-29 11:58:48,933 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:48,935 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:48,935 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:48] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 11:58:50,257 - backend.flask_api.app.middleware.error_handler - ERROR - Not found error: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2024-12-29 11:58:50,259 - request_logger - INFO - Request: GET /api/v1/pipelines Status: 404 Duration: 0.00s
+2024-12-29 11:58:50,260 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 11:58:50] "[33mGET /api/v1/pipelines HTTP/1.1[0m" 404 -
+2024-12-29 12:02:40,569 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\middleware\\logging.py', reloading
+2024-12-29 12:02:40,779 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 12:02:41,792 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 12:02:41,792 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 12:02:41,792 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 12:02:42,046 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 12:02:42,047 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 12:02:42,758 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 12:02:42,763 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 12:02:42,765 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 12:02:42,771 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 12:02:42,773 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 12:02:42,775 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 12:02:42,777 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 12:02:42,780 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 12:02:42,782 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 12:02:42,783 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 12:02:42,783 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 12:02:42,805 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 12:02:42,810 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 12:02:47,115 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\middleware\\logging.py', reloading
+2024-12-29 12:02:47,260 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 12:02:47,713 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 12:02:47,714 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 12:02:47,714 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 12:02:48,046 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 12:02:48,046 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 12:02:48,479 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 12:02:48,484 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 12:02:48,488 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 12:02:48,492 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 12:02:48,494 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 12:02:48,496 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 12:02:48,498 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 12:02:48,501 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 12:02:48,502 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 12:02:48,503 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 12:02:48,503 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 12:02:48,515 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 12:02:48,520 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 12:06:20,706 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\middleware\\auth_middleware.py', reloading
+2024-12-29 12:06:20,914 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 12:06:21,431 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 12:06:21,432 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 12:06:21,432 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 12:06:21,657 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 12:06:21,657 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 12:06:22,120 - backend.flask_api.app - INFO - Registered public blueprint: auth at /api/v1/auth
+2024-12-29 12:06:22,126 - backend.flask_api.app - INFO - Registered protected blueprint: data_sources at /api/v1/sources
+2024-12-29 12:06:22,129 - backend.flask_api.app - INFO - Registered protected blueprint: pipeline at /pipelines
+2024-12-29 12:06:22,133 - backend.flask_api.app - INFO - Registered protected blueprint: analysis at /api/v1/analysis
+2024-12-29 12:06:22,136 - backend.flask_api.app - INFO - Registered protected blueprint: recommendations at /api/v1/recommendations
+2024-12-29 12:06:22,138 - backend.flask_api.app - INFO - Registered protected blueprint: decisions at /api/v1/decisions
+2024-12-29 12:06:22,141 - backend.flask_api.app - INFO - Registered protected blueprint: monitoring at /api/v1/monitoring
+2024-12-29 12:06:22,144 - backend.flask_api.app - INFO - Registered protected blueprint: reports at /api/v1/reports
+2024-12-29 12:06:22,146 - backend.flask_api.app - INFO - Registered protected blueprint: settings at /api/v1/settings
+2024-12-29 12:06:22,146 - backend.flask_api.app - INFO - All blueprints registered successfully
+2024-12-29 12:06:22,147 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2024-12-29 12:06:22,161 - werkzeug - WARNING -  * Debugger is active!
+2024-12-29 12:06:22,165 - werkzeug - INFO -  * Debugger PIN: 734-212-460
+2024-12-29 12:07:28,658 - werkzeug - INFO -  * Detected change in 'C:\\Users\\admin\\Desktop\\end-2-end-data-pipeline\\backend\\backend\\flask_api\\app\\blueprints\\auth\\routes.py', reloading
+2024-12-29 12:07:28,798 - werkzeug - INFO -  * Restarting with stat
+2024-12-29 12:07:29,284 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 12:07:29,285 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 12:07:29,285 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 12:07:29,510 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 12:07:29,511 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 12:07:29,561 - backend.flask_api.app - ERROR - Error registering blueprints: name 'jwt_required_with_user' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 184, in <module>
+    @jwt_required_with_user()
+     ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'jwt_required_with_user' is not defined
+2024-12-29 12:07:29,572 - backend.flask_api.app - ERROR - Failed to create application: name 'jwt_required_with_user' is not defined
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 184, in <module>
+    @jwt_required_with_user()
+     ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'jwt_required_with_user' is not defined
+2024-12-29 12:12:42,445 - backend.flask_api.app - INFO - Application paths configured successfully
+2024-12-29 12:12:42,445 - backend.flask_api.app - INFO - CORS initialized successfully
+2024-12-29 12:12:42,446 - backend.flask_api.app - INFO - JWT initialized successfully
+2024-12-29 12:12:42,667 - backend.flask_api.app - INFO - Database initialized successfully
+2024-12-29 12:12:42,667 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2024-12-29 12:12:42,681 - backend.flask_api.app - ERROR - Error registering blueprints: cannot import name 'jwt_required_with_user' from 'flask_jwt_extended' (C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask_jwt_extended\__init__.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 3, in <module>
+    from flask_jwt_extended import (
+ImportError: cannot import name 'jwt_required_with_user' from 'flask_jwt_extended' (C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask_jwt_extended\__init__.py)
+2024-12-29 12:12:42,683 - backend.flask_api.app - ERROR - Failed to create application: cannot import name 'jwt_required_with_user' from 'flask_jwt_extended' (C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask_jwt_extended\__init__.py)
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 269, in create_app
+    register_blueprints(app)
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\__init__.py", line 173, in register_blueprints
+    from backend.flask_api.app.blueprints.auth.routes import auth_bp
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\backend\flask_api\app\blueprints\auth\routes.py", line 3, in <module>
+    from flask_jwt_extended import (
+ImportError: cannot import name 'jwt_required_with_user' from 'flask_jwt_extended' (C:\Users\admin\AppData\Local\pypoetry\Cache\virtualenvs\backend-mncTA70r-py3.12\Lib\site-packages\flask_jwt_extended\__init__.py)

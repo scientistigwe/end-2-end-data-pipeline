@@ -1,8 +1,9 @@
-// frontend\src\auth\pages\RegisterPage.tsx
+// auth/pages/RegisterPage.tsx
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { RegisterForm } from "../components/RegisterForm";
 import { authApi } from "../api/authApi";
+import { getErrorMessage, isAuthError } from "../utils/errorHandlings";
 import type { RegisterData } from "../types/auth";
 
 const RegisterPage: React.FC = () => {
@@ -12,20 +13,26 @@ const RegisterPage: React.FC = () => {
   const handleRegister = async (data: RegisterData) => {
     setIsLoading(true);
     try {
-      console.log("Attempting to register with data:", data); // Debug log
-      const response = await authApi.register(data);
-      console.log("Registration response:", response); // Debug log
+      await authApi.register(data);
       navigate("/login", {
         replace: true,
         state: { message: "Registration successful! Please log in." },
       });
     } catch (error) {
-      console.error("Registration error:", error); // Detailed error logging
-      if (error instanceof Error) {
-        throw new Error(error.message);
-      } else {
-        throw new Error("An unexpected error occurred during registration");
+      console.error("Registration error:", error);
+
+      // You can handle specific error cases
+      if (isAuthError(error)) {
+        if (error.response?.status === 409) {
+          throw new Error("An account with this email already exists");
+        }
+        if (error.response?.data.error?.details) {
+          throw new Error(getErrorMessage(error));
+        }
       }
+
+      // Default error
+      throw new Error("An unexpected error occurred during registration");
     } finally {
       setIsLoading(false);
     }

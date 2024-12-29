@@ -1,27 +1,29 @@
-// auth/types/auth.ts
+// frontend\src\auth\types\auth.ts
+import type { ApiResponse, ApiError } from '@/common/types/api';
 import type { User } from '@/common/types/user';
+import type { BaseSessionInfo } from '@/common/types/auth';
+import type { AxiosError } from 'axios';
 
-// Core auth status
-export type AuthStatus = 'authenticated' | 'unauthenticated' | 'loading';
-
-// Token management
+// Auth Tokens Interface
 export interface AuthTokens {
-  accessToken: string | null;
-  refreshToken: string | null;
-  expiresIn: number | null;
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
 }
 
-// Core auth state interface
+// Auth Status and State
+export type AuthStatus = 'authenticated' | 'unauthenticated' | 'loading';
+
 export interface AuthState {
   user: User | null;
   status: AuthStatus;
   error: string | null;
-  tokens: AuthTokens;
+  tokens: AuthTokens | null;
   isLoading: boolean;
   initialized: boolean;
 }
 
-// Authentication operations
+// Request Types
 export interface LoginCredentials {
   email: string;
   password: string;
@@ -31,84 +33,118 @@ export interface LoginCredentials {
 export interface RegisterData {
   email: string;
   password: string;
+  username: string;
   firstName: string;
   lastName: string;
-  username?: string;
-}
-
-// Password management
-export interface PasswordOperations {
-  resetPassword: {
-    email: string;
-    token: string;
-    newPassword: string;
-  };
-  changePassword: {
-    currentPassword: string;
-    newPassword: string;
-  };
-  verifyPassword: {
-    password: string;
-  };
-}
-
-// Session management
-export interface SessionInfo {
-  lastActive: string;
-  deviceInfo?: string;
-  ipAddress?: string;
-}
-
-// Auth preferences
-export interface AuthPreferences {
-  enableTwoFactor: boolean;
-  notifyOnNewLogin: boolean;
-  sessionTimeout?: number;
-}
-
-// Auth events for tracking
-export type AuthEventType = 
-  | 'login' 
-  | 'logout' 
-  | 'password_reset' 
-  | 'token_refresh'
-  | 'session_expired';
-
-export interface AuthEvent {
-  type: AuthEventType;
-  timestamp: string;
-  userId?: string;
-  metadata?: Record<string, any>;
-}
-
-export interface ResetPasswordData {
-  email: string;
-  token: string;
-  password: string;
-  newPassword: string;
-  confirmPassword: string;
 }
 
 export interface ChangePasswordData {
   currentPassword: string;
   newPassword: string;
-  confirmPassword: string;
+}
+
+export interface ResetPasswordData {
+  token: string;
+  newPassword: string;
 }
 
 export interface VerifyEmailData {
   token: string;
 }
 
-export interface AuthResponse extends AuthTokens {
+// Response Types
+export interface AuthBaseResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface AuthResponse extends AuthBaseResponse {
+  data: {
+    user: User;
+    tokens: AuthTokens;
+  };
+}
+
+export interface AuthApiResponse<T> extends ApiResponse<T> {
+  success: boolean;
+  message: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  tokens: AuthTokens;
   user: User;
 }
 
+export interface RegisterResponse extends AuthApiResponse<{
+  user: User;
+  tokens: AuthTokens;
+}> {}
+
+// Error Types
+export interface ValidationErrors {
+  [field: string]: string[];
+}
+
+export interface ApiErrorData {
+  success: false;
+  message: string;
+  error?: {
+    details?: ValidationErrors;
+    code?: string;
+  };
+}
+
+export type AuthAxiosError = AxiosError<ApiErrorData>;
+
+export interface AuthValidationErrors {
+  [field: string]: string[];
+}
+
+export interface AuthApiError extends ApiError {
+  details?: AuthValidationErrors;
+}
+
+export interface AuthErrorResponse {
+  response: {
+    data: {
+      success: false;
+      message: string;
+      error?: AuthApiError;
+    };
+    status: number;
+  };
+}
+
+// Profile Types
+export interface ProfileUpdateData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImage?: string;
+}
+
+// Session Types
+export interface AuthSessionInfo extends BaseSessionInfo {
+  deviceInfo?: string;
+  ipAddress?: string;
+}
+
+// Context Type
 export interface AuthContextType {
   user: User | null;
+  error: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  isInitialized: boolean;
+  login: (credentials: LoginCredentials) => Promise<LoginResponse>;
+  register: (data: RegisterData) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
+  refreshToken: () => Promise<AuthTokens>;
+  updateProfile: (data: ProfileUpdateData) => Promise<User>;
+  changePassword: (data: ChangePasswordData) => Promise<void>;
+  resetPassword: (data: ResetPasswordData) => Promise<void>;
+  verifyEmail: (data: VerifyEmailData) => Promise<void>;
+  handleAuthError: (error: unknown) => string;
 }

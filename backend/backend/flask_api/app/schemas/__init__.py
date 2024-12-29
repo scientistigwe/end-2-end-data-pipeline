@@ -14,8 +14,7 @@ from .auth import (
     EmailVerificationResponseSchema,
     ChangePasswordRequestSchema,
     ChangePasswordResponseSchema,
-    UserProfileResponseSchema,
-    UserProfileUpdateRequestSchema
+    UserProfileResponseSchema
 )
 
 # Pipeline schemas

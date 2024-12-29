@@ -20,8 +20,7 @@ from ...schemas.auth import (
     EmailVerificationResponseSchema,
     ChangePasswordRequestSchema,
     ChangePasswordResponseSchema,
-    UserProfileResponseSchema,
-    UserProfileUpdateRequestSchema
+    UserProfileResponseSchema
 )
 from ...services.auth import AuthService
 from ...utils.response_builder import ResponseBuilder
@@ -83,21 +82,36 @@ def login():
         
         auth_service.update_last_login(user.id)
         
-        return ResponseBuilder.success(
-            LoginResponseSchema().dump({
-                'tokens': {
-                    'access_token': access_token,
-                    'refresh_token': refresh_token
-                },
-                'user': user
-            })
-        )
+        # Structure the response to match frontend expectations
+        response_data = {
+            'success': True,
+            'message': 'Login successful',
+            'user': {
+                'id': str(user.id),
+                'email': user.email,
+                'full_name': user.full_name,
+                'role': user.role,
+                'status': user.status,
+                'email_verified': user.email_verified,
+                'created_at': user.created_at.isoformat() if user.created_at else None,
+                'updated_at': user.updated_at.isoformat() if user.updated_at else None,
+                'last_login': datetime.utcnow().isoformat()
+            },
+            'tokens': {
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'token_type': 'bearer'
+            }
+        }
+        
+        return ResponseBuilder.success(response_data)
+
     except ValidationError as e:
         return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
     except Exception as e:
         logger.error(f"Login error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Login failed", status_code=500)
-
+    
 # Protected Routes (JWT Required)
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)  # Keep this as it's specifically for refresh tokens
@@ -167,40 +181,58 @@ def reset_password():
 
 # Protected User Profile Routes
 @auth_bp.route('/profile', methods=['GET'])
+@jwt_required()
 def get_profile():
     """Get user's profile information."""
     try:
-        current_user = g.current_user.id
+        current_user_id = get_jwt_identity()  # Get user identity from JWT
         auth_service = get_auth_service()
-        user = auth_service.get_user_profile(current_user)
-        
+        user = auth_service.get_user_profile(current_user_id)
         return ResponseBuilder.success(
             UserProfileResponseSchema().dump(user)
         )
     except Exception as e:
         logger.error(f"Profile fetch error: {str(e)}", exc_info=True)
         return ResponseBuilder.error("Failed to fetch profile", status_code=500)
-
+    
 @auth_bp.route('/profile', methods=['PUT'])
+@jwt_required()
 def update_profile():
     """Update user's profile information."""
-    try:
-        schema = UserProfileUpdateRequestSchema()
-        data = schema.load(request.get_json())
-        current_user = g.current_user.id
-        
-        auth_service = get_auth_service()
-        updated_user = auth_service.update_user_profile(current_user, data)
-        
-        return ResponseBuilder.success(
-            UserProfileResponseSchema().dump(updated_user)
-        )
-    except ValidationError as e:
-        return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
-    except Exception as e:
-        logger.error(f"Profile update error: {str(e)}", exc_info=True)
-        return ResponseBuilder.error("Failed to update profile", status_code=500)
+    schema = UserProfileResponseSchema()
+    auth_service = get_auth_service()
 
+    try:
+        # Validate and deserialize incoming data
+        data = schema.load(request.get_json())
+
+        # Fetch current user from the JWT identity
+        current_user_id = get_jwt_identity()
+
+        # Update user profile
+        updated_user = auth_service.update_user_profile(current_user_id, data)
+
+        # Serialize and return the updated user profile
+        return ResponseBuilder.success(schema.dump(updated_user))
+    
+    except ValidationError as validation_error:
+        # Handle validation errors with specific details
+        return ResponseBuilder.error(
+            "Validation error",
+            details=validation_error.messages,
+            status_code=400
+        )
+    
+    except Exception as generic_error:
+        # Log unexpected exceptions for debugging
+        logger.error(
+            f"Error updating profile: {str(generic_error)}", exc_info=True
+        )
+        return ResponseBuilder.error(
+            "Failed to update profile",
+            status_code=500
+        )
+    
 # Error handlers
 @auth_bp.errorhandler(401)
 def unauthorized_error(error):

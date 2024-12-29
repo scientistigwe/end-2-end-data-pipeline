@@ -5,6 +5,7 @@ from flask_cors import CORS
 import logging
 from typing import Dict, Any, Tuple, List
 from .config.config import config_by_name
+from .middleware.auth_middleware import auth_middleware
 from .middleware.logging import RequestLoggingMiddleware
 from .middleware.error_handler import register_error_handlers
 from .auth.jwt_manager import JWTTokenManager
@@ -289,6 +290,9 @@ class ApplicationFactory:
             self._configure_security()
             self._initialize_documentation()
             self._register_health_check()
+
+            # Register middleware
+            self.app.before_request(auth_middleware())
 
             logger.info(f"Application initialized successfully in {config_name} mode")
             return self.app

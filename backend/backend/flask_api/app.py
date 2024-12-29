@@ -13,13 +13,21 @@ from .openapi.documentation import APIDocumentation
 from database.config import init_db
 from utils.route_registry import APIRoutes
 
-# Import services
+# Import all services
+from .services.auth import AuthService
 from .services.file_service import FileService
 from .services.api_service import APIService
 from .services.db_service import DBService
 from .services.s3_service import S3Service
 from .services.stream_service import StreamService
 from .services.pipeline_service import PipelineService
+from .services.quality import QualityService
+from .services.insight import InsightService
+from .services.recommendation import RecommendationService
+from .services.decision import DecisionService
+from .services.monitoring import MonitoringService
+from .services.reports import ReportService
+from .services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +59,18 @@ class ApplicationFactory:
         from .blueprints.data_sources.routes import create_data_source_blueprint
         from .blueprints.pipeline.routes import create_pipeline_blueprint
         from .blueprints.analysis.routes import create_analysis_blueprint
-        from .blueprints.recommendation_decision.routes import create_recommendation_blueprint
+        from .blueprints.recommendations.routes import create_recommendation_blueprint
+        from .blueprints.decisions.routes import create_decision_blueprint
+        from .blueprints.monitoring.routes import create_monitoring_blueprint
+        from .blueprints.reports.routes import create_reports_blueprint
+        from .blueprints.settings.routes import create_settings_blueprint
 
         return [
             (
-                create_auth_blueprint(db_session=self.db_session),
+                create_auth_blueprint(
+                    auth_service=self.services['auth_service'],
+                    db_session=self.db_session
+                ),
                 self._get_api_path(APIRoutes.AUTH_LOGIN).rsplit('/', 1)[0]
             ),
             (
@@ -71,24 +86,53 @@ class ApplicationFactory:
             ),
             (
                 create_pipeline_blueprint(
-                    self.services['pipeline_service'],
+                    pipeline_service=self.services['pipeline_service'],
                     db_session=self.db_session
                 ),
                 self._get_api_path(APIRoutes.PIPELINE_LIST).rsplit('/', 1)[0]
             ),
             (
                 create_analysis_blueprint(
-                    self.services['pipeline_service'],
+                    quality_service=self.services['quality_service'],
+                    insight_service=self.services['insight_service'],
                     db_session=self.db_session
                 ),
                 self._get_api_path(APIRoutes.ANALYSIS_QUALITY_START).rsplit('/', 1)[0]
             ),
             (
                 create_recommendation_blueprint(
-                    self.services['pipeline_service'],
+                    recommendation_service=self.services['recommendation_service'],
                     db_session=self.db_session
                 ),
                 self._get_api_path(APIRoutes.RECOMMENDATIONS_LIST).rsplit('/', 1)[0]
+            ),
+            (
+                create_decision_blueprint(
+                    decision_service=self.services['decision_service'],
+                    db_session=self.db_session
+                ),
+                self._get_api_path(APIRoutes.DECISIONS_LIST).rsplit('/', 1)[0]
+            ),
+            (
+                create_monitoring_blueprint(
+                    monitoring_service=self.services['monitoring_service'],
+                    db_session=self.db_session
+                ),
+                self._get_api_path(APIRoutes.MONITORING_START).rsplit('/', 1)[0]
+            ),
+            (
+                create_reports_blueprint(
+                    report_service=self.services['report_service'],
+                    db_session=self.db_session
+                ),
+                self._get_api_path(APIRoutes.REPORTS_LIST).rsplit('/', 1)[0]
+            ),
+            (
+                create_settings_blueprint(
+                    settings_service=self.services['settings_service'],
+                    db_session=self.db_session
+                ),
+                self._get_api_path(APIRoutes.SETTINGS_PROFILE).rsplit('/', 1)[0]
             )
         ]
 
@@ -141,12 +185,12 @@ class ApplicationFactory:
         """Initialize database connection and session management."""
         try:
             engine, SessionLocal = init_db(self.app)
-            self.db_session = SessionLocal
+            self.db_session = SessionLocal()
 
             @self.app.before_request
             def before_request():
                 """Create database session for each request."""
-                g.db = self.db_session()
+                g.db = self.db_session
 
             @self.app.teardown_appcontext
             def teardown_db(exc):
@@ -164,7 +208,11 @@ class ApplicationFactory:
     def _initialize_components(self) -> None:
         """Initialize application components."""
         try:
-            # Initialize your components here
+            # Initialize your components here (message broker, orchestrator, etc.)
+            self.components = {
+                'message_broker': None,  # Initialize your message broker
+                'orchestrator': None,    # Initialize your orchestrator
+            }
             logger.info("Components initialized successfully")
         except Exception as e:
             logger.error(f"Component initialization error: {str(e)}", exc_info=True)
@@ -174,19 +222,27 @@ class ApplicationFactory:
         """Initialize all application services with dependencies."""
         try:
             service_configs = {
+                'auth_service': AuthService,
                 'file_service': FileService,
                 'api_service': APIService,
                 'db_service': DBService,
                 's3_service': S3Service,
                 'stream_service': StreamService,
-                'pipeline_service': PipelineService
+                'pipeline_service': PipelineService,
+                'quality_service': QualityService,
+                'insight_service': InsightService,
+                'recommendation_service': RecommendationService,
+                'decision_service': DecisionService,
+                'monitoring_service': MonitoringService,
+                'report_service': ReportService,
+                'settings_service': SettingsService
             }
 
             for service_name, ServiceClass in service_configs.items():
                 self.services[service_name] = ServiceClass(
+                    db_session=self.db_session,
                     message_broker=self.components.get('message_broker'),
-                    orchestrator=self.components.get('orchestrator'),
-                    db_session=self.db_session
+                    orchestrator=self.components.get('orchestrator')
                 )
 
             self.app.services = self.services
@@ -202,6 +258,7 @@ class ApplicationFactory:
             blueprint_configs = self._get_blueprint_routes()
             
             for blueprint, url_prefix in blueprint_configs:
+                logger.info(f"Registering blueprint with prefix: {url_prefix}")
                 self.app.register_blueprint(blueprint, url_prefix=url_prefix)
                 logger.info(f"Registered blueprint at: {url_prefix}")
 

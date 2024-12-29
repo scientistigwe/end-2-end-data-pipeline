@@ -90,8 +90,13 @@ export class BaseClient {
   public async executeGet<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
-  ): Promise<T> {
-    return this.get<T>(endpoint, config);
+  ): Promise<ApiResponse<T>> {
+    const response = await this.get<T>(endpoint, config);
+    return {
+      data: response,
+      status: HTTP_STATUS.OK,
+      message: undefined
+    };
   }
 
   public async executePost<T>(

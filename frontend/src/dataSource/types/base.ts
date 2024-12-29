@@ -48,3 +48,9 @@ export interface ValidationRule {
   severity: DataSourceValidationSeverity;
   message: string;
 }
+
+export interface PreviewData {
+  columns: string[];
+  data: unknown[][];
+  total?: number;
+}

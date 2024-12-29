@@ -13,7 +13,7 @@ import {
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/sources", label: "Data Sources", icon: Database },
+  { path: "/data-sources", label: "Data Sources", icon: Database },
   { path: "/pipelines", label: "Pipelines", icon: GitBranch },
   { path: "/analysis", label: "Analysis", icon: LineChart },
   { path: "/monitoring", label: "Monitoring", icon: Radio },

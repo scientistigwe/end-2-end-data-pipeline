@@ -33,7 +33,7 @@ interface FormState {
 const PipelinesPage: React.FC = () => {
   // Global hooks
   const {
-    pipelines,
+    pipelines = [],
     createPipeline: { mutateAsync: createPipeline },
     isLoading,
   } = usePipeline();
@@ -129,16 +129,21 @@ const PipelinesPage: React.FC = () => {
     });
   }, []);
 
-  // Memoized filtered pipelines
+  // Memoized filtered pipelines with type safety
   const filteredPipelines = useMemo(() => {
-    if (!pipelines) return [];
+    // Ensure pipelines is an array
+    const pipelineArray = Array.isArray(pipelines) ? pipelines : [];
 
-    return pipelines.filter((pipeline) => {
+    return pipelineArray.filter((pipeline) => {
+      // Add null checks
+      if (!pipeline) return false;
+
       const statusMatch = !filters.status || pipeline.status === filters.status;
       const modeMatch = !filters.mode || pipeline.mode === filters.mode;
       const searchMatch =
         !filters.search ||
-        pipeline.name.toLowerCase().includes(filters.search.toLowerCase());
+        (pipeline.name &&
+          pipeline.name.toLowerCase().includes(filters.search.toLowerCase()));
 
       return statusMatch && modeMatch && searchMatch;
     });

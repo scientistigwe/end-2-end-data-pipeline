@@ -1,10 +1,10 @@
+// frontend\src\common\store\ui\uiSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { Theme, Modal, Notification, TableConfig } from '../../types/ui';
 
 export interface UIState {
   theme: Theme;
   sidebarCollapsed: boolean;
-  sidebarOpen: boolean;
   sidebarWidth: number;
   activeModals: Modal[];
   notifications: Notification[];
@@ -22,7 +22,6 @@ export interface UIState {
 const initialState: UIState = {
   theme: 'light',
   sidebarCollapsed: false,
-  sidebarOpen: true,
   sidebarWidth: 256,
   activeModals: [],
   notifications: [],

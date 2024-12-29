@@ -19,12 +19,10 @@ import {
   deleteDataSource,
   createDataSource,
 } from "../store/dataSourceSlice";
-import type { AppDispatch, RootState } from "@/store/store";
-import type {
-  DataSourceType,
-  DataSourceConfig,
-  ApiSourceConfig, // Import ApiSourceConfig type
-} from "../types/base";
+import type { AppDispatch } from "@/store/store";
+import type { RootState } from "@/store/rootReducer";
+import type { BaseDataSourceConfig, BaseMetadata } from "../types/base";
+import { DataSourceType } from "../types/base";
 
 // Components
 import {
@@ -52,31 +50,31 @@ interface SourceTypeConfig {
 
 const SOURCE_TYPES: SourceTypeConfig[] = [
   {
-    id: "file",
+    id: DataSourceType.FILE,
     label: "File Upload",
     description: "Upload and process local files",
     icon: <FileIcon className="h-5 w-5" />,
   },
   {
-    id: "api",
+    id: DataSourceType.API,
     label: "API",
     description: "Connect to REST or GraphQL APIs",
     icon: <GlobeIcon className="h-5 w-5" />,
   },
   {
-    id: "database",
+    id: DataSourceType.DATABASE,
     label: "Database",
     description: "Connect to SQL and NoSQL databases",
     icon: <DatabaseIcon className="h-5 w-5" />,
   },
   {
-    id: "s3",
+    id: DataSourceType.S3,
     label: "S3 Storage",
     description: "Access cloud storage services",
     icon: <CloudIcon className="h-5 w-5" />,
   },
   {
-    id: "stream",
+    id: DataSourceType.STREAM,
     label: "Data Stream",
     description: "Process real-time data streams",
     icon: <ActivityIcon className="h-5 w-5" />,
@@ -84,6 +82,7 @@ const SOURCE_TYPES: SourceTypeConfig[] = [
 ];
 
 const DataSourcesPage: React.FC = () => {
+  console.log("DataSourcesPage rendering");
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const { type } = useParams<{ type?: string }>();
@@ -98,17 +97,19 @@ const DataSourcesPage: React.FC = () => {
   const currentType = type as DataSourceType | undefined;
 
   useEffect(() => {
+    console.log("DataSourcesPage mounted");
     if (!currentType && SOURCE_TYPES.length > 0) {
-      navigate(`/sources/${SOURCE_TYPES[0].id}`);
+      navigate(`/data-sources/${SOURCE_TYPES[0].id}`);
     }
   }, [currentType, navigate]);
 
   useEffect(() => {
+    console.log("Fetching data sources");
     dispatch(fetchDataSources());
   }, [dispatch]);
 
   const handleTypeChange = (newType: DataSourceType) => {
-    navigate(`/sources/${newType}`);
+    navigate(`/data-sources/${newType}`);
     setIsCreating(false);
   };
 
@@ -120,9 +121,7 @@ const DataSourcesPage: React.FC = () => {
     setIsCreating(false);
   };
 
-  const handleSourceSubmit = async (
-    config: ApiSourceConfig | DataSourceConfig
-  ) => {
+  const handleSourceSubmit = async (config: BaseDataSourceConfig) => {
     try {
       await dispatch(createDataSource(config)).unwrap();
       setIsCreating(false);
@@ -149,31 +148,11 @@ const DataSourcesPage: React.FC = () => {
     };
 
     const forms: Record<DataSourceType, React.ReactNode> = {
-      file: <FileSourceForm {...formProps} />,
-      api: (
-        <ApiSourceForm
-          onSubmit={handleSourceSubmit}
-          onCancel={handleCancelCreate}
-        />
-      ),
-      database: (
-        <DBSourceForm
-          onSubmit={handleSourceSubmit}
-          onCancel={handleCancelCreate}
-        />
-      ),
-      s3: (
-        <S3SourceForm
-          onSubmit={handleSourceSubmit}
-          onCancel={handleCancelCreate}
-        />
-      ),
-      stream: (
-        <StreamSourceForm
-          onSubmit={handleSourceSubmit}
-          onCancel={handleCancelCreate}
-        />
-      ),
+      [DataSourceType.FILE]: <FileSourceForm {...formProps} />,
+      [DataSourceType.API]: <ApiSourceForm {...formProps} />,
+      [DataSourceType.DATABASE]: <DBSourceForm {...formProps} />,
+      [DataSourceType.S3]: <S3SourceForm {...formProps} />,
+      [DataSourceType.STREAM]: <StreamSourceForm {...formProps} />,
     };
 
     return forms[currentType];
@@ -183,15 +162,15 @@ const DataSourcesPage: React.FC = () => {
     if (!currentType) return null;
 
     const sourcesByType = Object.entries(sources)
-      .filter(([_, source]) => source.type === currentType)
-      .map(([_, source]) => source);
+      .filter(([_, source]) => (source as BaseMetadata).type === currentType)
+      .map(([_, source]) => source as BaseMetadata);
 
     const cards: Record<DataSourceType, React.ComponentType<any>> = {
-      file: FileSourceCard,
-      api: ApiSourceCard,
-      database: DBSourceCard,
-      s3: S3SourceCard,
-      stream: StreamSourceCard,
+      [DataSourceType.FILE]: FileSourceCard,
+      [DataSourceType.API]: ApiSourceCard,
+      [DataSourceType.DATABASE]: DBSourceCard,
+      [DataSourceType.S3]: S3SourceCard,
+      [DataSourceType.STREAM]: StreamSourceCard,
     };
 
     return sourcesByType.map((source) => {

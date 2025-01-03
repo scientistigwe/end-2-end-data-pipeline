@@ -21338,3 +21338,41 @@ RuntimeError: You must call `@jwt_required()` or `verify_jwt_in_request()` befor
 2024-12-29 22:56:43,708 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 22:56:43] "GET /api/v1/sources/ HTTP/1.1" 200 -
 2024-12-29 22:56:43,950 - request_logger - INFO - Request: GET /api/v1/sources/ Status: 200 Duration: 0.00s
 2024-12-29 22:56:43,950 - werkzeug - INFO - 127.0.0.1 - - [29/Dec/2024 22:56:43] "GET /api/v1/sources/ HTTP/1.1" 200 -
+2025-01-03 01:17:35,710 - backend.flask_api.app - INFO - Application paths configured successfully
+2025-01-03 01:17:35,710 - backend.flask_api.app - INFO - CORS initialized successfully
+2025-01-03 01:17:35,710 - backend.flask_api.app - INFO - JWT initialized successfully
+2025-01-03 01:17:35,759 - backend.flask_api.app - INFO - Services initialized successfully
+2025-01-03 01:17:35,760 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2025-01-03 01:17:36,084 - backend.flask_api.app - INFO - Registered public blueprint at /api/v1/auth
+2025-01-03 01:17:36,088 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/sources
+2025-01-03 01:17:36,092 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/pipelines
+2025-01-03 01:17:36,096 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/analysis
+2025-01-03 01:17:36,098 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/recommendations
+2025-01-03 01:17:36,101 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/decisions
+2025-01-03 01:17:36,103 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/monitoring
+2025-01-03 01:17:36,105 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/reports
+2025-01-03 01:17:36,107 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/settings
+2025-01-03 01:17:36,107 - backend.flask_api.app - INFO - All blueprints registered successfully
+2025-01-03 01:17:36,107 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2025-01-03 01:17:36,143 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-01-03 01:17:36,143 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-01-03 01:17:36,146 - werkzeug - INFO -  * Restarting with stat
+2025-01-03 01:17:37,125 - backend.flask_api.app - INFO - Application paths configured successfully
+2025-01-03 01:17:37,126 - backend.flask_api.app - INFO - CORS initialized successfully
+2025-01-03 01:17:37,126 - backend.flask_api.app - INFO - JWT initialized successfully
+2025-01-03 01:17:37,169 - backend.flask_api.app - INFO - Services initialized successfully
+2025-01-03 01:17:37,169 - backend.flask_api.app.middleware.error_handler - INFO - Error handlers registered successfully
+2025-01-03 01:17:37,220 - backend.flask_api.app - INFO - Registered public blueprint at /api/v1/auth
+2025-01-03 01:17:37,224 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/sources
+2025-01-03 01:17:37,228 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/pipelines
+2025-01-03 01:17:37,233 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/analysis
+2025-01-03 01:17:37,235 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/recommendations
+2025-01-03 01:17:37,237 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/decisions
+2025-01-03 01:17:37,239 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/monitoring
+2025-01-03 01:17:37,241 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/reports
+2025-01-03 01:17:37,243 - backend.flask_api.app - INFO - Registered protected blueprint at /api/v1/settings
+2025-01-03 01:17:37,244 - backend.flask_api.app - INFO - All blueprints registered successfully
+2025-01-03 01:17:37,244 - backend.flask_api.app - INFO - Application initialized successfully in development mode
+2025-01-03 01:17:37,259 - werkzeug - WARNING -  * Debugger is active!
+2025-01-03 01:17:37,264 - werkzeug - INFO -  * Debugger PIN: 734-212-460

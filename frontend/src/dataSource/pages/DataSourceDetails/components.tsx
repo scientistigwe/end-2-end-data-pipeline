@@ -13,7 +13,7 @@ import type {
   StreamSourceConfig,
   StreamMetadata,
 } from "../../types/streamSource";
-import { formatBytes } from "./utils";
+import { formatBytes } from "@/dataSource/utils";
 
 export const ApiSourceDetails: React.FC<{
   metadata: ApiMetadata;

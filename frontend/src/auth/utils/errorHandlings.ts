@@ -40,7 +40,8 @@ export const formatValidationErrors = (details: ValidationErrors): string => {
     .join('; ');
 };
 
-export const getErrorMessage = (error: unknown): string => {
+
+export const getErrorMessage = (error: any): string => {
   if (isAuthError(error)) {
     const { data } = error.response;
     
@@ -57,5 +58,45 @@ export const getErrorMessage = (error: unknown): string => {
     return error.message;
   }
   
+  if (!error) return 'An unknown error occurred';
+
+  // Handle axios error responses
+  if (error.response) {
+    const { status, data } = error.response;
+    
+    if (status === 409) {
+      return 'An account with this email already exists';
+    }
+    
+    if (data?.error?.details) {
+      if (typeof data.error.details === 'string') {
+        return data.error.details;
+      }
+      return Object.entries(data.error.details)
+        .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+        .join('; ');
+    }
+    
+    if (data?.error?.message) {
+      return data.error.message;
+    }
+  }
+
+  // Handle other error types
+  if (error.message) {
+    return error.message;
+  }
+
   return 'An unexpected error occurred';
 };
+
+export function handleApiError(error: unknown): Error {
+  if (isAuthError(error)) {
+      const errorResponse = error.response.data;
+      if (errorResponse.error?.details) {
+          return new Error(formatValidationErrors(errorResponse.error.details));
+      }
+      return new Error(errorResponse.message || 'An unexpected error occurred');
+  }
+  return error instanceof Error ? error : new Error('An unexpected error occurred');
+}

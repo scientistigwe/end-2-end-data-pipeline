@@ -1,9 +1,9 @@
 import React from "react";
-import type { S3SourceConfig } from "../../types/base";
+import type { S3SourceConfig } from "../../types/s3Source";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Folder, File } from "lucide-react";
-import { formatBytes } from "@/common";
+import { formatBytes } from "@/dataSource/utils";
 
 interface S3PreviewProps {
   source: S3SourceConfig;

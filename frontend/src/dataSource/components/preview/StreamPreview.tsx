@@ -1,8 +1,8 @@
 // src/components/datasource/preview/StreamPreview.tsx
-import type { StreamSourceConfig } from "../../types/base";
+import type { StreamSourceConfig } from "../../types/streamSource";
 import { Card, CardHeader, CardContent } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
-import { formatBytes } from "@/common";
+import { formatBytes } from "@/dataSource/utils";
 
 interface StreamPreviewProps {
   source: StreamSourceConfig;

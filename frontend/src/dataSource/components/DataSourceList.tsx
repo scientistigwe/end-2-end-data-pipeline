@@ -1,3 +1,4 @@
+// src/dataSource/components/DataSourceList.tsx
 import React from "react";
 import { Card } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
@@ -12,14 +13,16 @@ import {
   Network,
   Radio,
 } from "lucide-react";
+import { ValidationDisplay } from "./validation";
+import { formatBytes } from "@/dataSource/utils";
 import type {
-  DataSourceMetadata,
+  BaseMetadata,
   DataSourceStatus,
   DataSourceType,
 } from "../types/base";
 
 interface DataSourceListProps {
-  sources: DataSourceMetadata[];
+  sources: BaseMetadata[];
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
@@ -28,10 +31,11 @@ interface DataSourceListProps {
 }
 
 const STATUS_STYLES: Record<DataSourceStatus, string> = {
-  connected: "bg-green-100 text-green-800",
+  active: "bg-green-100 text-green-800",
   error: "bg-red-100 text-red-800",
   connecting: "bg-blue-100 text-blue-800",
-  disconnected: "bg-gray-100 text-gray-800",
+  inactive: "bg-gray-100 text-gray-800",
+  processing: "bg-purple-100 text-purple-800",
   validating: "bg-yellow-100 text-yellow-800",
 };
 
@@ -68,13 +72,19 @@ export const DataSourceList = ({
               </Badge>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {(source.fields || []).map((field, index) => (
-                <Badge key={index} variant="secondary">
-                  {field.name}: {field.type}
-                </Badge>
-              ))}
-            </div>
+            {source.description && (
+              <p className="text-sm text-gray-600">{source.description}</p>
+            )}
+
+            {source.tags && source.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {source.tags.map((tag, index) => (
+                  <Badge key={index} variant="secondary">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex space-x-2">
@@ -113,8 +123,22 @@ export const DataSourceList = ({
         </div>
 
         {source.error && (
-          <div className="mt-2 p-2 bg-red-50 text-red-700 rounded-md text-sm">
-            {source.error.message}
+          <div className="mt-2">
+            <ValidationDisplay
+              validation={{
+                isValid: false,
+                issues: [
+                  {
+                    severity: "error",
+                    message: source.error.message,
+                    type: source.error.code || "Error",
+                    field: undefined,
+                  },
+                ],
+                warnings: [],
+              }}
+              compact
+            />
           </div>
         )}
 
@@ -128,23 +152,19 @@ export const DataSourceList = ({
             </p>
           </div>
           <div>
-            <p className="text-gray-500">Next Sync</p>
+            <p className="text-gray-500">Type Details</p>
+            <p className="font-medium capitalize">{source.type}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Created</p>
             <p className="font-medium">
-              {source.nextSync
-                ? new Date(source.nextSync).toLocaleString()
-                : "Not scheduled"}
+              {new Date(source.createdAt).toLocaleString()}
             </p>
           </div>
           <div>
-            <p className="text-gray-500">Records</p>
+            <p className="text-gray-500">Updated</p>
             <p className="font-medium">
-              {source.stats?.rowCount?.toLocaleString() ?? "Unknown"}
-            </p>
-          </div>
-          <div>
-            <p className="text-gray-500">Size</p>
-            <p className="font-medium">
-              {source.stats?.size ? formatBytes(source.stats.size) : "Unknown"}
+              {new Date(source.updatedAt).toLocaleString()}
             </p>
           </div>
         </div>
@@ -152,11 +172,3 @@ export const DataSourceList = ({
     ))}
   </div>
 );
-
-const formatBytes = (bytes: number): string => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-};

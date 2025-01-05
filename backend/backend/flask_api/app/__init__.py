@@ -10,8 +10,8 @@ from typing import Dict, Any, Tuple, List, Optional
 from functools import wraps
 
 # Import configurations
-from backend.flask_api.config import get_config
-from backend.database.config import init_db
+from backend.config import get_config
+from backend.config import init_db
 
 # Import middleware
 from .middleware.error_handler import register_error_handlers
@@ -182,7 +182,11 @@ def _initialize_services(app: Flask, db_session) -> None:
     try:
         app.services = {
             'auth_service': AuthService(db_session),
-            'file_service': FileSourceService(db_session),
+            'file_service': FileSourceService(
+                db_session, 
+                allowed_extensions=app.config['ALLOWED_EXTENSIONS'],
+                max_file_size=app.config['MAX_CONTENT_LENGTH']
+            ),
             'db_service': DatabaseSourceService(db_session),
             's3_service': S3SourceService(db_session),
             'api_service': APISourceService(db_session),
@@ -231,7 +235,7 @@ def register_blueprints(app: Flask, db_session) -> None:
                 api_service=app.services['api_service'],
                 stream_service=app.services['stream_service'],
                 db_session=db_session
-            ), '/api/v1/sources'),
+            ), '/api/v1/data-sources'),
             (create_pipeline_blueprint(
                 pipeline_service=app.services['pipeline_service'],
                 db_session=db_session
@@ -307,13 +311,14 @@ def create_app(config_name: str = 'development') -> Flask:
         _init_jwt(app)
         
         # Initialize database and get session
-        engine, SessionLocal = init_db(app)
+        engine, SessionLocal = _init_database(app)
         db_session = SessionLocal()
         
         # Initialize all services
-        _initialize_services(app, db_session)
+        with app.app_context():
+            _initialize_services(app, db_session)
         
-        # Register error handlers and blueprints
+        # Register error handlers and blueprints  
         register_error_handlers(app)
         with app.app_context():
             register_blueprints(app, db_session)

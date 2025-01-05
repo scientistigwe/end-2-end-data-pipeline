@@ -37,9 +37,29 @@ import {
   RETRY_CONFIG,
 } from './config';
 
+export enum ServiceType {
+  AUTH = 'auth',
+  DECISIONS = 'decisions',
+  REPORTS = 'reports',
+  DATA_SOURCES = 'data-sources',
+  PIPELINE = 'pipeline',
+  MONITORING = 'monitoring',
+  ANALYSIS = 'analysis',
+  SETTINGS = 'settings',
+  RECOMMENDATIONS = 'recommendations'
+}
+
+interface ServiceConfig {
+  service: ServiceType;
+  headers?: Record<string, string>;
+}
+
+
 export class BaseClient {
   private static instance: BaseClient | null = null;
+  private static isRefreshing: boolean = false;
   protected client: AxiosInstance;
+  private serviceConfigs: Map<string, ServiceConfig> = new Map();
   private cache: Map<string, CacheEntry<any>>;
   private retryConfig = RETRY_CONFIG;
 
@@ -47,22 +67,6 @@ export class BaseClient {
     this.cache = new Map();
     this.client = this.initializeClient(config);
     this.setupInterceptors();
-  }
-
-  public static getInstance(config?: CreateAxiosDefaults): BaseClient {
-    if (!BaseClient.instance) {
-      BaseClient.instance = new BaseClient(config);
-    }
-    return BaseClient.instance;
-  }
-
-  // Public Methods for API Consumers
-  public setDefaultHeaders(headers: Record<string, string>): void {
-    Object.entries(headers).forEach(([key, value]) => {
-      if (this.client.defaults.headers.common) {
-        this.client.defaults.headers.common[key] = value;
-      }
-    });
   }
 
   public createRoute<T extends RouteKey>(
@@ -86,7 +90,67 @@ export class BaseClient {
     return this.getNestedRoute(module, section, route, params);
   }
 
-  // Public HTTP Methods
+  // Protected Methods
+  protected getRoute<T extends RouteKey>(
+    module: T,
+    route: SubRouteKey<T>,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getRoute(module, route, params);
+  }
+
+  protected getNestedRoute<
+    T extends RouteKey,
+    S extends keyof typeof APIRoutes[T],
+    R extends NestedRouteKey<T, S>
+  >(
+    module: T,
+    section: S,
+    route: R,
+    params?: RouteParams
+  ): string {
+    return RouteHelper.getNestedRoute(module, section, route, params);
+  }
+
+  public static getInstance(config?: CreateAxiosDefaults): BaseClient {
+    if (!BaseClient.instance) {
+      BaseClient.instance = new BaseClient(config);
+    }
+    return BaseClient.instance;
+  }
+
+  public setDefaultHeaders(headers: Record<string, string>): void {
+    Object.entries(headers).forEach(([key, value]) => {
+      if (this.client.defaults.headers.common) {
+        this.client.defaults.headers.common[key] = value;
+      }
+    });
+  }
+
+  public setServiceConfig(config: ServiceConfig): void {
+    if (!config.service) {
+      console.warn('Attempting to set service config without service type');
+      return;
+    }
+    this.serviceConfigs.set(config.service, {
+      service: config.service,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...(config.headers || {})
+      }
+    });
+  }
+
+  public getAxiosInstance(): AxiosInstance {
+    return this.client;
+  }
+
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
+  // Public API Methods
   public async executeGet<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
@@ -130,78 +194,41 @@ export class BaseClient {
     return this.delete<T>(endpoint, config);
   }
 
-  public clearCache(): void {
-    this.cache.clear();
-  }
-
   // Protected Methods
-  protected getRoute<T extends RouteKey>(
-    module: T,
-    route: SubRouteKey<T>,
-    params?: RouteParams
-  ): string {
-    return RouteHelper.getRoute(module, route, params);
-  }
-
-  protected getNestedRoute<
-    T extends RouteKey,
-    S extends keyof typeof APIRoutes[T],
-    R extends NestedRouteKey<T, S>
-  >(
-    module: T,
-    section: S,
-    route: R,
-    params?: RouteParams
-  ): string {
-    return RouteHelper.getNestedRoute(module, section, route, params);
-  }
-
-  public getAxiosInstance(): AxiosInstance {
-    return this.client;
-  }
-
-  protected resolveRoute<T extends RouteKey>(
-    config: RouteConfig<T>
-  ): string {
-    return getRoutePath(config);
-  }
-
   protected async request<T>(
     method: HttpMethod,
     endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
-): Promise<T> {
+  ): Promise<T> {
     try {
-        const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
-        
-        // Remove any leading slash to prevent double slashes
-        const cleanEndpoint = endpoint.replace(/^\/+/, '');
-        
-        // Remove duplicate api/v1 if it exists in the endpoint
-        const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
+      const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
+      
+      const cleanEndpoint = endpoint.replace(/^\/+/, '');
+      const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
 
-        const headers: RawAxiosRequestHeaders = {
-            ...(axiosConfig?.headers as RawAxiosRequestHeaders || {}),
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        };
+      const headers: RawAxiosRequestHeaders = {
+        ...(axiosConfig?.headers as RawAxiosRequestHeaders || {}),
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
 
-        const requestConfig: AxiosRequestConfig = {
-            method: method.toLowerCase(),
-            url: normalizedEndpoint, // Use the normalized endpoint
-            data,
-            ...axiosConfig,
-            headers,
-            onUploadProgress
-        };
+      const requestConfig: AxiosRequestConfig = {
+        method: method.toLowerCase(),
+        url: normalizedEndpoint,
+        data,
+        withCredentials: true,
+        ...axiosConfig,
+        headers,
+        onUploadProgress
+      };
 
-        const response = await this.client.request<ApiResponse<T>>(requestConfig);
-        return response.data.data;
+      const response = await this.client.request(requestConfig);
+      return response.data?.data ?? response.data;
     } catch (error) {
-        throw this.handleApiError(error);
+      throw this.handleApiError(error);
     }
-}
+  }
 
   // Private Methods
   private initializeClient(config?: CreateAxiosDefaults): AxiosInstance {
@@ -223,7 +250,6 @@ export class BaseClient {
       ...config
     };
 
-    console.log('Initializing API client with config:', clientConfig);
     return axios.create(clientConfig);
   }
 
@@ -233,28 +259,30 @@ export class BaseClient {
   }
 
   private setupRequestInterceptor(): void {
-    this.client.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
-        const token = localStorage.getItem('token');
-        const headers = new AxiosHeaders(config.headers);
+    this.client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+      const headers = new AxiosHeaders(config.headers);
+      
+      // Always ensure withCredentials is true for cookie handling
+      config.withCredentials = true;
 
-        if (token) {
-          headers.set('Authorization', `Bearer ${token}`);
+      // Add service-specific headers
+      const url = config.url || '';
+      const serviceType = this.getServiceForRequest(url);
+      const serviceConfig = serviceType ? this.serviceConfigs.get(serviceType) : undefined;
+
+      if (serviceConfig) {
+        headers.set('X-Service', serviceConfig.service);
+        
+        if (serviceConfig.headers) {
+          Object.entries(serviceConfig.headers).forEach(([key, value]) => {
+            headers.set(key, value);
+          });
         }
+      }
 
-        config.headers = headers;
-        
-        console.log('Making request:', {
-          method: config.method,
-          url: config.url,
-          baseURL: config.baseURL,
-          headers: config.headers
-        });
-        
-        return config;
-      },
-      (error: Error) => Promise.reject(error)
-    );
+      config.headers = headers;
+      return config;
+    });
   }
 
   private setupResponseInterceptor(): void {
@@ -278,55 +306,57 @@ export class BaseClient {
     );
   }
 
-  private shouldRefreshToken(error: unknown): boolean {
-    if (!axios.isAxiosError(error)) return false;
-    
-    const config = error.config as RetryableRequestConfig;
-    return (
-      error.response?.status === HTTP_STATUS.UNAUTHORIZED && 
-      !(config?._retry ?? 0) &&
-      !!localStorage.getItem('refreshToken')
-    );
-  }
-
   private async handleTokenRefresh(error: unknown): Promise<AxiosResponse> {
     if (!axios.isAxiosError(error)) {
       throw error;
     }
 
+    if (BaseClient.isRefreshing) {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          if (error.config) {
+            resolve(this.client(error.config));
+          } else {
+            reject(new Error('Invalid error configuration'));
+          }
+        }, 1000);
+      });
+    }
+
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      const response = await this.request<{ token: string }>(
+      BaseClient.isRefreshing = true;
+      
+      // Call refresh endpoint - tokens handled by HTTP-only cookies
+      await this.request<void>(
         'POST',
-        this.createRoute('AUTH', 'REFRESH'),
-        undefined,
-        { refreshToken }
+        'auth/refresh',
+        { withCredentials: true }
       );
 
-      const { token } = response;
-      localStorage.setItem('token', token);
-
       if (error.config) {
-        const config = error.config as RetryableRequestConfig;
-        config.headers = new AxiosHeaders({
-          ...config.headers,
-          Authorization: `Bearer ${token}`
-        });
-
-        return this.client(config);
+        return this.client(error.config);
       }
       
       throw new Error('Invalid error configuration');
     } catch (refreshError) {
-      this.handleAuthFailure();
+      window.dispatchEvent(new Event('auth:sessionExpired'));
       throw refreshError;
+    } finally {
+      BaseClient.isRefreshing = false;
     }
   }
 
-  private handleAuthFailure(): void {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    window.dispatchEvent(new Event('auth:sessionExpired'));
+  private shouldRefreshToken(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false;
+    
+    const config = error.config as RetryableRequestConfig;
+    const isRefreshRequest = config?.url?.includes('auth/refresh');
+    
+    return (
+      error.response?.status === HTTP_STATUS.UNAUTHORIZED && 
+      !isRefreshRequest &&
+      !(config?._retry ?? 0)
+    );
   }
 
   private shouldRetryRequest(error: unknown): boolean {
@@ -364,26 +394,50 @@ export class BaseClient {
   }
 
   private handleApiError(error: unknown): Error {
-    console.error('API Error:', error);
-  
     if (axios.isAxiosError(error)) {
-      const errorResponse = error.response?.data as ErrorResponse;
-      console.log('Full error response:', error.response?.data);
-      return new Error(
-        errorResponse?.error?.message || 
-        errorResponse?.message || 
-        error.message || 
-        'An unexpected error occurred'
-      );
+      if (!error.response) {
+        return new Error('Network error: Please check your connection');
+      }
+
+      const errorResponse = error.response.data as ErrorResponse;
+      console.error('API Error:', errorResponse);
+
+      switch (error.response.status) {
+        case HTTP_STATUS.UNAUTHORIZED:
+          return new Error('Authentication failed. Please log in again.');
+        case HTTP_STATUS.FORBIDDEN:
+          return new Error('You do not have permission to perform this action.');
+        case HTTP_STATUS.NOT_FOUND:
+          return new Error('The requested resource was not found.');
+        case HTTP_STATUS.BAD_REQUEST:
+          return new Error(errorResponse?.message || 'Invalid request');
+        default:
+          return new Error(
+            errorResponse?.error?.message || 
+            errorResponse?.message || 
+            error.message || 
+            'An unexpected error occurred'
+          );
+      }
     }
 
-    if (error instanceof Error) {
-      return error;
-    }
-
-    return new Error('An unexpected error occurred');
+    return error instanceof Error ? error : new Error('An unexpected error occurred');
   }
 
+  private getServiceForRequest(url: string): ServiceType | undefined {
+    if (url.startsWith('auth/')) return ServiceType.AUTH;
+    if (url.startsWith('pipelines')) return ServiceType.PIPELINE;
+    if (url.startsWith('data-sources')) return ServiceType.DATA_SOURCES;
+    if (url.startsWith('decisions')) return ServiceType.DECISIONS;
+    if (url.startsWith('reports')) return ServiceType.REPORTS;
+    if (url.startsWith('monitoring')) return ServiceType.MONITORING;
+    if (url.startsWith('analysis')) return ServiceType.ANALYSIS;
+    if (url.startsWith('settings')) return ServiceType.SETTINGS;
+    if (url.startsWith('recommendations')) return ServiceType.RECOMMENDATIONS;
+    return undefined;
+  }
+
+  // HTTP Methods
   private async get<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
@@ -414,7 +468,7 @@ export class BaseClient {
 
   private async put<T>(
     endpoint: string,
-    data?: unknown,
+    data?: unknown, 
     config?: ApiRequestConfig
   ): Promise<T> {
     return this.request<T>('PUT', endpoint, config, data);
@@ -435,9 +489,10 @@ export class BaseClient {
     return this.request<T>('DELETE', endpoint, config);
   }
 
+  // Cache Methods
   private getFromCache<T>(
-    endpoint: string, 
-    config: ApiRequestConfig, 
+    endpoint: string,
+    config: ApiRequestConfig,
     duration: number
   ): T | null {
     const cacheKey = this.getCacheKey(endpoint, config);
@@ -451,8 +506,8 @@ export class BaseClient {
   }
 
   private setCache<T>(
-    endpoint: string, 
-    config: ApiRequestConfig, 
+    endpoint: string,
+    config: ApiRequestConfig,
     data: T
   ): void {
     const cacheKey = this.getCacheKey(endpoint, config);

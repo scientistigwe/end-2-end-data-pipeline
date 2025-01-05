@@ -7,8 +7,8 @@ import {
 import { Badge } from "../../../common/components/ui/badge";
 import { Progress } from "../../../common/components/ui/progress";
 import { FileIcon, CheckCircle2 } from "lucide-react";
-import { formatBytes } from "@/common";
-import type { FileSourceConfig } from "../../types/base";
+import { formatBytes } from "@/common/utils";
+import type { FileSourceConfig } from "@/dataSource/types";
 
 interface FileMetadata {
   filename: string;

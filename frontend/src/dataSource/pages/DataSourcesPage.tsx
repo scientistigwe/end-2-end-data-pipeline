@@ -82,7 +82,6 @@ const SOURCE_TYPES: SourceTypeConfig[] = [
 ];
 
 const DataSourcesPage: React.FC = () => {
-  console.log("DataSourcesPage rendering");
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const { type } = useParams<{ type?: string }>();
@@ -97,7 +96,6 @@ const DataSourcesPage: React.FC = () => {
   const currentType = type as DataSourceType | undefined;
 
   useEffect(() => {
-    console.log("DataSourcesPage mounted");
     if (!currentType && SOURCE_TYPES.length > 0) {
       navigate(`/data-sources/${SOURCE_TYPES[0].id}`);
     }

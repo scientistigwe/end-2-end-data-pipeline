@@ -9,13 +9,12 @@ class ResponseBuilder:
             message: Optional[str] = None,
             status_code: int = 200
     ) -> Tuple[Dict[str, Any], int]:
+        """Build a successful response"""
         response = {
-            'success': True
+            'success': True,
+            'message': message or 'Operation successful',
+            'data': data or {}
         }
-        if message:
-            response['message'] = message
-        if data is not None:
-            response['data'] = data
         return response, status_code
 
     @staticmethod
@@ -24,12 +23,13 @@ class ResponseBuilder:
             details: Optional[Dict[str, Any]] = None,
             status_code: int = 400
     ) -> Tuple[Dict[str, Any], int]:
+        """Build an error response"""
         response = {
             'success': False,
+            'message': message,
             'error': {
-                'message': message
+                'message': message,
+                'details': details or {}
             }
         }
-        if details:
-            response['error']['details'] = details
         return response, status_code

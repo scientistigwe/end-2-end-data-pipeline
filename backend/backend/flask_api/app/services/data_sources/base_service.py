@@ -1,172 +1,227 @@
 # backend/flask_api/app/services/data_sources/base_service.py
 
-import logging
-from typing import Dict, Any, List, Optional
-from sqlalchemy.orm import Session
+from typing import Dict, Any, List, Optional, Union
 from uuid import UUID
+from datetime import datetime
+from sqlalchemy.orm import Session
 from .....database.models.data_source import (
     DataSource, 
-    APISourceConfig, 
-    DatabaseSourceConfig,
-    S3SourceConfig, 
-    StreamSourceConfig, 
-    FileSourceInfo,
-    SourceConnection, 
-    SourceSyncHistory,
+    SourceConnection,
+    SourceSyncHistory
 )
 from .....database.models.validation import ValidationResult
+from flask import current_app
+from werkzeug.datastructures import FileStorage
+import logging
 
 class BaseSourceService:
     def __init__(self, db_session: Session):
         self.db_session = db_session
         self.logger = logging.getLogger(__name__)
-        self.source_type: str = None  # To be defined by child classes
+        self.source_type: str = None
 
-    def list_sources(self) -> List[Dict[str, Any]]:
-        """List all sources of this type."""
+    def list_sources(self) -> List[DataSource]:
+        """
+        List all data sources of the specific type.
+        
+        Returns:
+            List[DataSource]: List of all data sources of the specific type
+        """
         try:
-            sources = self.db_session.query(DataSource).filter_by(
-                type=self.source_type
-            ).all()
-            return [self._format_source(source) for source in sources]
-        except Exception as e:
-            self.logger.error(f"Error listing sources: {str(e)}")
+            return (self.db_session.query(DataSource)
+                    .filter(DataSource.type == self.source_type)
+                    .all())
+        except Exception as exc:
+            self.logger.error(f"Error listing {self.source_type} sources: {str(exc)}")
             raise
-
-    def get_source(self, source_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get specific source details."""
+        
+    def validate_config(self, config: Dict[str, Any]) -> ValidationResult:
+        """Validate source configuration and return validation result."""
         try:
-            source = self.db_session.query(DataSource).get(source_id)
-            if source and source.type == self.source_type:
-                return self._format_source(source)
-            return None
+            validation = ValidationResult(
+                source_id=None,  # Will be set after source creation
+                name=f"{self.source_type}_config_validation",
+                type="configuration",
+                status="pending",
+                validated_at=datetime.utcnow()
+            )
+            
+            # Implement source-specific validation
+            validation_errors = self._validate_source_config(config)
+            
+            if validation_errors:
+                validation.status = "failed"
+                validation.error_count = len(validation_errors)
+                validation.details = {"errors": validation_errors}
+            else:
+                validation.status = "passed"
+                validation.error_count = 0
+            
+            self.db_session.add(validation)
+            self.db_session.commit()
+            
+            return validation
         except Exception as e:
-            self.logger.error(f"Error getting source: {str(e)}")
+            self.logger.error(f"Config validation error: {str(e)}")
             raise
-
-    def _format_source(self, source: DataSource) -> Dict[str, Any]:
-        """Format source for API response."""
-        base_info = {
-            'id': str(source.id),
-            'name': source.name,
-            'type': source.type,
-            'status': source.status,
-            'config': source.config,
-            'meta_data': source.meta_data,
-            'refresh_interval': source.refresh_interval,
-            'error': source.error,
-            'last_sync': source.last_sync.isoformat() if source.last_sync else None,
-            'created_at': source.created_at.isoformat(),
-            'updated_at': source.updated_at.isoformat(),
-            'created_by': str(source.created_by) if source.created_by else None,
-            'updated_by': str(source.updated_by) if source.updated_by else None,
-            'owner_id': str(source.owner_id) if source.owner_id else None,
-        }
-
-        # Add source-specific configuration
-        if source.type == 'file' and source.file_info:
-            base_info['source_config'] = {
-                'original_filename': source.file_info.original_filename,
-                'file_type': source.file_info.file_type,
-                'mime_type': source.file_info.mime_type,
-                'size': source.file_info.size,
-                'hash': source.file_info.hash,
-                'encoding': source.file_info.encoding,
-                'delimiter': source.file_info.delimiter,
-                'compression': source.file_info.compression
-            }
-        elif source.type == 'database' and source.db_config:
-            base_info['source_config'] = {
-                'dialect': source.db_config.dialect,
-                'schema': source.db_config.schema,
-                'pool_size': source.db_config.pool_size,
-                'max_overflow': source.db_config.max_overflow,
-                'connection_timeout': source.db_config.connection_timeout,
-                'query_timeout': source.db_config.query_timeout,
-                'ssl_config': source.db_config.ssl_config
-            }
-        elif source.type == 'api' and source.api_config:
-            base_info['source_config'] = {
-                'auth_type': source.api_config.auth_type,
-                'rate_limit': source.api_config.rate_limit,
-                'timeout': source.api_config.timeout,
-                'headers': source.api_config.headers,
-                'retry_config': source.api_config.retry_config,
-                'webhook_url': source.api_config.webhook_url
-            }
-        elif source.type == 's3' and source.s3_config:
-            base_info['source_config'] = {
-                'bucket': source.s3_config.bucket,
-                'region': source.s3_config.region,
-                'prefix': source.s3_config.prefix,
-                'storage_class': source.s3_config.storage_class,
-                'versioning_enabled': source.s3_config.versioning_enabled,
-                'transfer_config': source.s3_config.transfer_config
-            }
-        elif source.type == 'stream' and source.stream_config:
-            base_info['source_config'] = {
-                'stream_type': source.stream_config.stream_type,
-                'partitions': source.stream_config.partitions,
-                'batch_size': source.stream_config.batch_size,
-                'processing_config': source.stream_config.processing_config,
-                'error_handling': source.stream_config.error_handling,
-                'checkpoint_config': source.stream_config.checkpoint_config,
-                'scaling_config': source.stream_config.scaling_config
-            }
-
-        # Add validation results
-        if hasattr(source, 'validation_results') and source.validation_results:
-            base_info['validation_results'] = [{
-                'id': str(result.id),
-                'name': result.name,
-                'type': result.type,
-                'status': result.status,
-                'error_count': result.error_count,
-                'warning_count': result.warning_count,
-                'impact_score': result.impact_score,
-                'validated_at': result.validated_at.isoformat() if result.validated_at else None,
-                'expires_at': result.expires_at.isoformat() if result.expires_at else None
-            } for result in source.validation_results]
-
-        # Add latest connection status
-        latest_connection = (
-            self.db_session.query(SourceConnection)
-            .filter_by(source_id=source.id)
-            .order_by(SourceConnection.created_at.desc())
-            .first()
-        )
-        if latest_connection:
-            base_info['connection_status'] = {
-                'status': latest_connection.status,
-                'connected_at': latest_connection.connected_at.isoformat() if latest_connection.connected_at else None,
-                'disconnected_at': latest_connection.disconnected_at.isoformat() if latest_connection.disconnected_at else None,
-                'error': latest_connection.error,
-                'metrics': latest_connection.metrics
-            }
-
-        # Add latest sync history
-        latest_sync = (
-            self.db_session.query(SourceSyncHistory)
-            .filter_by(source_id=source.id)
-            .order_by(SourceSyncHistory.start_time.desc())
-            .first()
-        )
-        if latest_sync:
-            base_info['sync_history'] = {
-                'status': latest_sync.status,
-                'start_time': latest_sync.start_time.isoformat(),
-                'end_time': latest_sync.end_time.isoformat() if latest_sync.end_time else None,
-                'records_processed': latest_sync.records_processed,
-                'bytes_processed': latest_sync.bytes_processed,
-                'error': latest_sync.error
-            }
-
-        return base_info
-
-    def validate_config(self, config: Dict[str, Any]) -> bool:
-        """Validate source configuration."""
-        raise NotImplementedError("Subclasses must implement validate_config")
 
     def test_connection(self, source_id: UUID) -> Dict[str, Any]:
         """Test connection to the source."""
-        raise NotImplementedError("Subclasses must implement test_connection")
+        try:
+            source = self._get_source_or_error(source_id)
+            
+            connection = SourceConnection(
+                source_id=source.id,
+                status="testing",
+                connected_at=datetime.utcnow()
+            )
+            self.db_session.add(connection)
+            
+            try:
+                # Perform source-specific connection test
+                test_result = self._test_source_connection(source)
+                connection.status = "connected"
+                connection.metrics = test_result
+            except Exception as e:
+                connection.status = "failed"
+                connection.error = str(e)
+                raise
+            finally:
+                if connection.status == "testing":
+                    connection.status = "failed"
+                connection.disconnected_at = datetime.utcnow()
+                self.db_session.commit()
+            
+            return {
+                "status": connection.status,
+                "metrics": connection.metrics,
+                "error": connection.error,
+                "connected_at": connection.connected_at.isoformat(),
+                "disconnected_at": connection.disconnected_at.isoformat() if connection.disconnected_at else None
+            }
+        except Exception as e:
+            self.logger.error(f"Connection test error: {str(e)}")
+            raise
+
+    def sync_source(self, source_id: UUID) -> Dict[str, Any]:
+        """Synchronize source data."""
+        try:
+            source = self._get_source_or_error(source_id)
+            
+            sync_history = SourceSyncHistory(
+                source_id=source.id,
+                status="in_progress",
+                start_time=datetime.utcnow()
+            )
+            self.db_session.add(sync_history)
+            
+            try:
+                # Perform source-specific sync
+                sync_result = self._sync_source_data(source)
+                sync_history.status = "completed"
+                sync_history.records_processed = sync_result.get("records_processed", 0)
+                sync_history.bytes_processed = sync_result.get("bytes_processed", 0)
+            except Exception as e:
+                sync_history.status = "failed"
+                sync_history.error = str(e)
+                raise
+            finally:
+                sync_history.end_time = datetime.utcnow()
+                self.db_session.commit()
+            
+            return {
+                "status": sync_history.status,
+                "records_processed": sync_history.records_processed,
+                "bytes_processed": sync_history.bytes_processed,
+                "error": sync_history.error,
+                "start_time": sync_history.start_time.isoformat(),
+                "end_time": sync_history.end_time.isoformat()
+            }
+        except Exception as e:
+            self.logger.error(f"Source sync error: {str(e)}")
+            raise
+
+    def preview_data(self, source_id: UUID, limit: int = 100) -> Dict[str, Any]:
+        """Preview source data with limit."""
+        try:
+            source = self._get_source_or_error(source_id)
+            preview_data = self._get_source_preview(source, limit)
+            
+            return {
+                "data": preview_data,
+                "total_records": len(preview_data),
+                "has_more": len(preview_data) == limit
+            }
+        except Exception as e:
+            self.logger.error(f"Data preview error: {str(e)}")
+            raise
+
+    def disconnect(self, connection_id: UUID) -> Dict[str, Any]:
+        """Disconnect from source."""
+        try:
+            connection = self.db_session.query(SourceConnection).get(connection_id)
+            if not connection:
+                raise ValueError(f"Connection {connection_id} not found")
+            
+            if connection.status == "connected":
+                # Perform source-specific disconnect
+                self._disconnect_source(connection.source)
+                
+                connection.status = "disconnected"
+                connection.disconnected_at = datetime.utcnow()
+                self.db_session.commit()
+            
+            return {
+                "status": "success",
+                "message": f"Disconnected from source {connection.source_id}"
+            }
+        except Exception as e:
+            self.logger.error(f"Disconnect error: {str(e)}")
+            raise
+
+    def get_connection_status(self, connection_id: UUID) -> Dict[str, Any]:
+        """Get current connection status."""
+        try:
+            connection = self.db_session.query(SourceConnection).get(connection_id)
+            if not connection:
+                raise ValueError(f"Connection {connection_id} not found")
+            
+            return {
+                "status": connection.status,
+                "connected_at": connection.connected_at.isoformat() if connection.connected_at else None,
+                "disconnected_at": connection.disconnected_at.isoformat() if connection.disconnected_at else None,
+                "error": connection.error,
+                "metrics": connection.metrics
+            }
+        except Exception as e:
+            self.logger.error(f"Status check error: {str(e)}")
+            raise
+
+    def _get_source_or_error(self, source_id: Union[UUID, str]) -> DataSource:
+        """Get source by ID or raise error."""
+        if isinstance(source_id, str):
+            source_id = UUID(source_id)
+        
+        source = self.db_session.query(DataSource).get(source_id)
+        if not source:
+            raise ValueError(f"Source {source_id} not found")
+        if source.type != self.source_type:
+            raise ValueError(f"Invalid source type {source.type} for {self.source_type} service")
+        
+        return source
+
+    # Abstract methods to be implemented by specific source services
+    def _validate_source_config(self, config: Dict[str, Any]) -> List[str]:
+        raise NotImplementedError("Subclasses must implement _validate_source_config")
+
+    def _test_source_connection(self, source: DataSource) -> Dict[str, Any]:
+        raise NotImplementedError("Subclasses must implement _test_source_connection")
+
+    def _sync_source_data(self, source: DataSource) -> Dict[str, Any]:
+        raise NotImplementedError("Subclasses must implement _sync_source_data")
+
+    def _get_source_preview(self, source: DataSource, limit: int) -> List[Dict[str, Any]]:
+        raise NotImplementedError("Subclasses must implement _get_source_preview")
+
+    def _disconnect_source(self, source: DataSource) -> None:
+        raise NotImplementedError("Subclasses must implement _disconnect_source")

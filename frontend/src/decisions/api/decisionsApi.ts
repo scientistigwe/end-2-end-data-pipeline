@@ -1,16 +1,12 @@
 // src/decisions/api/decisionsApi.ts
-import { RouteHelper } from '@/common/api/routes';
-import { baseAxiosClient } from '@/common/api/client/baseClient';
-import { 
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
+import type { 
   ApiResponse, 
-  ApiError, 
-  ApiErrorResponse, 
-  ApiRequestConfig,
-  HTTP_STATUS,
-  ERROR_CODES,
-  ErrorResponse 
+  ApiError,
+  ErrorResponse,
 } from '@/common/types/api';
-import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import {  HTTP_STATUS, ERROR_CODES } from '@/common/types/api';
+
 import type {
   Decision,
   DecisionDetails,
@@ -19,6 +15,12 @@ import type {
   DecisionImpactAnalysis,
   DecisionState
 } from '../types';
+
+interface DecisionErrorMetadata {
+  retryable: boolean;
+  critical: boolean;
+  code: string;
+}
 
 interface DecisionErrorMetadata {
   retryable: boolean;
@@ -42,57 +44,141 @@ class DecisionsApi {
   };
 
   constructor() {
-    this.setupDecisionHeaders();
-    this.setupDecisionInterceptors();
-  }
-
-  private setupDecisionHeaders(): void {
-    this.client.setDefaultHeaders({
-      'X-Service': 'decisions'
+    this.client.setServiceConfig({
+      service: ServiceType.DECISIONS
     });
   }
 
-  private setupDecisionInterceptors(): void {
-    const instance = this.client.getAxiosInstance();
-    if (!instance) return;
-
-    instance.interceptors.request.use(
-      this.handleRequestInterceptor,
-      this.handleRequestError
-    );
-
-    instance.interceptors.response.use(
-      this.handleResponseInterceptor,
-      this.handleResponseError
+  // Core Decision Methods
+  async listDecisions(pipelineId: string, filters?: DecisionFilters): Promise<ApiResponse<Decision[]>> {
+    return this.client.executeGet(
+      this.client.createRoute('DECISIONS', 'LIST'),
+      { params: { pipeline_id: pipelineId, ...filters } }
     );
   }
 
-  private handleRequestInterceptor = (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-    const decisionContext = localStorage.getItem('decisionContext');
-    if (decisionContext) {
-      config.headers.set('X-Decision-Context', decisionContext);
+  async getDecision(id: string): Promise<ApiResponse<DecisionDetails>> {
+    return this.client.executeGet(
+      this.client.createRoute('DECISIONS', 'GET', { decision_id: id })
+    );
+  }
+
+  async createDecision(data: Omit<Decision, 'id'>): Promise<ApiResponse<Decision>> {
+    return this.client.executePost(
+      this.client.createRoute('DECISIONS', 'LIST'),
+      data
+    );
+  }
+
+  // Decision Actions
+  async makeDecision(
+    id: string, 
+    optionId: string, 
+    comment?: string
+  ): Promise<ApiResponse<Decision>> {
+    await this.acquireDecisionLock(id);
+    try {
+      return await this.client.executePost(
+        this.client.createRoute('DECISIONS', 'MAKE', { decision_id: id }),
+        { optionId, comment }
+      );
+    } finally {
+      await this.releaseDecisionLock(id);
     }
-    return config;
-  };
+  }
 
-  private handleRequestError = (error: unknown): Promise<never> => {
-    return Promise.reject(this.handleDecisionError(error));
-  };
-
-  private handleResponseInterceptor = (response: AxiosResponse): AxiosResponse => {
-    if (response.config.url?.includes('/decisions/')) {
-      this.logDecisionEvent(response);
+  async deferDecision(
+    id: string, 
+    reason: string, 
+    deferUntil: string
+  ): Promise<ApiResponse<Decision>> {
+    await this.acquireDecisionLock(id);
+    try {
+      return await this.client.executePost(
+        this.client.createRoute('DECISIONS', 'DEFER', { decision_id: id }),
+        { reason, deferUntil }
+      );
+    } finally {
+      await this.releaseDecisionLock(id);
     }
-    return response;
-  };
+  }
 
-  private handleResponseError = (error: unknown): Promise<never> => {
-    if (this.isErrorResponse(error) && error.error?.status === HTTP_STATUS.CONFLICT) {
-      this.handleDecisionConflict(error);
+  // Decision Analysis
+  async getDecisionHistory(pipelineId: string): Promise<ApiResponse<DecisionHistoryEntry[]>> {
+    return this.client.executeGet(
+      this.client.createRoute('DECISIONS', 'HISTORY', { pipeline_id: pipelineId })
+    );
+  }
+
+  async analyzeImpact(
+    id: string, 
+    optionId: string
+  ): Promise<ApiResponse<DecisionImpactAnalysis>> {
+    return this.client.executeGet(
+      this.client.createRoute('DECISIONS', 'IMPACT', { 
+        decision_id: id,
+        option_id: optionId 
+      })
+    );
+  }
+
+  async getDecisionState(id: string): Promise<ApiResponse<DecisionState>> {
+    return this.client.executeGet(
+      this.client.createRoute('DECISIONS', 'STATE', { decision_id: id })
+    );
+  }
+
+  // Lock Management
+  private async acquireDecisionLock(id: string): Promise<ApiResponse<void>> {
+    try {
+      return await this.client.executePost(
+        this.client.createRoute('DECISIONS', 'LOCK', { decision_id: id })
+      );
+    } catch (error) {
+      throw this.handleDecisionError(error);
     }
-    throw this.handleDecisionError(error);
-  };
+  }
 
+  private async releaseDecisionLock(id: string): Promise<void> {
+    try {
+      await this.client.executeDelete(
+        this.client.createRoute('DECISIONS', 'LOCK', { decision_id: id })
+      );
+    } catch (error) {
+      console.error('Failed to release decision lock:', error);
+    }
+  }
+
+  // Decision Updates
+  async updateDecision(
+    id: string, 
+    updates: Partial<Omit<Decision, 'id' | 'createdAt' | 'createdBy'>>
+  ): Promise<ApiResponse<Decision>> {
+    await this.acquireDecisionLock(id);
+    try {
+      return await this.client.executePut(
+        this.client.createRoute('DECISIONS', 'UPDATE', { decision_id: id }),
+        updates
+      );
+    } finally {
+      await this.releaseDecisionLock(id);
+    }
+  }
+
+  async deleteDecision(id: string): Promise<ApiResponse<void>> {
+    return this.client.executeDelete(
+      this.client.createRoute('DECISIONS', 'GET', { decision_id: id })
+    );
+  }
+
+  async addComment(id: string, comment: string): Promise<ApiResponse<void>> {
+    return this.client.executePost(
+      this.client.createRoute('DECISIONS', 'COMMENT', { decision_id: id }),
+      { comment }
+    );
+  }
+
+  // Error Handling
   private isErrorResponse(error: unknown): error is ErrorResponse {
     return (
       typeof error === 'object' &&
@@ -100,23 +186,6 @@ class DecisionsApi {
       'error' in error &&
       typeof (error as ErrorResponse).error === 'object'
     );
-  }
-
-  private logDecisionEvent(response: AxiosResponse): void {
-    console.log('Decision Event:', {
-      url: response.config.url,
-      method: response.config.method,
-      status: response.status,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  private handleDecisionConflict(error: ErrorResponse): void {
-    console.error('Decision Conflict:', {
-      code: error.error.code,
-      message: error.error.message,
-      details: error.error.details
-    });
   }
 
   private handleDecisionError(error: unknown): ApiError {
@@ -153,124 +222,6 @@ class DecisionsApi {
       default:
         return 'An error occurred while processing the decision';
     }
-  }
-
-  // Core Decision Methods
-  async listDecisions(pipelineId: string, filters?: DecisionFilters): Promise<ApiResponse<Decision[]>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DECISIONS', 'LIST'),
-      { params: { pipeline_id: pipelineId, ...filters } }
-    );
-  }
-
-  async getDecision(id: string): Promise<ApiResponse<DecisionDetails>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DECISIONS', 'GET', { decision_id: id })
-    );
-  }
-
-  async createDecision(data: Omit<Decision, 'id'>): Promise<ApiResponse<Decision>> {
-    return this.client.executePost(
-      RouteHelper.getRoute('DECISIONS', 'LIST'),
-      data
-    );
-  }
-  async makeDecision(
-    id: string, 
-    optionId: string, 
-    comment?: string
-  ): Promise<ApiResponse<Decision>> {
-    await this.acquireDecisionLock(id);
-    try {
-      return await this.client.executePost(
-        RouteHelper.getRoute('DECISIONS', 'MAKE', { decision_id: id }),
-        { optionId, comment }
-      );
-    } finally {
-      await this.releaseDecisionLock(id);
-    }
-  }
-
-  async deferDecision(
-    id: string, 
-    reason: string, 
-    deferUntil: string
-  ): Promise<ApiResponse<Decision>> {
-    await this.acquireDecisionLock(id);
-    try {
-      return await this.client.executePost(
-        RouteHelper.getRoute('DECISIONS', 'DEFER', { decision_id: id }),
-        { reason, deferUntil }
-      );
-    } finally {
-      await this.releaseDecisionLock(id);
-    }
-  }
-
-  async getDecisionHistory(pipelineId: string): Promise<ApiResponse<DecisionHistoryEntry[]>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DECISIONS', 'HISTORY', { pipeline_id: pipelineId })
-    );
-  }
-
-  async analyzeImpact(
-    id: string, 
-    optionId: string
-  ): Promise<ApiResponse<DecisionImpactAnalysis>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DECISIONS', 'ANALYZE_IMPACT', { 
-        decision_id: id,
-        option_id: optionId 
-      })
-    );
-  }
-
-  async getDecisionState(id: string): Promise<ApiResponse<DecisionState>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DECISIONS', 'STATE', { decision_id: id })
-    );
-  }
-
-  // Lock Management
-  private async acquireDecisionLock(id: string): Promise<ApiResponse<void>> {
-    try {
-      return await this.client.executePost(
-        RouteHelper.getRoute('DECISIONS', 'LOCK', { decision_id: id })
-      );
-    } catch (error) {
-      throw this.handleDecisionError(error);
-    }
-  }
-
-  private async releaseDecisionLock(id: string): Promise<void> {
-    try {
-      await this.client.executeDelete(
-        RouteHelper.getRoute('DECISIONS', 'LOCK', { decision_id: id })
-      );
-    } catch (error) {
-      console.error('Failed to release decision lock:', error);
-    }
-  }
-
-  async updateDecision(
-    id: string, 
-    updates: Partial<Omit<Decision, 'id' | 'createdAt' | 'createdBy'>>
-  ): Promise<ApiResponse<Decision>> {
-    await this.acquireDecisionLock(id);
-    try {
-      return await this.client.executePut(
-        RouteHelper.getRoute('DECISIONS', 'UPDATE', { decision_id: id }),
-        updates
-      );
-    } finally {
-      await this.releaseDecisionLock(id);
-    }
-  }
-
-  async deleteDecision(id: string): Promise<ApiResponse<void>> {
-    return this.client.executeDelete(
-      RouteHelper.getRoute('DECISIONS', 'DELETE', { decision_id: id })
-    );
   }
 }
 

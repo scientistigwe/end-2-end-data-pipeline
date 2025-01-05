@@ -1,5 +1,6 @@
-// src/dataSource/types/components.ts
-import { DataSourceType } from './base';  // Remove the 'type' keyword
+// src/dataSource/components/types.ts
+
+import { DataSourceType } from '../types/base';
 
 export interface DataSourceOption {
   value: DataSourceType;

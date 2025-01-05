@@ -1,58 +1,107 @@
-import { dateUtils, formatBytes } from '@/common';
+// src/dataSource/utils/formatters.ts
+
+import { dateUtils } from '@/common';
 import type { 
-  DataSourceMetadata, 
-  DataSourceType,
-  DataSourceStatus 
-} from '../types/base';
+    BaseMetadata,
+    DataSourceStatus,
+    DataSourceError
+} from '../types';
+
+import { DataSourceType } from '../types/base';
+
+export const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+};
 
 export const formatSourceType = (type: DataSourceType): string => {
-  const typeMap: Record<DataSourceType, string> = {
-    file: 'File',
-    api: 'API',
-    database: 'Database',
-    s3: 'S3',
-    stream: 'Stream'
-  };
-  return typeMap[type] || type;
+    const typeMap: Record<DataSourceType, string> = {
+        [DataSourceType.FILE]: 'File',
+        [DataSourceType.API]: 'API',
+        [DataSourceType.DATABASE]: 'Database',
+        [DataSourceType.S3]: 'S3',
+        [DataSourceType.STREAM]: 'Stream'
+    };
+    return typeMap[type] || type;
 };
 
 export const formatSourceStatus = (status: DataSourceStatus): string => {
-  const statusMap: Record<DataSourceStatus, string> = {
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    error: 'Error',
-    connecting: 'Connecting',
-    validating: 'Validating'
-  };
-  return statusMap[status] || status;
+    const statusMap: Record<DataSourceStatus, string> = {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error',
+        connecting: 'Connecting',
+        processing: 'Processing',
+        validating: 'Validating'
+    };
+    return statusMap[status] || status;
 };
 
-interface FormattedMetadata extends Omit<DataSourceMetadata, 'stats'> {
-  formattedStats?: {
-    rowCount?: number;
-    formattedSize?: string;
-    lastUpdated?: string;
-  };
-  stats?: DataSourceMetadata['stats'];
+export const formatError = (error: DataSourceError): string => {
+    return error.code ? 
+        `${error.message} (${error.code})` : 
+        error.message;
+};
+
+interface FormattedMetadata extends Omit<BaseMetadata, 'config'> {
+    formattedType: string;
+    formattedStatus: string;
+    formattedDates: {
+        created: string;
+        updated: string;
+        lastSync?: string;
+    };
+    configSummary?: string;
 }
 
-export const formatSourceMetadata = (metadata: DataSourceMetadata): FormattedMetadata => {
-  const formattedMetadata: FormattedMetadata = {
-    ...metadata,
-    createdAt: dateUtils.formatDate(metadata.createdAt),
-    updatedAt: dateUtils.formatDate(metadata.updatedAt),
-    lastSync: metadata.lastSync ? dateUtils.formatDate(metadata.lastSync) : undefined,
-    nextSync: metadata.nextSync ? dateUtils.formatDate(metadata.nextSync) : undefined,
-  };
-
-  if (metadata.stats) {
-    formattedMetadata.stats = metadata.stats; // Preserve original stats
-    formattedMetadata.formattedStats = {
-      rowCount: metadata.stats.rowCount,
-      formattedSize: metadata.stats.size ? formatBytes(metadata.stats.size) : undefined,
-      lastUpdated: metadata.stats.lastUpdated ? dateUtils.formatDate(metadata.stats.lastUpdated) : undefined
+export const formatSourceMetadata = (
+    metadata: BaseMetadata
+): FormattedMetadata => {
+    return {
+        id: metadata.id,
+        name: metadata.name,
+        type: metadata.type,
+        status: metadata.status,
+        description: metadata.description,
+        tags: metadata.tags,
+        error: metadata.error,
+        formattedType: formatSourceType(metadata.type),
+        formattedStatus: formatSourceStatus(metadata.status),
+        formattedDates: {
+            created: dateUtils.formatDate(metadata.createdAt),
+            updated: dateUtils.formatDate(metadata.updatedAt),
+            lastSync: metadata.lastSync ? 
+                dateUtils.formatDate(metadata.lastSync) : 
+                undefined
+        },
+        configSummary: metadata.config ? 
+            formatConfigSummary(metadata.type, metadata.config) : 
+            undefined,
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+        lastSync: metadata.lastSync
     };
-  }
+};
 
-  return formattedMetadata;
+const formatConfigSummary = (
+    type: DataSourceType, 
+    config: Record<string, unknown>
+): string => {
+    switch (type) {
+        case DataSourceType.FILE:
+            return `${config['type'] || 'Unknown'} file`;
+        case DataSourceType.DATABASE:
+            return `${config['type'] || 'Unknown'} database @ ${config['host']}`;
+        case DataSourceType.API:
+            return `${config['method'] || 'GET'} ${config['url'] || ''}`;
+        case DataSourceType.S3:
+            return `${config['bucket'] || ''} (${config['region'] || 'Unknown region'})`;
+        case DataSourceType.STREAM:
+            return `${config['protocol'] || 'Unknown'} stream`;
+        default:
+            return 'Unknown configuration';
+    }
 };

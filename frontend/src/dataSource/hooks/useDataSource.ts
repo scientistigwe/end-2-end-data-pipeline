@@ -17,8 +17,7 @@ import type {
   DataSourceMetadata,
   DataSourceFilters,
   PreviewData
-} from '../types/base';
-
+} from '../types';
 export const useDataSource = (filters?: DataSourceFilters) => {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();

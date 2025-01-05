@@ -1,6 +1,6 @@
 // src/recommendations/api/recommendationsApi.ts
 import { RouteHelper } from '@/common/api/routes';
-import { baseAxiosClient } from '@/common/api/client/baseClient';
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { 
   ApiResponse, 
   HTTP_STATUS,
@@ -43,14 +43,14 @@ class RecommendationsApi {
   };
 
   constructor() {
-    this.setupRecommendationHeaders();
-    this.setupRecommendationInterceptors();
-  }
-
-  private setupRecommendationHeaders(): void {
-    this.client.setDefaultHeaders({
-      'X-Service': 'recommendations'
+    this.client.setServiceConfig({
+      service: ServiceType.RECOMMENDATIONS,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
     });
+    this.setupRecommendationInterceptors();  // Keep your existing interceptors
   }
 
   private setupRecommendationInterceptors(): void {

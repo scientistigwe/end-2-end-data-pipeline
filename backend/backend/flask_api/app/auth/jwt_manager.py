@@ -26,13 +26,24 @@ class JWTTokenManager:
     def init_app(self, app):
         """Initialize JWT manager with application."""
         # JWT Configuration
-        app.config['JWT_SECRET_KEY'] = app.config['SECRET_KEY']
-        app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
-        app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
+        jwt_config = app.config['JWT_SETTINGS']
+        app.config['JWT_SECRET_KEY'] = jwt_config['SECURITY']['SECRET_KEY']
+        app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(seconds=jwt_config['TOKEN']['ACCESS_EXPIRES'])
+        app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(seconds=jwt_config['TOKEN']['REFRESH_EXPIRES'])
         app.config['JWT_ERROR_MESSAGE_KEY'] = 'message'
-        app.config['JWT_TOKEN_LOCATION'] = ['headers']
-        app.config['JWT_HEADER_NAME'] = 'Authorization'
-        app.config['JWT_HEADER_TYPE'] = 'Bearer'
+        app.config['JWT_TOKEN_LOCATION'] = jwt_config['TOKEN']['LOCATION']
+        app.config['JWT_HEADER_NAME'] = jwt_config['TOKEN']['HEADER_NAME']
+        app.config['JWT_HEADER_TYPE'] = jwt_config['TOKEN']['HEADER_TYPE']
+        app.config['JWT_COOKIE_SECURE'] = jwt_config['COOKIES']['SECURE']
+        app.config['JWT_COOKIE_CSRF_PROTECT'] = jwt_config['SECURITY']['COOKIE_CSRF_PROTECT']
+        app.config['JWT_CSRF_CHECK_FORM'] = True
+        app.config['JWT_BLACKLIST_ENABLED'] = jwt_config['SECURITY']['BLACKLIST_ENABLED']
+        app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = jwt_config['SECURITY']['BLACKLIST_TOKEN_CHECKS']
+        app.config['JWT_ACCESS_COOKIE_NAME'] = jwt_config['COOKIES']['ACCESS_COOKIE_NAME']
+        app.config['JWT_REFRESH_COOKIE_NAME'] = jwt_config['COOKIES']['REFRESH_COOKIE_NAME']
+        app.config['JWT_ACCESS_COOKIE_PATH'] = jwt_config['COOKIES']['ACCESS_COOKIE_PATH']
+        app.config['JWT_REFRESH_COOKIE_PATH'] = jwt_config['COOKIES']['REFRESH_COOKIE_PATH']
+        app.config['JWT_COOKIE_SAMESITE'] = jwt_config['COOKIES']['SAMESITE']
 
         self.jwt.init_app(app)
 
@@ -103,25 +114,17 @@ class JWTTokenManager:
             }), 401
 
     def create_tokens(self, user: Dict[str, Any], fresh: bool = False) -> Dict[str, str]:
-        """Create access and refresh tokens for user.
-        
-        Args:
-            user: User information dictionary
-            fresh: Whether to create a fresh access token
-            
-        Returns:
-            Dictionary containing access and refresh tokens
-        """
+        """Create access and refresh tokens for user."""
         try:
             access_token = create_access_token(
                 identity=user,
                 fresh=fresh,
-                additional_claims={'type': 'access'}
+                expires_delta=timedelta(seconds=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'])
             )
             
             refresh_token = create_refresh_token(
                 identity=user,
-                additional_claims={'type': 'refresh'}
+                expires_delta=timedelta(seconds=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'])
             )
 
             return {
@@ -132,6 +135,14 @@ class JWTTokenManager:
         except Exception as e:
             logger.error(f"Error creating tokens: {str(e)}")
             raise
+
+    def get_token_from_request(self) -> Optional[str]:
+        """Extract token from request cookies."""
+        return request.cookies.get(current_app.config['JWT_ACCESS_COOKIE_NAME'])
+
+    def get_refresh_token_from_request(self) -> Optional[str]:
+        """Extract refresh token from request cookies."""
+        return request.cookies.get(current_app.config['JWT_REFRESH_COOKIE_NAME'])
 
     def blacklist_token(self, jti: str) -> None:
         """Add token to blacklist."""
@@ -176,11 +187,12 @@ class JWTTokenManager:
         return decorator
 
     def get_token_from_request(self) -> Optional[str]:
-        """Extract token from request headers."""
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            return auth_header.split('Bearer ')[1]
-        return None
+        """Extract token from request cookies."""
+        return request.cookies.get('access_token')
+
+    def get_refresh_token_from_request(self) -> Optional[str]:
+        """Extract refresh token from request cookies."""
+        return request.cookies.get('refresh_token')
 
     def validate_token(self, token: str) -> Dict[str, Any]:
         """Validate and decode token.
@@ -199,3 +211,4 @@ class JWTTokenManager:
         except Exception as e:
             logger.error(f"Token validation error: {str(e)}")
             raise
+ 

@@ -2,9 +2,9 @@
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@/store/types';
 import type { User } from '@/common/types/user';
-import type { AuthState, AuthStatus, AuthTokens } from '../types';
+import type { AuthState, AuthStatus } from '../types';
 
-// Base selectors with proper typing and null checks
+// Base selectors
 export const selectAuthState = (state: RootState): AuthState => 
   state.auth;
 
@@ -17,16 +17,13 @@ export const selectAuthStatus = (state: RootState): AuthStatus =>
 export const selectAuthError = (state: RootState): string | null => 
   state.auth?.error || null;
 
-export const selectAuthTokens = (state: RootState): AuthTokens => 
-  state.auth?.tokens || { accessToken: null, refreshToken: null, expiresIn: null };
-
 export const selectIsLoading = (state: RootState): boolean => 
   state.auth?.isLoading || false;
 
 export const selectIsInitialized = (state: RootState): boolean => 
   state.auth?.initialized || false;
 
-// Derived selectors with proper typing
+// Derived selectors
 export const selectIsAuthenticated = createSelector(
   selectAuthStatus,
   (status): boolean => status === 'authenticated'
@@ -51,17 +48,6 @@ export const selectUserRole = createSelector(
 export const selectUserPermissions = createSelector(
   selectUser,
   (user): string[] => user?.permissions || []
-);
-
-// Token validation selectors
-export const selectHasValidToken = createSelector(
-  selectAuthTokens,
-  (tokens): boolean => Boolean(tokens.accessToken && tokens.refreshToken)
-);
-
-export const selectIsSessionExpired = createSelector(
-  selectAuthTokens,
-  (tokens): boolean => tokens.expiresIn ? Date.now() > tokens.expiresIn : true
 );
 
 // Composite selectors
@@ -96,19 +82,5 @@ export const selectUserInfo = createSelector(
     fullName: user ? `${user.firstName} ${user.lastName}`.trim() : undefined,
     role: user?.role,
     permissions: user?.permissions || []
-  })
-);
-
-// Token state selectors
-export const selectTokenState = createSelector(
-  [selectAuthTokens, selectIsSessionExpired],
-  (tokens, isExpired): {
-    hasToken: boolean;
-    isExpired: boolean;
-    expiresIn: number | null;
-  } => ({
-    hasToken: Boolean(tokens.accessToken),
-    isExpired,
-    expiresIn: tokens.expiresIn
   })
 );

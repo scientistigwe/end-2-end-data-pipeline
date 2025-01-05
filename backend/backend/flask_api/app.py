@@ -10,7 +10,7 @@ from .middleware.logging import RequestLoggingMiddleware
 from .middleware.error_handler import register_error_handlers
 from .auth.jwt_manager import JWTTokenManager
 from .openapi.documentation import APIDocumentation
-from database.config import init_db
+from ..config import init_db
 from utils.route_registry import APIRoutes
 
 # Import all services

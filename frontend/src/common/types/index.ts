@@ -1,5 +1,6 @@
-// src/common/types/index.ts
-export * from './api';
-export * from './routes';
-export * from './common';
-export type { Modal as uiModal, TableConfig, Notification } from './ui';
+// common/types/index.ts
+export type { User } from './user';
+export type { RouteConfig } from './routes';
+export type { ApiError, ApiResponse } from './api';
+export * from './status';
+export * from './ui';

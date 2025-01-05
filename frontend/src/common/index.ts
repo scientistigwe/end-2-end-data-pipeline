@@ -1,23 +1,17 @@
-// Export components
+// frontend\src\common\index.ts
+
+// Component exports with explicit naming
 export * from './components';
 
-// Export hooks
+// Utilities with explicit exports
+export { dateUtils } from './utils/date/dateUtils';
+export { storageUtils } from './utils/storage/storageUtils';
+export { handleApiError } from './utils/api/apiUtils';
+export { cn } from './utils/cn';
+
+// Core exports
 export * from './hooks';
-
-// Export API utilities
-export * from './utils';
-
-// Export Axios client
 export { BaseClient } from './api/client';
-
-// Export types
 export * from './types';
-
-// Export styles
 export * from './styles';
-
-// Export store
 export * from './store';
-
-// Export utility functions
-export * from './utils';

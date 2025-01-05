@@ -1,9 +1,8 @@
-import {   AxiosHeaders } from 'axios';
 import type {
   AxiosResponse,
   InternalAxiosRequestConfig 
 } from 'axios';
-import { baseAxiosClient } from '@/common/api/client/baseClient';
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import type { ApiResponse } from '@/common/types/api';
 import type {
   Pipeline,
@@ -17,8 +16,7 @@ import type {
   PipelineStatus,
   PipelineStatusChangeDetail,
   PipelineRunCompleteDetail,
-  PipelineErrorDetail,
-  RouteDefinition
+  PipelineErrorDetail
 } from '../types';
 
 export const PIPELINE_EVENTS = {
@@ -29,124 +27,57 @@ export const PIPELINE_EVENTS = {
 
 class PipelineApi {
   private client = baseAxiosClient;
-  private readonly MODULE: keyof RouteDefinition = 'PIPELINES';
-  private readonly API_VERSION = 'v1';
-  private readonly BASE_PATH = `/api/${this.API_VERSION}/pipelines`;
 
   constructor() {
-    this.setupPipelineHeaders();
-    this.setupPipelineInterceptors();
-  }
-
-  private setupPipelineHeaders() {
-    this.client.setDefaultHeaders({
-      'X-Service': 'pipeline'
+    this.client.setServiceConfig({
+      service: ServiceType.PIPELINE,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
     });
   }
 
-  // Interceptors and Error Handling
-// src/pipeline/api/pipelineApi.ts
-private setupPipelineInterceptors(): void {
-  const instance = this.client.getAxiosInstance();
-  if (!instance) return;
-
-  instance.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-      const headers = new AxiosHeaders(config.headers || {});
-      config.headers = headers;
-      return config;
-    },
-    (error: unknown) => Promise.reject(this.handlePipelineError(error))
-  );
-
-  instance.interceptors.response.use(
-    (response: AxiosResponse) => response,
-    (error: unknown) => {
-      const enhancedError = this.handlePipelineError(error);
-      this.notifyError(enhancedError);
-      throw enhancedError;
-    }
-  );
-}
-  private handlePipelineError(error: unknown): PipelineError {
-    const baseError: PipelineError = {
-      name: 'PipelineError',
-      message: 'Unknown pipeline error',
-      timestamp: new Date().toISOString(),
-      component: 'pipeline'
-    };
-
-    if (error instanceof Error) {
-      return {
-        ...baseError,
-        message: error.message,
-        stack: error.stack,
-        name: 'PipelineError'
-      };
-    }
-
-    if (typeof error === 'object' && error !== null) {
-      const errorObj = error as Record<string, any>;
-      const status = errorObj.response?.status;
-
-      switch (status) {
-        case 409:
-          return {
-            ...baseError,
-            message: 'Pipeline is already running',
-            code: 'PIPELINE_RUNNING'
-          };
-        case 404:
-          return {
-            ...baseError,
-            message: 'Pipeline not found',
-            code: 'PIPELINE_NOT_FOUND'
-          };
-        case 400:
-          return {
-            ...baseError,
-            message: `Invalid pipeline configuration: ${errorObj.response.data?.message}`,
-            code: 'INVALID_CONFIG'
-          };
-        default:
-          return {
-            ...baseError,
-            message: errorObj.response?.data?.message || errorObj.message || baseError.message,
-            code: errorObj.code || 'UNKNOWN_ERROR'
-          };
-      }
-    }
-
-    return baseError;
-  }
-
-  // Pipeline CRUD Operations aligned with backend routes
+  // Pipeline CRUD Operations
   async listPipelines(params?: {
     page?: number;
     limit?: number;
     status?: PipelineStatus[];
     mode?: string[];
   }): Promise<ApiResponse<Pipeline[]>> {
-    return this.client.executeGet(this.BASE_PATH, { params });
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'LIST'),
+      { params }
+    );
   }
 
   async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
-    return this.client.executePost(this.BASE_PATH, config);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'CREATE'),
+      config
+    );
   }
 
   async getPipeline(id: string): Promise<ApiResponse<Pipeline>> {
-    return this.client.executeGet(`${this.BASE_PATH}/${id}`);
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'GET', { pipeline_id: id })
+    );
   }
 
   async updatePipeline(
     id: string,
     updates: Partial<PipelineConfig>
   ): Promise<ApiResponse<Pipeline>> {
-    return this.client.executePut(`${this.BASE_PATH}/${id}`, updates);
+    return this.client.executePut(
+      this.client.createRoute('PIPELINES', 'UPDATE', { pipeline_id: id }),
+      updates
+    );
   }
 
   async deletePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.client.executeDelete(`${this.BASE_PATH}/${id}`);
+    return this.client.executeDelete(
+      this.client.createRoute('PIPELINES', 'DELETE', { pipeline_id: id })
+    );
   }
 
   // Pipeline Execution Controls
@@ -157,23 +88,34 @@ private setupPipelineInterceptors(): void {
       params?: Record<string, unknown>
     }
   ): Promise<ApiResponse<PipelineRun>> {
-    return this.client.executePost(`${this.BASE_PATH}/${id}/start`, options);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'START', { pipeline_id: id }),
+      options
+    );
   }
 
   async stopPipeline(id: string): Promise<ApiResponse<void>> {
-    return this.client.executePost(`${this.BASE_PATH}/${id}/stop`);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'STOP', { pipeline_id: id })
+    );
   }
 
   async pausePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.client.executePost(`${this.BASE_PATH}/${id}/pause`);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'PAUSE', { pipeline_id: id })
+    );
   }
 
   async resumePipeline(id: string): Promise<ApiResponse<void>> {
-    return this.client.executePost(`${this.BASE_PATH}/${id}/resume`);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'RESUME', { pipeline_id: id })
+    );
   }
 
   async retryPipeline(id: string): Promise<ApiResponse<PipelineRun>> {
-    return this.client.executePost(`${this.BASE_PATH}/${id}/retry`);
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'RETRY', { pipeline_id: id })
+    );
   }
 
   // Pipeline Status and Monitoring
@@ -182,7 +124,9 @@ private setupPipelineInterceptors(): void {
     progress: number;
     currentStep?: string;
   }>> {
-    return this.client.executeGet(`${this.BASE_PATH}/${id}/status`);
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'STATUS', { pipeline_id: id })
+    );
   }
 
   async getPipelineLogs(
@@ -195,7 +139,10 @@ private setupPipelineInterceptors(): void {
       page?: number;
     }
   ): Promise<ApiResponse<PipelineLogs>> {
-    return this.client.executeGet(`${this.BASE_PATH}/${id}/logs`, { params: options });
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'LOGS', { pipeline_id: id }),
+      { params: options }
+    );
   }
 
   async getPipelineMetrics(
@@ -205,7 +152,10 @@ private setupPipelineInterceptors(): void {
       end: string;
     }
   ): Promise<ApiResponse<PipelineMetrics[]>> {
-    return this.client.executeGet(`${this.BASE_PATH}/${id}/metrics`, { params: timeRange });
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'METRICS', { pipeline_id: id }),
+      { params: timeRange }
+    );
   }
 
   async getPipelineRuns(
@@ -216,7 +166,10 @@ private setupPipelineInterceptors(): void {
       status?: PipelineStatus;
     }
   ): Promise<ApiResponse<PipelineRun[]>> {
-    return this.client.executeGet(`${this.BASE_PATH}/${id}/runs`, { params: options });
+    return this.client.executeGet(
+      this.client.createRoute('PIPELINES', 'RUNS', { pipeline_id: id }),
+      { params: options }
+    );
   }
 
   // Validation
@@ -224,51 +177,13 @@ private setupPipelineInterceptors(): void {
     valid: boolean;
     errors?: string[];
   }>> {
-    return this.client.executePost(`${this.BASE_PATH}/validate`, config);
-  }
-
-  // Event Notification Methods
-  private notifyError(error: PipelineError): void {
-    window.dispatchEvent(
-      new CustomEvent<PipelineErrorDetail>(PIPELINE_EVENTS.ERROR, {
-        detail: {
-          error: error.message,
-          code: error.code
-        }
-      })
+    return this.client.executePost(
+      this.client.createRoute('PIPELINES', 'VALIDATE'),
+      config
     );
   }
 
-  private notifyStatusChange(
-    pipelineId: string,
-    status: PipelineStatus,
-    previousStatus: PipelineStatus
-  ): void {
-    window.dispatchEvent(
-      new CustomEvent<PipelineStatusChangeDetail>(PIPELINE_EVENTS.STATUS_CHANGE, {
-        detail: {
-          pipelineId,
-          status,
-          previousStatus,
-          timestamp: new Date().toISOString()
-        }
-      })
-    );
-  }
-
-  private notifyRunComplete(pipelineId: string, status: PipelineStatus): void {
-    window.dispatchEvent(
-      new CustomEvent<PipelineRunCompleteDetail>(PIPELINE_EVENTS.RUN_COMPLETE, {
-        detail: {
-          pipelineId,
-          status,
-          timestamp: new Date().toISOString()
-        }
-      })
-    );
-  }
-
-  // Event Subscription with type safety
+  // Event Methods
   subscribeToEvents<E extends PipelineEventName>(
     event: E,
     callback: (event: PipelineEventMap[E]) => void
@@ -296,5 +211,4 @@ private setupPipelineInterceptors(): void {
   }
 }
 
-// Export singleton instance
 export const pipelineApi = new PipelineApi();

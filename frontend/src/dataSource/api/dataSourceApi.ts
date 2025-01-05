@@ -1,184 +1,233 @@
-// src/dataSource/api/dataSourceApi.ts
+// src/dataSource/api/dataSourceApi.ts - REFACTORED
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { RouteHelper } from '@/common/api/routes';
-import { baseAxiosClient } from '@/common/api/client/baseClient';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
-import type { AxiosProgressEvent } from 'axios';
-import type { BaseDataSourceConfig, BaseMetadata } from '../types/base';
-
-import type { DataSourceFilters } from '../types/dataSourceFilters';
-
-import type { ConnectionTestResponse } from '../types/responses';
-
-interface SourcesResponse {
-  sources: {
-    api: BaseMetadata[];
-    databases: BaseMetadata[];
-    files: BaseMetadata[];
-    s3: BaseMetadata[];
-    stream: BaseMetadata[];
-  }
-}
+import type { 
+    BaseDataSourceConfig,
+    BaseMetadata,
+    ValidationResult,
+    PreviewData,
+    DataSourceFilters,
+    SourceConnectionResponse
+} from '../types/base';
 
 class DataSourceApi {
   private client = baseAxiosClient;
 
   constructor() {
-    this.setupDataSourceHeaders();
-  }
-
-  private setupDataSourceHeaders() {
-    this.client.setDefaultHeaders({
-      'X-Service': 'datasource'
+    this.client.setServiceConfig({
+      service: ServiceType.DATA_SOURCES,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
     });
   }
 
-  private async requestWithProgress<T>(
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-    endpoint: string,
-    config?: Omit<ApiRequestConfig, 'onUploadProgress'> & {
-      onProgress?: (progress: number) => void;
-    },
-    data?: unknown
-  ): Promise<ApiResponse<T>> {
-    const { onProgress, ...restConfig } = config ?? {};
-    
-    const requestConfig: ApiRequestConfig = {
-      ...restConfig,
-      onUploadProgress: onProgress 
-        ? (event: AxiosProgressEvent) => {
-            if (event.total) {
-              onProgress((event.loaded / event.total) * 100);
-            }
-          }
-        : undefined
-    };
-
-    switch (method) {
-      case 'GET':
-        return this.client.executeGet(endpoint, requestConfig);
-      case 'POST':
-        return this.client.executePost(endpoint, data, requestConfig);
-      case 'PUT':
-        return this.client.executePut(endpoint, data, requestConfig);
-      case 'DELETE':
-        return this.client.executeDelete(endpoint, requestConfig);
-      default:
-        throw new Error(`Unsupported method: ${method}`);
+    // Modified to match backend response structure
+    async listDataSources(filters?: DataSourceFilters): Promise<ApiResponse<{
+        sources: {
+            api: BaseMetadata[];
+            databases: BaseMetadata[];
+            files: BaseMetadata[];
+            s3: BaseMetadata[];
+            stream: BaseMetadata[];
+        }
+    }>> {
+        return this.client.executeGet(
+            RouteHelper.getRoute('DATA_SOURCES', 'LIST'),
+            { params: filters }
+        );
     }
-  }
 
-  // Core Operations
-  async listDataSources(filters?: DataSourceFilters): Promise<ApiResponse<SourcesResponse>> {
-    const response = await this.client.executeGet<SourcesResponse>(
-      RouteHelper.getRoute('DATA_SOURCES', 'LIST'),
-      { params: filters }
-    );
-    
-    return response;  // BaseClient already handles the ApiResponse structure
-  }
+    async createDataSource(
+      config: BaseDataSourceConfig
+      ): Promise<ApiResponse<BaseMetadata>> {
+          const endpoint = RouteHelper.getRoute('DATA_SOURCES', 'CREATE');
+          return this.client.executePost(endpoint, config);
+      }
 
-  async getDataSource(id: string): Promise<ApiResponse<{ 
-    config: BaseDataSourceConfig; 
-    metadata: BaseMetadata 
-  }>> {
-    return this.client.executeGet(
-      RouteHelper.getRoute('DATA_SOURCES', 'GET', { source_id: id })
-    );
+      async deleteDataSource(
+          sourceId: string
+      ): Promise<ApiResponse<void>> {
+          const endpoint = RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: sourceId });
+          return this.client.executeDelete(endpoint);
   }
+  
+    // File Operations
+    async uploadFile(
+        files: File[], 
+        metadata: Record<string, any>,
+        onProgress?: (progress: number) => void
+    ): Promise<ApiResponse<{ fileId: string; metadata: BaseMetadata }>> {
+        const formData = new FormData();
+        files.forEach(file => formData.append('file', file));
+        formData.append('metadata', JSON.stringify(metadata));
 
-  async createDataSource(config: BaseDataSourceConfig): Promise<ApiResponse<BaseMetadata>> {
-    return this.client.executePost(
-      RouteHelper.getRoute('DATA_SOURCES', 'CREATE'),
-      config
-    );
-  }
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
+            formData,
+            {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: onProgress ? 
+                    (event) => {
+                        if (event.total) {
+                            onProgress((event.loaded / event.total) * 100);
+                        }
+                    } : undefined
+            }
+        );
+    }
 
-  async updateDataSource(id: string, updates: Partial<BaseDataSourceConfig>): Promise<ApiResponse<BaseMetadata>> {
-    return this.client.executePut(
-      RouteHelper.getRoute('DATA_SOURCES', 'UPDATE', { source_id: id }),
-      updates
-    );
-  }
+    async getFileMetadata(fileId: string): Promise<ApiResponse<BaseMetadata>> {
+        return this.client.executeGet(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'METADATA', { file_id: fileId })
+        );
+    }
 
-  async deleteDataSource(id: string): Promise<ApiResponse<void>> {
-    return this.client.executeDelete(
-      RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: id })
-    );
-  }
+    async parseFile(
+        fileId: string, 
+        options: Record<string, any>
+    ): Promise<ApiResponse<PreviewData>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'PARSE', { file_id: fileId }),
+            options
+        );
+    }
 
-  // File Operations
-  async uploadFile(
-    files: File[], 
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<{ fileId: string }>> {
-    const formData = new FormData();
-    files.forEach(file => formData.append('files', file));
+    // Database Operations
+    async connectDatabase(
+        config: BaseDataSourceConfig['config']
+    ): Promise<ApiResponse<SourceConnectionResponse>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'CONNECT'),
+            config
+        );
+    }
 
-    return this.requestWithProgress(
-      'POST',
-      RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
-      { onProgress },
-      formData
-    );
-  }
+    async executeDatabaseQuery(
+        connectionId: string,
+        query: string,
+        params?: unknown[]
+    ): Promise<ApiResponse<{
+        rows: unknown[];
+        rowCount: number;
+        fields: Array<{ name: string; type: string }>;
+    }>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'QUERY', { connection_id: connectionId }),
+            { query, params }
+        );
+    }
 
-  // Database Operations
-  async executeDatabaseQuery(
-    connectionId: string, 
-    query: string, 
-    params?: unknown[]
-  ): Promise<ApiResponse<{
-    rows: unknown[];
-    rowCount: number;
-    fields: Array<{ name: string; type: string }>;
-  }>> {
-    return this.client.executePost(
-      RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'QUERY', { connection_id: connectionId }),
-      { query, params }
-    );
-  }
+    async getDatabaseSchema(connectionId: string): Promise<ApiResponse<{
+        tables: Array<{
+            name: string;
+            columns: Array<{
+                name: string;
+                type: string;
+                nullable: boolean;
+            }>;
+        }>;
+    }>> {
+        return this.client.executeGet(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'SCHEMA', { connection_id: connectionId })
+        );
+    }
 
-  // S3 Operations
-  async listS3Objects(
-    connectionId: string, 
-    prefix?: string
-  ): Promise<ApiResponse<{
-    objects: Array<{
-      key: string;
-      size: number;
-      lastModified: string;
-      isDirectory: boolean;
-    }>;
-  }>> {
-    return this.client.executeGet(
-      RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'LIST', { connection_id: connectionId }),
-      { params: { prefix } }
-    );
-  }
+    // API Operations
+    async connectApi(
+        config: BaseDataSourceConfig['config']
+    ): Promise<ApiResponse<SourceConnectionResponse>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'CONNECT'),
+            config
+        );
+    }
 
-  // Stream Operations
-  async getStreamStatus(
-    connectionId: string
-  ): Promise<ApiResponse<{
-    status: string;
-    metrics: {
-      messagesPerSecond: number;
-      bytesPerSecond: number;
-      lastMessage: string;
-    };
-  }>> {
-    return this.client.executeGet(
-      RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'STATUS', { connection_id: connectionId })
-    );
-  }
+    async testApiEndpoint(url: string): Promise<ApiResponse<{
+        status: number;
+        responseTime: number;
+        isValid: boolean;
+    }>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'TEST'),
+            { url }
+        );
+    }
 
-  // API Operations
-  async testApiEndpoint(url: string): Promise<ApiResponse<ConnectionTestResponse>> {
-    return this.client.executePost(
-      RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'TEST'),
-      { url }
-    );
-  }
+    // S3 Operations
+    async connectS3(
+        config: BaseDataSourceConfig['config']
+    ): Promise<ApiResponse<SourceConnectionResponse>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'CONNECT'),
+            config
+        );
+    }
+
+    async listS3Objects(
+        connectionId: string,
+        prefix?: string
+    ): Promise<ApiResponse<{
+        objects: Array<{
+            key: string;
+            size: number;
+            lastModified: string;
+        }>;
+    }>> {
+        return this.client.executeGet(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'LIST', { connection_id: connectionId }),
+            { params: { prefix } }
+        );
+    }
+
+    // Stream Operations
+    async connectStream(
+        config: BaseDataSourceConfig['config']
+    ): Promise<ApiResponse<SourceConnectionResponse>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'CONNECT'),
+            config
+        );
+    }
+
+    async getStreamMetrics(connectionId: string): Promise<ApiResponse<{
+        messagesPerSecond: number;
+        bytesPerSecond: number;
+        totalMessages: number;
+    }>> {
+        return this.client.executeGet(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'METRICS', { connection_id: connectionId })
+        );
+    }
+
+    // Common Operations
+    async validateDataSource(
+        sourceId: string
+    ): Promise<ApiResponse<ValidationResult>> {
+        return this.client.executePost(
+            RouteHelper.getRoute('DATA_SOURCES', 'VALIDATE', { source_id: sourceId })
+        );
+    }
+
+    async previewData(
+        sourceId: string,
+        options?: { limit?: number; offset?: number }
+    ): Promise<ApiResponse<PreviewData>> {
+        return this.client.executeGet(
+            RouteHelper.getRoute('DATA_SOURCES', 'PREVIEW', { source_id: sourceId }),
+            { params: options }
+        );
+    }
+
+    async disconnectSource(
+        connectionId: string
+    ): Promise<ApiResponse<void>> {
+        return this.client.executePost(
+            RouteHelper.getNestedRoute('DATA_SOURCES', 'CONNECTION', 'DISCONNECT', { connection_id: connectionId })
+        );
+    }
 }
 
 export const dataSourceApi = new DataSourceApi();

@@ -1,4 +1,4 @@
-import { baseAxiosClient } from '@/common/api/client/baseClient';
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import type { AxiosProgressEvent } from 'axios';
 import type { ApiResponse } from '@/common/types/api';
 import type {
@@ -15,12 +15,12 @@ class AnalysisApi {
   private client = baseAxiosClient;
 
   constructor() {
-    this.setupAnalysisHeaders();
-  }
-
-  private setupAnalysisHeaders() {
-    this.client.setDefaultHeaders({
-      'X-Service': 'analysis'
+    this.client.setServiceConfig({
+      service: ServiceType.ANALYSIS,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
     });
   }
 

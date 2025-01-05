@@ -1,16 +1,18 @@
 // src/settings/types/responses.ts
 import type { UserSettings, ValidationResult } from './models';
 
-// Define the API response structure
+// Base API response structure
 export interface ApiResponse<T> {
   data: T;
   message?: string;
   status: number;
 }
 
-// Define what the server actually returns
+// Server response wrapper
 export interface ServerResponse<T> {
-  data: ApiResponse<T>;
+  data: T;  // Remove the ApiResponse wrapper, data is directly the type we want
+  message?: string;
+  status: number;
 }
 
 export type SettingsResponse = ServerResponse<UserSettings>;

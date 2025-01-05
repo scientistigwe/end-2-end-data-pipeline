@@ -1,98 +1,205 @@
 // auth/api/authApi.ts
-import { baseAxiosClient } from '@/common/api/client/baseClient';
-import { storageUtils } from '@/common/utils/storage/storageUtils';
+import { AxiosResponse } from 'axios';
+import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import type {
   AuthTokens,
   LoginResponse,
   RegisterResponse,
   LoginCredentials,
   RegisterData,
-  ResetPasswordData,
+  ProfileUpdateData,
   ChangePasswordData,
+  ResetPasswordData,
   VerifyEmailData,
-  ProfileUpdateData
+  LoginResponseData,
+  RegisterResponseData,
+  LoginApiResponse,
+  RegisterApiResponse,
 } from '../types/auth';
+import { isAuthError, type ApiErrorDetail, type ApiBaseResponse } from '../types/api';
 import type { User } from '@/common/types/user';
-
-const AUTH_STORAGE_KEY = 'auth_tokens';
 
 class AuthApi {
   private client = baseAxiosClient;
 
   constructor() {
-    this.setupAuthHeaders();
-  }
-
-  private setupAuthHeaders() {
-    this.client.setDefaultHeaders({
-      'X-Service': 'auth'
+    this.client.setServiceConfig({
+      service: ServiceType.AUTH,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
     });
   }
 
-  async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    const response = await this.client.executePost<LoginResponse>('/auth/login', credentials);
-    if (response.tokens) {
-      this.setAuthTokens(response.tokens);
+  async login(credentials: LoginCredentials): Promise<LoginResponseData> {
+    try {
+      console.log('Sending login request with:', credentials);
+      
+      const response = await this.client.executePost<LoginApiResponse>(
+        this.client.createRoute('AUTH', 'LOGIN'),
+        credentials,
+        {
+          withCredentials: true // Enable cookie handling
+        }
+      );
+
+      // Dispatch auth success event
+      window.dispatchEvent(new Event('auth:login'));
+      
+      return response;
+    } catch (error) {
+      console.error('Login API error details:', error);
+      throw this.handleAuthError(error);
     }
-    return response;
   }
 
-  async register(data: RegisterData): Promise<RegisterResponse> {
-    const response = await this.client.executePost<RegisterResponse>('/auth/register', data);
-    if (response.tokens) {
-      this.setAuthTokens(response.tokens);
+  async register(data: RegisterData): Promise<RegisterResponseData> {
+    try {
+      console.log('Sending registration request:', data);
+      
+      const response = await this.client.executePost<RegisterApiResponse>(
+        this.client.createRoute('AUTH', 'REGISTER'),
+        data,
+        {
+          withCredentials: true
+        }
+      );
+      
+      if (!response || !response.user) {
+        console.error('Invalid response structure:', response);
+        throw new Error('Invalid response format from server');
+      }
+      
+      // Dispatch auth success event
+      window.dispatchEvent(new Event('auth:register'));
+      
+      return response;
+    } catch (error) {
+      console.error('Registration API error details:', {
+        error,
+        response: error.response?.data, 
+        status: error.response?.status
+      });
+      throw this.handleAuthError(error);
     }
-    return response;
   }
 
-  async refreshToken(refresh_token: string): Promise<AuthTokens> {
-    const response = await this.client.executePost<{ tokens: AuthTokens }>('/auth/refresh', {
-      refresh_token
-    });
-    return response.tokens;
+  async refreshToken(): Promise<void> {
+    try {
+      await this.client.executePost<void>(
+        this.client.createRoute('AUTH', 'REFRESH'),
+        undefined,
+        {
+          withCredentials: true
+        }
+      );
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      this.handleAuthError(error);
+      // Dispatch session expired event
+      window.dispatchEvent(new Event('auth:sessionExpired'));
+      throw error;
+    }
   }
 
   async logout(): Promise<void> {
     try {
-      await this.client.executePost<void>('/auth/logout');
+      await this.client.executePost<void>(
+        this.client.createRoute('AUTH', 'LOGOUT'),
+        undefined,
+        {
+          withCredentials: true
+        }
+      );
     } finally {
-      this.clearAuth();
+      // Dispatch logout event
+      window.dispatchEvent(new Event('auth:logout'));
     }
   }
 
   async getProfile(): Promise<User> {
-    const response = await this.client.executeGet<User>('/auth/profile');
-    return response;
+    const response = await this.client.executeGet<ApiBaseResponse<User>>(
+      this.client.createRoute('AUTH', 'PROFILE'),
+      {
+        withCredentials: true
+      }
+    );
+    
+    if (!response.data) {
+      throw new Error('Invalid profile response format');
+    }
+    return response.data;
   }
 
   async updateProfile(data: ProfileUpdateData): Promise<User> {
-    const response = await this.client.executePut<User>('/auth/profile', data);
-    return response;
+    const response = await this.client.executePut<ApiBaseResponse<User>>(
+      this.client.createRoute('AUTH', 'PROFILE'),
+      data,
+      {
+        withCredentials: true
+      }
+    );
+    
+    if (!response.data) {
+      throw new Error('Invalid profile update response format');
+    }
+    return response.data;
   }
 
   async verifyEmail(data: VerifyEmailData): Promise<void> {
-    await this.client.executePost<void>('/auth/verify-email', data);
+    await this.client.executePost<void>(
+      this.client.createRoute('AUTH', 'VERIFY_EMAIL'),
+      data,
+      {
+        withCredentials: true
+      }
+    );
   }
 
   async changePassword(data: ChangePasswordData): Promise<void> {
-    await this.client.executePost<void>('/auth/change-password', data);
+    await this.client.executePost<void>(
+      this.client.createRoute('AUTH', 'CHANGE_PASSWORD'),
+      data,
+      {
+        withCredentials: true
+      }
+    );
   }
 
   async resetPassword(data: ResetPasswordData): Promise<void> {
-    await this.client.executePost<void>('/auth/reset-password', data);
+    await this.client.executePost<void>(
+      this.client.createRoute('AUTH', 'RESET_PASSWORD'),
+      data,
+      {
+        withCredentials: true
+      }
+    );
   }
 
-  private setAuthTokens(tokens: AuthTokens): void {
-    storageUtils.setItem(AUTH_STORAGE_KEY, tokens);
+  private handleAuthError(error: unknown): Error {
+    if (isAuthError(error)) {
+      const errorMessage = (error.response?.data?.error as ApiErrorDetail)?.message || 
+                          error.response?.data?.message || 
+                          'Authentication failed';
+      return new Error(errorMessage);
+    }
+    return error instanceof Error ? error : new Error('An unexpected error occurred');
   }
 
-  private clearAuth(): void {
-    storageUtils.removeItem(AUTH_STORAGE_KEY);
-  }
-
-  isAuthenticated(): boolean {
-    const tokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-    return !!tokens?.access_token;
+  // Check authentication status by making a lightweight auth check request
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      await this.client.executeGet<void>(
+        this.client.createRoute('AUTH', 'VERIFY'),
+        {
+          withCredentials: true
+        }
+      );
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 }
 

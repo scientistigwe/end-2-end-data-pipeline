@@ -1,40 +1,33 @@
 // auth/pages/RegisterPage.tsx
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { RegisterForm } from "../components/RegisterForm";
-import { authApi } from "../api/authApi";
-import { getErrorMessage, isAuthError } from "../utils/errorHandlings";
+import { useAuth } from "../hooks/useAuth";
 import type { RegisterData } from "../types/auth";
 
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
+  const location = useLocation();
+  const { register, isRegistering } = useAuth();
+
+  const from = (location.state as any)?.from?.pathname || "/dashboard";
 
   const handleRegister = async (data: RegisterData) => {
-    setIsLoading(true);
     try {
-      await authApi.register(data);
-      navigate("/login", {
-        replace: true,
-        state: { message: "Registration successful! Please log in." },
-      });
-    } catch (error) {
-      console.error("Registration error:", error);
-
-      // You can handle specific error cases
-      if (isAuthError(error)) {
-        if (error.response?.status === 409) {
-          throw new Error("An account with this email already exists");
-        }
-        if (error.response?.data.error?.details) {
-          throw new Error(getErrorMessage(error));
-        }
+      await register(data);
+      // After successful registration and auto-login, navigate to dashboard
+      navigate(from, { replace: true });
+    } catch (error: any) {
+      // Let the form handle the error display
+      if (error.response?.status === 409) {
+        throw new Error("An account with this email already exists");
       }
-
-      // Default error
-      throw new Error("An unexpected error occurred during registration");
-    } finally {
-      setIsLoading(false);
+      if (error.response?.data?.error?.details) {
+        throw new Error(error.response.data.error.details);
+      }
+      throw new Error(
+        error.message || "Registration failed. Please try again."
+      );
     }
   };
 
@@ -53,7 +46,7 @@ const RegisterPage: React.FC = () => {
         </Link>
       </p>
       <div className="mt-8">
-        <RegisterForm onSubmit={handleRegister} isLoading={isLoading} />
+        <RegisterForm onSubmit={handleRegister} isLoading={isRegistering} />
       </div>
     </div>
   );

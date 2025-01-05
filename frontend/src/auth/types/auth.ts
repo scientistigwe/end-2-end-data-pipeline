@@ -18,7 +18,6 @@ export interface AuthState {
   user: User | null;
   status: AuthStatus;
   error: string | null;
-  tokens: AuthTokens | null;
   isLoading: boolean;
   initialized: boolean;
 }
@@ -36,6 +35,22 @@ export interface RegisterData {
   username: string;
   firstName: string;
   lastName: string;
+  phoneNumber?: string;
+  department?: string;
+  timezone?: string;
+  locale?: string;
+  preferences?: Record<string, any>;
+}
+
+export interface ProfileUpdateData {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  department?: string;
+  timezone?: string;
+  locale?: string;
+  profileImage?: string;
+  preferences?: Record<string, any>;
 }
 
 export interface ChangePasswordData {
@@ -70,17 +85,52 @@ export interface AuthApiResponse<T> extends ApiResponse<T> {
   message: string;
 }
 
-export interface LoginResponse {
-  success: boolean;
-  message: string;
-  tokens: AuthTokens;
-  user: User;
+export interface AuthTokens {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
 }
 
-export interface RegisterResponse extends AuthApiResponse<{
+// Request Types
+export interface LoginCredentials {
+  email: string;
+  password: string;
+  rememberMe?: boolean;
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+}
+
+// Response Types
+export interface LoginResponseData {
+  user: User;
+  logged_in_at: string;
+}
+
+export interface RegisterResponseData {
+  user: User;
+  registered_at: string;
+}
+
+export interface RegisterApiResponse {
   user: User;
   tokens: AuthTokens;
-}> {}
+  registered_at: string;
+}
+
+export interface LoginApiResponse {
+  user: User;
+  tokens: AuthTokens;
+  logged_in_at: string;
+}
+
+export type LoginResponse = ApiResponse<LoginResponseData>;
+export type RegisterResponse = ApiResponse<RegisterResponseData>;
 
 // Error Types
 export interface ValidationErrors {
@@ -117,14 +167,6 @@ export interface AuthErrorResponse {
   };
 }
 
-// Profile Types
-export interface ProfileUpdateData {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  profileImage?: string;
-}
-
 // Session Types
 export interface AuthSessionInfo extends BaseSessionInfo {
   deviceInfo?: string;
@@ -132,19 +174,19 @@ export interface AuthSessionInfo extends BaseSessionInfo {
 }
 
 // Context Type
-export interface AuthContextType {
+export interface AuthContextValue {
   user: User | null;
-  error: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  isInitialized: boolean;
-  login: (credentials: LoginCredentials) => Promise<LoginResponse>;
-  register: (data: RegisterData) => Promise<RegisterResponse>;
+  error: string | null;
+  
+  login: (credentials: LoginCredentials) => Promise<LoginResponseData>;
+  register: (data: RegisterData) => Promise<RegisterResponseData>;
   logout: () => Promise<void>;
-  refreshToken: () => Promise<AuthTokens>;
-  updateProfile: (data: ProfileUpdateData) => Promise<User>;
-  changePassword: (data: ChangePasswordData) => Promise<void>;
-  resetPassword: (data: ResetPasswordData) => Promise<void>;
-  verifyEmail: (data: VerifyEmailData) => Promise<void>;
-  handleAuthError: (error: unknown) => string;
+  refreshSession: () => Promise<void>;
+  updateProfile: (data: Partial<User>) => Promise<User>;
+  
+  isLoggingIn: boolean;
+  isRegistering: boolean;
+  isUpdatingProfile: boolean;
 }

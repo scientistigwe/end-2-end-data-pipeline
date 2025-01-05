@@ -1,43 +1,47 @@
-// auth/hooks/useAuth.ts
+// src/auth/hooks/useAuth.ts
 import { useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useMutation, useQueryClient } from 'react-query';
 import { authApi } from '../api/authApi';
-import { storageUtils } from '@/common/utils/storage/storageUtils';
 import { 
-  clearAuth, 
   setAuth, 
+  clearAuth, 
   setError, 
-  setInitialized 
+  setInitialized,
+  startAuthRequest,
+  endAuthRequest,
+  authSuccess,
+  authFailure 
 } from '../store/authSlice';
 import { 
   selectUser, 
   selectAuthError, 
   selectIsAuthenticated, 
   selectIsInitialized,
-  selectAuthTokens 
+  selectIsLoading,
+  selectAuthenticationState
 } from '../store/selectors';
 import type { 
   LoginCredentials, 
-  RegisterData, 
-  AuthTokens,
+  RegisterData,
   ProfileUpdateData,
   ChangePasswordData,
   ResetPasswordData,
   VerifyEmailData,
 } from '../types/auth';
 
-const AUTH_STORAGE_KEY = 'auth_tokens';
-
 export function useAuth() {
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   const user = useSelector(selectUser);
   const error = useSelector(selectAuthError);
-  const tokens = useSelector(selectAuthTokens);
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isInitialized = useSelector(selectIsInitialized);
+  const isLoading = useSelector(selectIsLoading);
+  const authState = useSelector(selectAuthenticationState);
 
   const handleAuthError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : 'An error occurred';
@@ -45,63 +49,54 @@ export function useAuth() {
     return message;
   }, [dispatch]);
 
-  // Initialize auth state from storage
+  // Initialize auth state
   useEffect(() => {
     if (!isInitialized) {
-      const storedTokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-      if (storedTokens?.access_token) {
-        authApi.getProfile()
-          .then((user) => {
-            dispatch(setAuth({ user, tokens: storedTokens }));
-          })
-          .catch(() => {
-            storageUtils.removeItem(AUTH_STORAGE_KEY);
-            dispatch(clearAuth());
-          })
-          .finally(() => {
-            dispatch(setInitialized(true));
-          });
-      } else {
-        dispatch(setInitialized(true));
-      }
+      dispatch(startAuthRequest());
+      authApi.getProfile()
+        .then((user) => {
+          dispatch(authSuccess({ user }));
+        })
+        .catch(() => {
+          dispatch(clearAuth());
+        })
+        .finally(() => {
+          dispatch(setInitialized(true));
+          dispatch(endAuthRequest());
+        });
     }
   }, [dispatch, isInitialized]);
 
   // Login mutation
-const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
-  async (credentials: LoginCredentials) => {
-    try {
-      const response = await authApi.login(credentials);
-      
-      // Check for required properties
-      if (!response.tokens || !response.user) {
-        throw new Error('Invalid login response format');
+  const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
+    async (credentials: LoginCredentials) => {
+      try {
+        dispatch(startAuthRequest());
+        const response = await authApi.login(credentials);
+        dispatch(authSuccess({ user: response.user }));
+        navigate('/dashboard');
+        return response;
+      } catch (error) {
+        console.error('Login error:', error);
+        const message = handleAuthError(error);
+        dispatch(authFailure(message));
+        throw error;
       }
-
-      // Update auth state
-      dispatch(setAuth({ 
-        user: response.user, 
-        tokens: response.tokens 
-      }));
-
-      return response;
-    } catch (error) {
-      handleAuthError(error);
-      throw error;
     }
-  }
-);
-
+  );
+  
   // Register mutation
   const { mutateAsync: register, isLoading: isRegistering } = useMutation(
     async (data: RegisterData) => {
       try {
+        dispatch(startAuthRequest());
         const response = await authApi.register(data);
-        const { data: responseData } = response;
-        dispatch(setAuth({ user: responseData.user, tokens: responseData.tokens }));
+        dispatch(authSuccess({ user: response.user }));
         return response;
       } catch (error) {
-        handleAuthError(error);
+        console.error('Registration error:', error);
+        const message = handleAuthError(error);
+        dispatch(authFailure(message));
         throw error;
       }
     }
@@ -112,46 +107,8 @@ const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
     async (data: ProfileUpdateData) => {
       try {
         const updatedUser = await authApi.updateProfile(data);
-        if (tokens) {
-          dispatch(setAuth({ user: updatedUser, tokens }));
-        }
+        dispatch(setAuth({ user: updatedUser }));
         return updatedUser;
-      } catch (error) {
-        handleAuthError(error);
-        throw error;
-      }
-    }
-  );
-
-  // Change password mutation
-  const { mutateAsync: changePassword, isLoading: isChangingPassword } = useMutation(
-    async (data: ChangePasswordData) => {
-      try {
-        await authApi.changePassword(data);
-      } catch (error) {
-        handleAuthError(error);
-        throw error;
-      }
-    }
-  );
-
-  // Reset password mutation
-  const { mutateAsync: resetPassword, isLoading: isResettingPassword } = useMutation(
-    async (data: ResetPasswordData) => {
-      try {
-        await authApi.resetPassword(data);
-      } catch (error) {
-        handleAuthError(error);
-        throw error;
-      }
-    }
-  );
-
-  // Verify email mutation
-  const { mutateAsync: verifyEmail, isLoading: isVerifyingEmail } = useMutation(
-    async (data: VerifyEmailData) => {
-      try {
-        await authApi.verifyEmail(data);
       } catch (error) {
         handleAuthError(error);
         throw error;
@@ -162,60 +119,78 @@ const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
   // Logout handler
   const logout = useCallback(async () => {
     try {
-      if (isAuthenticated) {
-        await authApi.logout();
-      }
+      dispatch(startAuthRequest());
+      await authApi.logout();
+      queryClient.clear();
+      dispatch(clearAuth());
+      navigate('/login');
     } catch (error) {
       handleAuthError(error);
     } finally {
-      storageUtils.removeItem(AUTH_STORAGE_KEY);
-      queryClient.clear();
-      dispatch(clearAuth());
+      dispatch(endAuthRequest());
     }
-  }, [dispatch, queryClient, isAuthenticated, handleAuthError]);
+  }, [dispatch, queryClient, navigate, handleAuthError]);
 
-  // Token refresh handler
-  const refreshToken = useCallback(async () => {
+  // Session refresh handler
+  const refreshSession = useCallback(async () => {
     try {
-      const currentTokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-      if (!currentTokens?.refresh_token) {
-        throw new Error('No refresh token available');
+      dispatch(startAuthRequest());
+      const response = await authApi.refreshToken();
+      if (response?.user) {
+        dispatch(authSuccess({ user: response.user }));
+        return true;
       }
-
-      const newTokens = await authApi.refreshToken(currentTokens.refresh_token);
-      storageUtils.setItem(AUTH_STORAGE_KEY, newTokens);
-      
-      if (user) {
-        dispatch(setAuth({ user, tokens: newTokens }));
-      }
-      
-      return newTokens;
+      return false;
     } catch (error) {
-      handleAuthError(error);
-      await logout();
-      throw error;
+      const message = handleAuthError(error);
+      dispatch(authFailure(message));
+      return false;
+    } finally {
+      dispatch(endAuthRequest());
     }
-  }, [dispatch, user, logout, handleAuthError]);
+  }, [dispatch, handleAuthError]);
+
+  // Other mutations...
+  const { mutateAsync: changePassword, isLoading: isChangingPassword } = useMutation(
+    (data: ChangePasswordData) => authApi.changePassword(data)
+  );
+
+  const { mutateAsync: resetPassword, isLoading: isResettingPassword } = useMutation(
+    (data: ResetPasswordData) => authApi.resetPassword(data)
+  );
+
+  const { mutateAsync: verifyEmail, isLoading: isVerifyingEmail } = useMutation(
+    (data: VerifyEmailData) => authApi.verifyEmail(data)
+  );
 
   return {
+    // State
     user,
     error,
     isAuthenticated,
     isInitialized,
+    isLoading,
+    authState,
+
+    // Auth operations
+    login,
+    register,
+    logout,
+    refreshSession,
+    updateProfile,
+    changePassword,
+    resetPassword,
+    verifyEmail,
+
+    // Loading states
     isLoggingIn,
     isRegistering,
     isUpdatingProfile,
     isChangingPassword,
     isResettingPassword,
     isVerifyingEmail,
-    login,
-    register,
-    logout,
-    updateProfile,
-    changePassword,
-    resetPassword,
-    verifyEmail,
-    refreshToken,
+
+    // Helpers
     handleAuthError
   } as const;
 }

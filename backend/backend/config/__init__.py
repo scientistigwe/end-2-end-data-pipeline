@@ -17,9 +17,7 @@ class BaseConfig:
     """Base configuration settings for all environments"""
     # Core Settings
     BASE_DIR = Path(__file__).parent.parent
-    print('Base directory: ', BASE_DIR)
     SECRET_KEY = os.getenv('SECRET_KEY')
-    print('Secret Key: ', SECRET_KEY)
     DEBUG = False
     TESTING = False
 

@@ -23,7 +23,7 @@ from .auth.jwt_manager import JWTTokenManager
 
 # Import all services
 from .services.auth.auth_service import AuthService
-from .services.data_sources.file_service import FileSourceService
+from .services.data_sources.file_source_service import FileSourceService
 from .services.data_sources.api_service import APISourceService
 from .services.data_sources.database_service import DatabaseSourceService
 from .services.data_sources.s3_service import S3SourceService

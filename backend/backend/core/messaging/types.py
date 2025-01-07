@@ -123,10 +123,10 @@ class MessageMetadata:
 class ProcessingMessage:
     """Enhanced message for pipeline communication"""
     # Core Message Properties
-    message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     source_identifier: ModuleIdentifier
     target_identifier: ModuleIdentifier
     message_type: MessageType
+    message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     content: Dict[str, Any] = field(default_factory=dict)
 
     # Status and Control

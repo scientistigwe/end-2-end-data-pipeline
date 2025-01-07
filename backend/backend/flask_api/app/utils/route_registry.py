@@ -36,9 +36,9 @@ class APIRoutes(Enum):
     # Auth Routes
     AUTH_REGISTER = RouteDefinition('/auth/register', ['POST'], requires_auth=False)
     AUTH_LOGIN = RouteDefinition('/auth/login', ['POST'], requires_auth=False)
-    AUTH_REFRESH = RouteDefinition('/auth/refresh', ['POST'])
     AUTH_LOGOUT = RouteDefinition('/auth/logout', ['POST'])
     AUTH_VERIFY = RouteDefinition('/auth/verify', ['POST'], requires_auth=False)
+    AUTH_REFRESH = RouteDefinition('/auth/refresh', ['POST'], requires_auth=False)
     AUTH_FORGOT_PASSWORD = RouteDefinition('/auth/forgot-password', ['POST'], requires_auth=False)
     AUTH_RESET_PASSWORD = RouteDefinition('/auth/reset-password', ['POST'], requires_auth=False)
     AUTH_VERIFY_EMAIL = RouteDefinition('/auth/verify-email', ['POST'])

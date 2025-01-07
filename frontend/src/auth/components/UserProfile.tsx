@@ -5,7 +5,7 @@ import { Button } from "@/common/components/ui/button";
 import { Input } from "@/common/components//ui/inputs/input";
 import { Alert } from "@/common/components/ui/alert";
 import { Avatar } from "@/common/components/ui/avatar";
-import type { User } from "../types/auth";
+import type { User } from "@/common";
 
 interface UserProfileProps {
   onChangePassword: () => void;

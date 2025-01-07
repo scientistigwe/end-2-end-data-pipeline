@@ -145,18 +145,8 @@ class ApplicationFactory:
                     r"/api/*": {
                         "origins": ["http://localhost:5173"],
                         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                        "allow_headers": [
-                            "content-type",
-                            "authorization",
-                            "x-requested-with",
-                            "accept",
-                            "origin"
-                        ],
-                        "expose_headers": [
-                            "content-type",
-                            "x-total-count",
-                            "x-request-id"
-                        ],
+                        "allow_headers": ["*"],  # Simplified for development
+                        "expose_headers": ["*"],  # Simplified for development
                         "supports_credentials": True,
                         "max_age": 3600
                     }
@@ -165,14 +155,18 @@ class ApplicationFactory:
 
             @self.app.after_request
             def after_request(response):
+                origin = request.headers.get('Origin')
+                if origin == 'http://localhost:5173':
+                    response.headers.add('Access-Control-Allow-Origin', origin)
+                    response.headers.add('Access-Control-Allow-Credentials', 'true')
+                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+                    
                 if request.method == 'OPTIONS':
-                    response.headers.update({
-                        'Access-Control-Allow-Origin': 'http://localhost:5173',
-                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                        'Access-Control-Allow-Headers': 'content-type, authorization, x-requested-with, accept, origin',
-                        'Access-Control-Allow-Credentials': 'true',
-                        'Access-Control-Max-Age': '3600'
-                    })
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5173'
+                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+                    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
                 return response
 
             logger.info("CORS initialized successfully")
@@ -180,183 +174,183 @@ class ApplicationFactory:
         except Exception as e:
             logger.error(f"CORS initialization error: {str(e)}", exc_info=True)
             raise
-
-    def _initialize_database(self) -> None:
-        """Initialize database connection and session management."""
-        try:
-            engine, SessionLocal = init_db(self.app)
-            self.db_session = SessionLocal()
-
-            @self.app.before_request
-            def before_request():
-                """Create database session for each request."""
-                g.db = self.db_session
-
-            @self.app.teardown_appcontext
-            def teardown_db(exc):
-                """Close database session after each request."""
-                db = g.pop('db', None)
-                if db is not None:
-                    db.close()
-
-            logger.info("Database initialized successfully")
-
-        except Exception as e:
-            logger.error(f"Database initialization error: {str(e)}", exc_info=True)
-            raise
-
-    def _initialize_components(self) -> None:
-        """Initialize application components."""
-        try:
-            # Initialize your components here (message broker, orchestrator, etc.)
-            self.components = {
-                'message_broker': None,  # Initialize your message broker
-                'orchestrator': None,    # Initialize your orchestrator
-            }
-            logger.info("Components initialized successfully")
-        except Exception as e:
-            logger.error(f"Component initialization error: {str(e)}", exc_info=True)
-            raise
-
-    def _initialize_services(self) -> None:
-        """Initialize all application services with dependencies."""
-        try:
-            service_configs = {
-                'auth_service': AuthService,
-                'file_service': FileService,
-                'api_service': APIService,
-                'db_service': DBService,
-                's3_service': S3Service,
-                'stream_service': StreamService,
-                'pipeline_service': PipelineService,
-                'quality_service': QualityService,
-                'insight_service': InsightService,
-                'recommendation_service': RecommendationService,
-                'decision_service': DecisionService,
-                'monitoring_service': MonitoringService,
-                'report_service': ReportService,
-                'settings_service': SettingsService
-            }
-
-            for service_name, ServiceClass in service_configs.items():
-                self.services[service_name] = ServiceClass(
-                    db_session=self.db_session,
-                    message_broker=self.components.get('message_broker'),
-                    orchestrator=self.components.get('orchestrator')
-                )
-
-            self.app.services = self.services
-            logger.info("All services initialized successfully")
-
-        except Exception as e:
-            logger.error(f"Service initialization error: {str(e)}", exc_info=True)
-            raise
-
-    def _register_blueprints(self) -> None:
-        """Register all application blueprints with their respective services."""
-        try:
-            blueprint_configs = self._get_blueprint_routes()
-            
-            for blueprint, url_prefix in blueprint_configs:
-                logger.info(f"Registering blueprint with prefix: {url_prefix}")
-                self.app.register_blueprint(blueprint, url_prefix=url_prefix)
-                logger.info(f"Registered blueprint at: {url_prefix}")
-
-            logger.info("All blueprints registered successfully")
-
-        except Exception as e:
-            logger.error(f"Blueprint registration error: {str(e)}", exc_info=True)
-            raise
-
-    def _configure_security(self) -> None:
-        """Configure security related components and middleware."""
-        try:
-            jwt_manager = JWTTokenManager(self.app)
-            
-            @jwt_manager.expired_token_loader
-            def expired_token_callback(jwt_header, jwt_payload):
-                return {
-                    'message': 'Token has expired',
-                    'error': 'token_expired'
-                }, 401
-
-            @jwt_manager.invalid_token_loader
-            def invalid_token_callback(error):
-                return {
-                    'message': 'Invalid token',
-                    'error': 'invalid_token'
-                }, 401
-
-            @jwt_manager.unauthorized_loader
-            def missing_token_callback(error):
-                return {
-                    'message': 'Missing authorization token',
-                    'error': 'authorization_required'
-                }, 401
-
-            if self.app.config.get('JWT_BLACKLIST_ENABLED', False):
-                @jwt_manager.token_in_blocklist_loader
-                def check_if_token_revoked(jwt_header, jwt_payload):
-                    jti = jwt_payload['jti']
-                    return False  # Implement your blacklist check here
-
-            logger.info("Security configuration completed successfully")
-
-        except Exception as e:
-            logger.error(f"Security configuration error: {str(e)}", exc_info=True)
-            raise
-
-    def _initialize_documentation(self) -> None:
-        """Initialize API documentation."""
-        try:
-            APIDocumentation(self.app)
-            logger.info("API documentation initialized successfully")
-        except Exception as e:
-            logger.error(f"Documentation initialization error: {str(e)}", exc_info=True)
-            raise
-
-    def _register_health_check(self) -> None:
-        """Register the health check endpoint."""
-        @self.app.route(self._get_api_path(APIRoutes.HEALTH_CHECK))
-        def health_check():
+        
+        def _initialize_database(self) -> None:
+            """Initialize database connection and session management."""
             try:
-                g.db.execute('SELECT 1')
-                db_status = 'connected'
+                engine, SessionLocal = init_db(self.app)
+                self.db_session = SessionLocal()
+
+                @self.app.before_request
+                def before_request():
+                    """Create database session for each request."""
+                    g.db = self.db_session
+
+                @self.app.teardown_appcontext
+                def teardown_db(exc):
+                    """Close database session after each request."""
+                    db = g.pop('db', None)
+                    if db is not None:
+                        db.close()
+
+                logger.info("Database initialized successfully")
+
             except Exception as e:
-                logger.error(f"Database health check failed: {e}")
-                db_status = 'disconnected'
+                logger.error(f"Database initialization error: {str(e)}", exc_info=True)
+                raise
 
-            return {
-                'status': 'healthy',
-                'database': db_status,
-                'environment': self.app.config['ENV']
-            }
+        def _initialize_components(self) -> None:
+            """Initialize application components."""
+            try:
+                # Initialize your components here (message broker, orchestrator, etc.)
+                self.components = {
+                    'message_broker': None,  # Initialize your message broker
+                    'orchestrator': None,    # Initialize your orchestrator
+                }
+                logger.info("Components initialized successfully")
+            except Exception as e:
+                logger.error(f"Component initialization error: {str(e)}", exc_info=True)
+                raise
 
-    def create_app(self, config_name: str = 'development') -> Flask:
-        """Create and configure the Flask application instance."""
-        try:
-            self.app = Flask(__name__)
-            self.app.config.from_object(config_by_name[config_name])
+        def _initialize_services(self) -> None:
+            """Initialize all application services with dependencies."""
+            try:
+                service_configs = {
+                    'auth_service': AuthService,
+                    'file_service': FileService,
+                    'api_service': APIService,
+                    'db_service': DBService,
+                    's3_service': S3Service,
+                    'stream_service': StreamService,
+                    'pipeline_service': PipelineService,
+                    'quality_service': QualityService,
+                    'insight_service': InsightService,
+                    'recommendation_service': RecommendationService,
+                    'decision_service': DecisionService,
+                    'monitoring_service': MonitoringService,
+                    'report_service': ReportService,
+                    'settings_service': SettingsService
+                }
 
-            # Initialize all components in order
-            self._initialize_cors()
-            self._initialize_database()
-            self._initialize_components()
-            self._initialize_services()
-            self._register_blueprints()
-            self._configure_security()
-            self._initialize_documentation()
-            self._register_health_check()
+                for service_name, ServiceClass in service_configs.items():
+                    self.services[service_name] = ServiceClass(
+                        db_session=self.db_session,
+                        message_broker=self.components.get('message_broker'),
+                        orchestrator=self.components.get('orchestrator')
+                    )
 
-            # Register middleware
-            self.app.before_request(auth_middleware())
+                self.app.services = self.services
+                logger.info("All services initialized successfully")
 
-            logger.info(f"Application initialized successfully in {config_name} mode")
-            return self.app
+            except Exception as e:
+                logger.error(f"Service initialization error: {str(e)}", exc_info=True)
+                raise
 
-        except Exception as e:
-            logger.error(f"Failed to create application: {str(e)}", exc_info=True)
-            raise
+        def _register_blueprints(self) -> None:
+            """Register all application blueprints with their respective services."""
+            try:
+                blueprint_configs = self._get_blueprint_routes()
+                
+                for blueprint, url_prefix in blueprint_configs:
+                    logger.info(f"Registering blueprint with prefix: {url_prefix}")
+                    self.app.register_blueprint(blueprint, url_prefix=url_prefix)
+                    logger.info(f"Registered blueprint at: {url_prefix}")
+
+                logger.info("All blueprints registered successfully")
+
+            except Exception as e:
+                logger.error(f"Blueprint registration error: {str(e)}", exc_info=True)
+                raise
+
+        def _configure_security(self) -> None:
+            """Configure security related components and middleware."""
+            try:
+                jwt_manager = JWTTokenManager(self.app)
+                
+                @jwt_manager.expired_token_loader
+                def expired_token_callback(jwt_header, jwt_payload):
+                    return {
+                        'message': 'Token has expired',
+                        'error': 'token_expired'
+                    }, 401
+
+                @jwt_manager.invalid_token_loader
+                def invalid_token_callback(error):
+                    return {
+                        'message': 'Invalid token',
+                        'error': 'invalid_token'
+                    }, 401
+
+                @jwt_manager.unauthorized_loader
+                def missing_token_callback(error):
+                    return {
+                        'message': 'Missing authorization token',
+                        'error': 'authorization_required'
+                    }, 401
+
+                if self.app.config.get('JWT_BLACKLIST_ENABLED', False):
+                    @jwt_manager.token_in_blocklist_loader
+                    def check_if_token_revoked(jwt_header, jwt_payload):
+                        jti = jwt_payload['jti']
+                        return False  # Implement your blacklist check here
+
+                logger.info("Security configuration completed successfully")
+
+            except Exception as e:
+                logger.error(f"Security configuration error: {str(e)}", exc_info=True)
+                raise
+
+        def _initialize_documentation(self) -> None:
+            """Initialize API documentation."""
+            try:
+                APIDocumentation(self.app)
+                logger.info("API documentation initialized successfully")
+            except Exception as e:
+                logger.error(f"Documentation initialization error: {str(e)}", exc_info=True)
+                raise
+
+        def _register_health_check(self) -> None:
+            """Register the health check endpoint."""
+            @self.app.route(self._get_api_path(APIRoutes.HEALTH_CHECK))
+            def health_check():
+                try:
+                    g.db.execute('SELECT 1')
+                    db_status = 'connected'
+                except Exception as e:
+                    logger.error(f"Database health check failed: {e}")
+                    db_status = 'disconnected'
+
+                return {
+                    'status': 'healthy',
+                    'database': db_status,
+                    'environment': self.app.config['ENV']
+                }
+
+        def create_app(self, config_name: str = 'development') -> Flask:
+            """Create and configure the Flask application instance."""
+            try:
+                self.app = Flask(__name__)
+                self.app.config.from_object(config_by_name[config_name])
+
+                # Initialize all components in order
+                self._initialize_cors()
+                self._initialize_database()
+                self._initialize_components()
+                self._initialize_services()
+                self._register_blueprints()
+                self._configure_security()
+                self._initialize_documentation()
+                self._register_health_check()
+
+                # Register middleware
+                self.app.before_request(auth_middleware())
+
+                logger.info(f"Application initialized successfully in {config_name} mode")
+                return self.app
+
+            except Exception as e:
+                logger.error(f"Failed to create application: {str(e)}", exc_info=True)
+                raise
 
 def create_app(config_name: str = 'development') -> Flask:
     """Application factory function."""

@@ -1,33 +1,22 @@
 // src/services/api/interceptors.ts
 import { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { ErrorResponse } from '@/common/types/api';
+import { ApiErrorResponse } from '@/common/types/api';
 
 export const requestInterceptor = (config: InternalAxiosRequestConfig) => {
-  // Get token from storage
-  const token = localStorage.getItem('token');
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
+  // Ensure credentials are always included
+  config.withCredentials = true;
   return config;
 };
 
-export const requestErrorInterceptor = (error: AxiosError) => {
-  return Promise.reject(error);
-};
-
 export const responseInterceptor = (response: AxiosResponse) => {
-  // Transform response data if needed
   if (response.data) {
     return response.data;
   }
   return response;
 };
 
-export const responseErrorInterceptor = (error: AxiosError<ErrorResponse>) => {
+export const responseErrorInterceptor = (error: AxiosError<ApiErrorResponse>) => {
   if (error.response) {
-    // ...
     return Promise.reject({
       code: error.response.status,
       message: error.response.data?.message || 'An error occurred',
@@ -40,4 +29,3 @@ export const responseErrorInterceptor = (error: AxiosError<ErrorResponse>) => {
     message: 'Network error occurred'
   });
 };
-

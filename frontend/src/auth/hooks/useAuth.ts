@@ -1,113 +1,101 @@
-// src/auth/hooks/useAuth.ts
-import { useCallback, useEffect } from 'react';
+// auth/hooks/useAuth.ts
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation } from 'react-query';
 import { authApi } from '../api/authApi';
-import { 
-  setAuth, 
-  clearAuth, 
-  setError, 
-  setInitialized,
-  startAuthRequest,
-  endAuthRequest,
-  authSuccess,
-  authFailure 
+import {
+  setUser,
+  setError,
+  setLoading,
+  clearAuth,
 } from '../store/authSlice';
-import { 
-  selectUser, 
-  selectAuthError, 
-  selectIsAuthenticated, 
-  selectIsInitialized,
+import {
+  selectUser,
+  selectAuthError,
+  selectIsAuthenticated,
   selectIsLoading,
-  selectAuthenticationState
 } from '../store/selectors';
 import type { 
   LoginCredentials, 
-  RegisterData,
+  RegisterData, 
   ProfileUpdateData,
   ChangePasswordData,
   ResetPasswordData,
-  VerifyEmailData,
+  VerifyEmailData
 } from '../types/auth';
+import type { User } from '@/common/types/user';
 
 export function useAuth() {
   const dispatch = useDispatch();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
-  
+
+  // State selectors
   const user = useSelector(selectUser);
   const error = useSelector(selectAuthError);
   const isAuthenticated = useSelector(selectIsAuthenticated);
-  const isInitialized = useSelector(selectIsInitialized);
   const isLoading = useSelector(selectIsLoading);
-  const authState = useSelector(selectAuthenticationState);
 
-  const handleAuthError = useCallback((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'An error occurred';
-    dispatch(setError(message));
-    return message;
-  }, [dispatch]);
-
-  // Initialize auth state
-  useEffect(() => {
-    if (!isInitialized) {
-      dispatch(startAuthRequest());
-      authApi.getProfile()
-        .then((user) => {
-          dispatch(authSuccess({ user }));
-        })
-        .catch(() => {
-          dispatch(clearAuth());
-        })
-        .finally(() => {
-          dispatch(setInitialized(true));
-          dispatch(endAuthRequest());
-        });
-    }
-  }, [dispatch, isInitialized]);
+  // Handle errors
+  const handleAuthError = useCallback(
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'An error occurred';
+      dispatch(setError(message));
+      return message;
+    },
+    [dispatch]
+  );
 
   // Login mutation
-  const { mutateAsync: login, isLoading: isLoggingIn } = useMutation(
+  const { mutateAsync: loginMutation, isLoading: isLoggingIn } = useMutation(
     async (credentials: LoginCredentials) => {
       try {
-        dispatch(startAuthRequest());
+        dispatch(setLoading(true));
         const response = await authApi.login(credentials);
-        dispatch(authSuccess({ user: response.user }));
+        
+        // Get user profile after successful login
+        const userProfile = await authApi.getProfile();
+        dispatch(setUser(userProfile));
+        
         navigate('/dashboard');
-        return response;
+        return true;
       } catch (error) {
-        console.error('Login error:', error);
-        const message = handleAuthError(error);
-        dispatch(authFailure(message));
-        throw error;
+        handleAuthError(error);
+        return false;
+      } finally {
+        dispatch(setLoading(false));
       }
     }
   );
-  
+
   // Register mutation
-  const { mutateAsync: register, isLoading: isRegistering } = useMutation(
+  const { mutateAsync: registerMutation, isLoading: isRegistering } = useMutation(
     async (data: RegisterData) => {
       try {
-        dispatch(startAuthRequest());
+        dispatch(setLoading(true));
         const response = await authApi.register(data);
-        dispatch(authSuccess({ user: response.user }));
-        return response;
+        
+        // Get user profile after successful registration
+        const userProfile = await authApi.getProfile();
+        dispatch(setUser(userProfile));
+        
+        navigate('/dashboard');
+        return true;
       } catch (error) {
-        console.error('Registration error:', error);
-        const message = handleAuthError(error);
-        dispatch(authFailure(message));
-        throw error;
+        handleAuthError(error);
+        return false;
+      } finally {
+        dispatch(setLoading(false));
       }
     }
   );
 
   // Update profile mutation
-  const { mutateAsync: updateProfile, isLoading: isUpdatingProfile } = useMutation(
+  const { mutateAsync: updateProfileMutation, isLoading: isUpdatingProfile } = useMutation(
     async (data: ProfileUpdateData) => {
       try {
         const updatedUser = await authApi.updateProfile(data);
-        dispatch(setAuth({ user: updatedUser }));
+        dispatch(setUser(updatedUser));
         return updatedUser;
       } catch (error) {
         handleAuthError(error);
@@ -116,71 +104,74 @@ export function useAuth() {
     }
   );
 
+  // Change password mutation
+  const { mutateAsync: changePasswordMutation, isLoading: isChangingPassword } = useMutation(
+    async (data: ChangePasswordData) => {
+      try {
+        await authApi.changePassword(data);
+        return true;
+      } catch (error) {
+        handleAuthError(error);
+        return false;
+      }
+    }
+  );
+
+  // Reset password mutation
+  const { mutateAsync: resetPasswordMutation, isLoading: isResettingPassword } = useMutation(
+    async (data: ResetPasswordData) => {
+      try {
+        await authApi.resetPassword(data);
+        return true;
+      } catch (error) {
+        handleAuthError(error);
+        return false;
+      }
+    }
+  );
+
+  // Verify email mutation
+  const { mutateAsync: verifyEmailMutation, isLoading: isVerifyingEmail } = useMutation(
+    async (data: VerifyEmailData) => {
+      try {
+        await authApi.verifyEmail(data);
+        return true;
+      } catch (error) {
+        handleAuthError(error);
+        return false;
+      }
+    }
+  );
+
   // Logout handler
   const logout = useCallback(async () => {
     try {
-      dispatch(startAuthRequest());
+      dispatch(setLoading(true));
       await authApi.logout();
-      queryClient.clear();
       dispatch(clearAuth());
       navigate('/login');
     } catch (error) {
       handleAuthError(error);
     } finally {
-      dispatch(endAuthRequest());
+      dispatch(setLoading(false));
     }
-  }, [dispatch, queryClient, navigate, handleAuthError]);
-
-  // Session refresh handler
-  const refreshSession = useCallback(async () => {
-    try {
-      dispatch(startAuthRequest());
-      const response = await authApi.refreshToken();
-      if (response?.user) {
-        dispatch(authSuccess({ user: response.user }));
-        return true;
-      }
-      return false;
-    } catch (error) {
-      const message = handleAuthError(error);
-      dispatch(authFailure(message));
-      return false;
-    } finally {
-      dispatch(endAuthRequest());
-    }
-  }, [dispatch, handleAuthError]);
-
-  // Other mutations...
-  const { mutateAsync: changePassword, isLoading: isChangingPassword } = useMutation(
-    (data: ChangePasswordData) => authApi.changePassword(data)
-  );
-
-  const { mutateAsync: resetPassword, isLoading: isResettingPassword } = useMutation(
-    (data: ResetPasswordData) => authApi.resetPassword(data)
-  );
-
-  const { mutateAsync: verifyEmail, isLoading: isVerifyingEmail } = useMutation(
-    (data: VerifyEmailData) => authApi.verifyEmail(data)
-  );
+  }, [dispatch, navigate, handleAuthError]);
 
   return {
     // State
     user,
     error,
     isAuthenticated,
-    isInitialized,
     isLoading,
-    authState,
 
     // Auth operations
-    login,
-    register,
+    login: loginMutation,
+    register: registerMutation,
     logout,
-    refreshSession,
-    updateProfile,
-    changePassword,
-    resetPassword,
-    verifyEmail,
+    updateProfile: updateProfileMutation,
+    changePassword: changePasswordMutation,
+    resetPassword: resetPasswordMutation,
+    verifyEmail: verifyEmailMutation,
 
     // Loading states
     isLoggingIn,
@@ -189,10 +180,7 @@ export function useAuth() {
     isChangingPassword,
     isResettingPassword,
     isVerifyingEmail,
-
-    // Helpers
-    handleAuthError
-  } as const;
+  };
 }
 
 export type AuthHook = ReturnType<typeof useAuth>;

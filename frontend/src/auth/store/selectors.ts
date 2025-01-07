@@ -1,7 +1,7 @@
 // src/auth/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@/store/types';
-import type { User } from '@/common/types/user';
+import type { User, RoleType } from '@/common/types/user';
 import type { AuthState, AuthStatus } from '../types';
 
 // Base selectors
@@ -73,14 +73,30 @@ export const selectAuthenticationState = createSelector(
 export const selectUserInfo = createSelector(
   selectUser,
   (user): {
+    id?: string;
     email?: string;
-    fullName?: string;
-    role?: string;
+    username?: string;
+    role?: RoleType;
     permissions: string[];
+    profileImage?: string;
+    lastLogin?: string;
+    createdAt?: string;
+    status?: 'active' | 'inactive' | 'suspended';
+    updatedAt?: string;
+    preferences?: Record<string, unknown>;
   } => ({
+    id: user?.id,
     email: user?.email,
-    fullName: user ? `${user.firstName} ${user.lastName}`.trim() : undefined,
+    username: user?.username,
     role: user?.role,
-    permissions: user?.permissions || []
+    permissions: user?.permissions || [],
+    profileImage: user?.profileImage,
+    lastLogin: user?.lastLogin,
+    createdAt: user?.createdAt,
+    updatedAt: user?.updatedAt,
+    status: user?.status,
+    preferences: user?.preferences || {},
   })
 );
+
+

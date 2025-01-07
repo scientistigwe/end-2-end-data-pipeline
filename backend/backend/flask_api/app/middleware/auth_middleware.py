@@ -1,8 +1,8 @@
 from functools import wraps
 from flask import g, request, current_app, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from ..services.auth import AuthService
-from typing import Optional
+from typing import Optional, Tuple, Any
 import logging
 from contextlib import contextmanager
 from ..utils.route_registry import APIRoutes, RouteDefinition
@@ -14,29 +14,22 @@ def normalize_route(path: str) -> str:
     return path.rstrip('/')
 
 def get_route_from_request(request_path: str, request_method: str) -> Optional[RouteDefinition]:
-    """
-    Match request path and method to defined API routes
-    
-    Args:
-        request_path: The incoming request path
-        request_method: The HTTP method used
-        
-    Returns:
-        RouteDefinition if matched, None otherwise
-        
-    Time complexity: O(n) where n is number of routes
-    Space complexity: O(1)
-    """
+    """Match request path and method to defined API routes"""
     normalized_path = normalize_route(request_path)
-    path_parts = normalized_path.split('/')
+    # Remove /api/v1 prefix if present
+    if normalized_path.startswith('/api/v1'):
+        normalized_path = normalized_path[7:]
     
+    path_parts = normalized_path.split('/')
+    logger.debug(f"Matching route: {normalized_path} [{request_method}]")
+
     for route in APIRoutes:
         route_def = route.value
         route_parts = route_def.path.split('/')
-        
+
         if len(path_parts) != len(route_parts):
             continue
-            
+
         matches = True
         for req_part, route_part in zip(path_parts, route_parts):
             if route_part.startswith('{') and route_part.endswith('}'):
@@ -44,40 +37,17 @@ def get_route_from_request(request_path: str, request_method: str) -> Optional[R
             if req_part != route_part:
                 matches = False
                 break
-                
-        if matches and request_method in route_def.methods:
-            return route_def
-            
-    return None
 
-def debug_token():
-    """
-    Validate and debug Authorization header token
-    
-    Returns:
-        bool: True if token is present and properly formatted
-    """
-    auth_header = request.headers.get('Authorization')
-    if not auth_header:
-        logger.error("No Authorization header found")
-        return False
-        
-    parts = auth_header.split()
-    if len(parts) != 2 or parts[0].lower() != 'bearer':
-        logger.error(f"Invalid Authorization header format: {auth_header}")
-        return False
-        
-    logger.info(f"Token found in request: {parts[1][:10]}...")
-    return True
+        if matches and request_method in route_def.methods:
+            logger.debug(f"Route matched: {route_def.path}")
+            return route_def
+
+    logger.debug("No matching route found")
+    return None
 
 @contextmanager
 def get_db_session():
-    """
-    Context manager for database session handling
-    
-    Yields:
-        Database session object
-    """
+    """Context manager for database session handling"""
     if hasattr(g, 'db'):
         yield g.db
     else:
@@ -88,56 +58,90 @@ def get_db_session():
         finally:
             db.close()
 
-def validate_and_get_user(user_id: str):
-    """
-    Validate user existence and set current user
-    
-    Args:
-        user_id: User identifier from JWT
-        
-    Returns:
-        Tuple of (success, response)
-    """
+def validate_and_get_user(user_id: str) -> Tuple[bool, Optional[Tuple[Any, int]]]:
+    """Validate user existence and set current user"""
     try:
         with get_db_session() as db:
             auth_service = AuthService(db)
             user = auth_service.get_user_by_id(user_id)
             if not user:
                 logger.error(f"No user found for id: {user_id}")
-                return False, (jsonify({"error": "User not found"}), 401)
+                return False, (jsonify({
+                    "error": "User not found",
+                    "message": "The user associated with this token was not found"
+                }), 401)
             g.current_user = user
             return True, None
     except Exception as e:
         logger.error(f"Error validating user: {str(e)}", exc_info=True)
-        return False, (jsonify({"error": "Authentication failed"}), 401)
+        return False, (jsonify({
+            "error": "Authentication failed",
+            "message": "Failed to validate user credentials"
+        }), 401)
 
 def auth_middleware():
     """Authentication middleware using route registry"""
     def middleware():
         try:
+            # Debug request information
+            logger.debug(f"Request Path: {request.path}")
+            logger.debug(f"Request Method: {request.method}")
+            logger.debug(f"Request Cookies: {request.cookies}")
+            logger.debug(f"Request Headers: {dict(request.headers)}")
+            # Add detailed cookie logging
+            logger.debug("All cookies present: %s", request.cookies.keys())
+            logger.debug("JWT Config: %s", {
+                key: value for key, value in current_app.config.items() 
+                if key.startswith('JWT_')
+            })
+
             route_def = get_route_from_request(request.path, request.method)
-            
+
             # Skip auth for unregistered routes or public routes
-            if not route_def or not route_def.requires_auth:
+            if not route_def:
+                logger.debug("Route not found in registry")
                 return None
                 
-            if not debug_token():
-                return jsonify({"error": "Invalid or missing token"}), 401
-                
-            verify_jwt_in_request()
+            if not route_def.requires_auth:
+                logger.debug("Route does not require authentication")
+                return None
+
+            # Verify JWT from cookies
+            try:
+                verify_jwt_in_request(optional=False)
+                logger.debug("JWT verification successful")
+            except Exception as e:
+                logger.error(f"JWT verification failed: {str(e)}", exc_info=True)
+                return jsonify({
+                    "error": "authorization_required",
+                    "message": "Invalid or missing token",
+                    "details": str(e)
+                }), 401
+
             user_id = get_jwt_identity()
-            
+            logger.debug(f"JWT Identity: {user_id}")
+
             if not user_id:
                 logger.error("No user_id found in JWT token")
-                return jsonify({"error": "Invalid token"}), 401
-                
+                return jsonify({
+                    "error": "invalid_token",
+                    "message": "Token does not contain user identity"
+                }), 401
+
             success, response = validate_and_get_user(user_id)
             if not success:
                 return response
-                
+
+            logger.debug("Authentication successful")
+            return None
+
         except Exception as e:
             logger.error(f"Middleware authentication error: {str(e)}", exc_info=True)
-            return jsonify({"error": "Authentication failed"}), 401
+            return jsonify({
+                "error": "authentication_failed",
+                "message": "Authentication failed",
+                "details": str(e)
+            }), 401
 
     return middleware
 
@@ -147,31 +151,50 @@ def jwt_required_with_user():
         @wraps(fn)
         def decorator(*args, **kwargs):
             try:
+                # Debug decorator information
+                logger.debug(f"Protected route accessed: {request.path}")
+                
                 route_def = get_route_from_request(request.path, request.method)
-                
-                # Skip auth for unregistered routes or public routes
+
                 if route_def and not route_def.requires_auth:
+                    logger.debug("Route is public, skipping authentication")
                     return fn(*args, **kwargs)
-                    
-                if not debug_token():
-                    return jsonify({"error": "Invalid or missing token"}), 401
-                    
-                verify_jwt_in_request()
+
+                try:
+                    verify_jwt_in_request(optional=False)
+                    logger.debug("JWT verification successful in decorator")
+                except Exception as e:
+                    logger.error(f"JWT verification failed in decorator: {str(e)}", exc_info=True)
+                    return jsonify({
+                        "error": "authorization_required",
+                        "message": "Invalid or missing token",
+                        "details": str(e)
+                    }), 401
+
                 user_id = get_jwt_identity()
-                
+                logger.debug(f"JWT Identity in decorator: {user_id}")
+
                 if not user_id:
                     logger.error("No user_id found in JWT token")
-                    return jsonify({"error": "Invalid token"}), 401
-                
+                    return jsonify({
+                        "error": "invalid_token",
+                        "message": "Token does not contain user identity"
+                    }), 401
+
                 success, response = validate_and_get_user(user_id)
                 if not success:
                     return response
-                    
+
+                logger.debug("Authentication successful in decorator")
                 return fn(*args, **kwargs)
-                
+
             except Exception as e:
                 logger.error(f"Decorator authentication error: {str(e)}", exc_info=True)
-                return jsonify({"error": "Authentication failed"}), 401
-                
+                return jsonify({
+                    "error": "authentication_failed",
+                    "message": "Authentication failed",
+                    "details": str(e)
+                }), 401
+
         return decorator
     return wrapper

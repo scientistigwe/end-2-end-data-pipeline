@@ -1,19 +1,12 @@
-// src/common/types/user.ts
-export type UserRole = 'user' | 'admin' | 'manager';
+// common/types/user.ts
+import type { BaseAuthUser } from './auth';
+
 export type RoleType = 'admin' | 'manager' | 'user';
 
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: RoleType;
-  permissions: string[];
-  profileImage?: string;
-  lastLogin?: string;
-  createdAt: string;
-  preferences?: Record<string, unknown>;
-  username?: string;
-  status: 'active' | 'inactive' | 'suspended';
-  updatedAt: string;
-  }
+export interface User extends BaseAuthUser {
+  department?: string;
+  timezone?: string;
+  locale?: string;
+  phoneNumber?: string;
+  // ... your app-specific user properties
+}

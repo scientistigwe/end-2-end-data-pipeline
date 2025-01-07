@@ -1,19 +1,20 @@
-// frontend\src\auth\types\auth.ts
+// auth/types/auth.ts
 import type { ApiResponse, ApiError } from '@/common/types/api';
 import type { User } from '@/common/types/user';
-import type { BaseSessionInfo } from '@/common/types/auth';
+import type { 
+  BaseAuthError, 
+  BaseSessionInfo, 
+  BaseAuthContext,
+  BaseLoginCredentials,
+  BaseRegisterData,
+  BaseAuthResponse
+} from '@/common/types/auth';
 import type { AxiosError } from 'axios';
 
-// Auth Tokens Interface
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-// Auth Status and State
+// Auth Status
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'loading';
 
+// State Types
 export interface AuthState {
   user: User | null;
   status: AuthStatus;
@@ -23,15 +24,11 @@ export interface AuthState {
 }
 
 // Request Types
-export interface LoginCredentials {
-  email: string;
-  password: string;
+export interface LoginCredentials extends BaseLoginCredentials {
   rememberMe?: boolean;
 }
 
-export interface RegisterData {
-  email: string;
-  password: string;
+export interface RegisterData extends BaseRegisterData {
   username: string;
   firstName: string;
   lastName: string;
@@ -68,65 +65,26 @@ export interface VerifyEmailData {
 }
 
 // Response Types
-export interface AuthBaseResponse {
-  success: boolean;
-  message: string;
+export interface LoginResponseData extends BaseAuthResponse {
+  user: User;
+  logged_in_at: string;
 }
 
-export interface AuthResponse extends AuthBaseResponse {
-  data: {
-    user: User;
-    tokens: AuthTokens;
+export interface RegisterResponseData extends BaseAuthResponse {
+  user: User;
+  registered_at: string;
+}
+
+// API Response Types
+export interface ApiBaseResponse<T = unknown> {
+  success: boolean;
+  message: string;
+  data: T;
+  error?: ApiErrorData;
+  meta?: {
+    timestamp: string;
+    requestId?: string;
   };
-}
-
-export interface AuthApiResponse<T> extends ApiResponse<T> {
-  success: boolean;
-  message: string;
-}
-
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-// Request Types
-export interface LoginCredentials {
-  email: string;
-  password: string;
-  rememberMe?: boolean;
-}
-
-export interface RegisterData {
-  email: string;
-  password: string;
-  username: string;
-  firstName: string;
-  lastName: string;
-}
-
-// Response Types
-export interface LoginResponseData {
-  user: User;
-  logged_in_at: string;
-}
-
-export interface RegisterResponseData {
-  user: User;
-  registered_at: string;
-}
-
-export interface RegisterApiResponse {
-  user: User;
-  tokens: AuthTokens;
-  registered_at: string;
-}
-
-export interface LoginApiResponse {
-  user: User;
-  tokens: AuthTokens;
-  logged_in_at: string;
 }
 
 export type LoginResponse = ApiResponse<LoginResponseData>;
@@ -146,25 +104,8 @@ export interface ApiErrorData {
   };
 }
 
-export type AuthAxiosError = AxiosError<ApiErrorData>;
-
-export interface AuthValidationErrors {
-  [field: string]: string[];
-}
-
 export interface AuthApiError extends ApiError {
-  details?: AuthValidationErrors;
-}
-
-export interface AuthErrorResponse {
-  response: {
-    data: {
-      success: false;
-      message: string;
-      error?: AuthApiError;
-    };
-    status: number;
-  };
+  details?: ValidationErrors;
 }
 
 // Session Types
@@ -173,20 +114,29 @@ export interface AuthSessionInfo extends BaseSessionInfo {
   ipAddress?: string;
 }
 
-// Context Type
-export interface AuthContextValue {
+// Context Types
+export interface AuthContextValue extends BaseAuthContext {
+  // State
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  
-  login: (credentials: LoginCredentials) => Promise<LoginResponseData>;
-  register: (data: RegisterData) => Promise<RegisterResponseData>;
+  isInitialized: boolean;
+
+  // Auth operations
+  login: (credentials: LoginCredentials) => Promise<boolean>;
+  register: (data: RegisterData) => Promise<boolean>;
   logout: () => Promise<void>;
-  refreshSession: () => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<User>;
-  
+  updateProfile: (data: ProfileUpdateData) => Promise<User>;
+  changePassword: (data: ChangePasswordData) => Promise<boolean>;
+  resetPassword: (data: ResetPasswordData) => Promise<boolean>;
+  verifyEmail: (data: VerifyEmailData) => Promise<boolean>;
+
+  // Loading states
   isLoggingIn: boolean;
   isRegistering: boolean;
   isUpdatingProfile: boolean;
+  isChangingPassword: boolean;
+  isResettingPassword: boolean;
+  isVerifyingEmail: boolean;
 }

@@ -43,8 +43,8 @@ class BaseConfig:
     JWT_PUBLIC_KEY = os.getenv('JWT_PUBLIC_KEY')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', 3600)))
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES', 2592000)))
-    JWT_COOKIE_SECURE = True
-    JWT_COOKIE_CSRF_PROTECT = True
+    JWT_COOKIE_SECURE = False # Set to True in production
+    JWT_COOKIE_CSRF_PROTECT = False # Set to True in production
     JWT_TOKEN_LOCATION = ['cookies', 'headers']
 
     # Validate required JWT keys

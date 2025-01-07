@@ -1,31 +1,21 @@
-# app/blueprints/auth/routes.py
-from flask import Blueprint, request, g, current_app, make_response, jsonify
-from flask_jwt_extended import (
-    jwt_required,
-    get_jwt_identity,
-    create_access_token, 
-    create_refresh_token,
-    get_jwt
-)
+from flask import Blueprint, request, make_response, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, create_refresh_token, get_jwt
 from marshmallow import ValidationError
+from datetime import datetime
 from ...schemas.auth import (
     LoginRequestSchema,
-    LoginResponseSchema,
     RegisterRequestSchema,
-    RegisterResponseSchema,
-    TokenResponseSchema,
     PasswordResetRequestSchema,
-    PasswordResetResponseSchema,
     EmailVerificationRequestSchema,
-    EmailVerificationResponseSchema,
     ChangePasswordRequestSchema,
-    ChangePasswordResponseSchema,
     UserProfileResponseSchema
 )
 from ...services.auth import AuthService
 from ...utils.response_builder import ResponseBuilder
 import logging
-from datetime import datetime
+from ...utils.route_registry import APIRoutes
+
+refresh_path = APIRoutes.AUTH_REFRESH.value.path
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +23,30 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
     """Create auth blueprint with all routes."""
     auth_bp = Blueprint('auth', __name__)
 
-    # Public Routes (No JWT Required)
+    def set_tokens_as_cookies(response, user_id):
+        """Helper function to set access and refresh tokens as HTTP-only cookies."""
+        access_token = create_access_token(identity=str(user_id))
+        refresh_token = create_refresh_token(identity=str(user_id))
+        
+        cookie_settings = {
+            'httponly': True,
+            'secure': False,  # Set to True in production with HTTPS
+            'samesite': 'Lax',
+            'path': '/',
+            'domain': None  # Allow browser to handle domain
+        }
+
+        response.set_cookie('access_token', access_token, **cookie_settings)
+        response.set_cookie('refresh_token', refresh_token, **cookie_settings)
+        return response
+
+    def clear_tokens_from_cookies(response):
+        """Helper function to clear access and refresh tokens from cookies."""
+        response.delete_cookie('access_token')
+        response.delete_cookie('refresh_token')
+        return response
+
+    # Public Routes
     @auth_bp.route('/register', methods=['POST'])
     def register():
         """Register a new user."""
@@ -41,21 +54,15 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
             schema = RegisterRequestSchema()
             data = schema.load(request.get_json())
             
-            # Check if user already exists
             if auth_service.get_user_by_email(data['email']):
                 return ResponseBuilder.error("Email already registered", status_code=409)
             
             user = auth_service.register_user(data)
-            tokens = create_auth_tokens(user.id)
             
-            response = RegisterResponseSchema().dump({
-                'user': user,
-                'tokens': tokens,
-                'registered_at': datetime.utcnow().isoformat()
-            })
-            
-            return ResponseBuilder.success(response)
-            
+            response = ResponseBuilder.success(
+                data={"message": "Registration successful", "registered_at": datetime.utcnow().isoformat()}
+            )
+            return set_tokens_as_cookies(make_response(jsonify(response)), user.id)
         except ValidationError as e:
             return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
@@ -64,7 +71,6 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
 
     @auth_bp.route('/login', methods=['POST'])
     def login():
-        """Authenticate user and return tokens."""
         try:
             schema = LoginRequestSchema()
             data = schema.load(request.get_json())
@@ -73,149 +79,92 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
             if not user:
                 return ResponseBuilder.error("Invalid credentials", status_code=401)
             
-            if not user.is_active:
-                return ResponseBuilder.error("Account is inactive", status_code=403)
-                
-            # Generate tokens
+            # Create tokens
             access_token = create_access_token(identity=str(user.id))
             refresh_token = create_refresh_token(identity=str(user.id))
             
-            # Create response data with proper structure
-            login_data = {
-                'user': user,
-                'tokens': {
-                    'access_token': access_token,
-                    'refresh_token': refresh_token,
-                    'token_type': 'bearer'
-                },
-                'logged_in_at': datetime.utcnow().isoformat()
+            # Create response
+            response = make_response(
+                ResponseBuilder.success({
+                    "message": "Login successful",
+                    "user": UserProfileResponseSchema().dump(user),
+                    "logged_in_at": datetime.utcnow().isoformat()
+                })
+            )
+            
+            # Set cookies with exact names
+            cookie_settings = {
+                'httponly': True,
+                'secure': current_app.config['JWT_COOKIE_SECURE'],
+                'samesite': current_app.config['JWT_COOKIE_SAMESITE']
             }
             
-            # Dump through schema
-            response_data = {
-                'user': schema.dump(user),
-                'tokens': {
-                    'access_token': access_token,
-                    'refresh_token': refresh_token,
-                    'token_type': 'bearer'
-                },
-                'logged_in_at': datetime.utcnow().isoformat()
-            }
-
-            response = make_response(
-                jsonify(
-                    ResponseBuilder.success(
-                        data=response_data,
-                        message="Login successful"
-                    )[0]
-                )
-            )
-
-            # Set cookies
+            # Set access token cookie
             response.set_cookie(
-                'access_token',
-                access_token,
-                httponly=True,
-                secure=current_app.config['JWT_COOKIE_SECURE'],
-                samesite=current_app.config['JWT_COOKIE_SAMESITE']
+                current_app.config['JWT_ACCESS_COOKIE_NAME'],  # Will be 'access_token'
+                value=access_token,
+                max_age=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds(),
+                path='/',
+                **cookie_settings
             )
+            
+            # Set refresh token cookie
             response.set_cookie(
-                'refresh_token',
-                refresh_token,
-                httponly=True,
-                secure=current_app.config['JWT_COOKIE_SECURE'],
-                samesite=current_app.config['JWT_COOKIE_SAMESITE']
+                current_app.config['JWT_REFRESH_COOKIE_NAME'],  # Will be 'refresh_token'
+                value=refresh_token,
+                max_age=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'].total_seconds(),
+                path='/api/v1/auth/refresh',
+                **cookie_settings
             )
-
+            
             return response
-
         except ValidationError as e:
-            return ResponseBuilder.error(
-                message="Validation error", 
-                details=e.messages, 
-                status_code=400
-            )
+            return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
             logger.error(f"Login error: {str(e)}", exc_info=True)
-            return ResponseBuilder.error(
-                message="Login failed",
-                status_code=500
-            )                
-    def create_auth_tokens(user_id: str, response):
-        """Helper function to create authentication tokens and set them as cookies.
+            return ResponseBuilder.error("Login failed", status_code=500)
         
-        Args:
-            user_id (str): The user's unique identifier
-            response (flask.Response): Flask response object to set cookies on
-            
-        Returns:
-            dict: Token information including type and any additional metadata
-        """
-        access_token = create_access_token(identity=str(user_id))
-        refresh_token = create_refresh_token(identity=str(user_id))
-        
-        # Set tokens as HTTP-only cookies
-        response.set_cookie(
-            'access_token',
-            access_token,
-            httponly=True,
-            secure=current_app.config['JWT_COOKIE_SECURE'],
-            samesite=current_app.config['JWT_COOKIE_SAMESITE']
-        )
-        response.set_cookie(
-            'refresh_token',
-            refresh_token,
-            httponly=True,
-            secure=current_app.config['JWT_COOKIE_SECURE'],
-            samesite=current_app.config['JWT_COOKIE_SAMESITE']
-        )
-        
-        return {
-            'token_type': 'bearer',
-            'access_token': access_token,  # Optionally include if needed in response
-            'refresh_token': refresh_token  # Optionally include if needed in response
-        }
-
     @auth_bp.route('/refresh', methods=['POST'])
     @jwt_required(refresh=True)
     def refresh():
-        """Refresh access token."""
+        """Refresh access token using refresh token."""
         try:
             current_user_id = get_jwt_identity()
-            user = auth_service.get_user_by_id(current_user_id)
             
-            if not user or not user.is_active:
-                return ResponseBuilder.error("Invalid or inactive user", status_code=401)
-            
-            new_token = create_access_token(identity=current_user_id)
-            response = TokenResponseSchema().dump({
-                'access_token': new_token,
-                'token_type': 'bearer',
-                'refreshed_at': datetime.utcnow().isoformat()
+            response = ResponseBuilder.success({
+                "message": "Token refreshed",
+                "refreshed_at": datetime.utcnow().isoformat()
             })
             
-            return ResponseBuilder.success(response)
+            # Create response with new access token
+            response = make_response(jsonify(response))
             
+            # Set new access token cookie
+            access_token = create_access_token(identity=current_user_id)
+            response.set_cookie(
+                'access_token',
+                value=access_token,
+                max_age=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds(),
+                secure=current_app.config['JWT_COOKIE_SECURE'],
+                httponly=True,
+                path='/',
+                samesite='Lax' if current_app.debug else 'Strict'
+            )
+            
+            return response
         except Exception as e:
             logger.error(f"Token refresh error: {str(e)}", exc_info=True)
-            return ResponseBuilder.error("Token refresh failed", status_code=500)
-
+            return ResponseBuilder.error("Failed to refresh token", status_code=500)
+        
     @auth_bp.route('/logout', methods=['POST'])
     @jwt_required()
     def logout():
-        """Logout user and invalidate tokens."""
+        """Logout user and clear tokens."""
         try:
             token_jti = get_jwt()['jti']
-            current_user_id = get_jwt_identity()
-            
             auth_service.invalidate_token(token_jti)
-            
-            return ResponseBuilder.success({
-                "message": "Successfully logged out",
-                "user_id": current_user_id,
-                "logged_out_at": datetime.utcnow().isoformat()
-            })
-            
+            response = ResponseBuilder.success({"message": "Logout successful", "logged_out_at": datetime.utcnow().isoformat()})
+            return clear_tokens_from_cookies(make_response(jsonify(response)))
         except Exception as e:
             logger.error(f"Logout error: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Logout failed", status_code=500)
@@ -226,24 +175,8 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
         try:
             schema = PasswordResetRequestSchema()
             data = schema.load(request.get_json())
-            
-            user = auth_service.get_user_by_email(data['email'])
-            if not user:
-                # Return success even if email doesn't exist for security
-                return ResponseBuilder.success({
-                    "message": "If your email is registered, you will receive reset instructions"
-                })
-            
-            reset_token = auth_service.initiate_password_reset(data['email'])
-            
-            response = PasswordResetResponseSchema().dump({
-                'email': data['email'],
-                'reset_token': reset_token,
-                'requested_at': datetime.utcnow().isoformat()
-            })
-            
-            return ResponseBuilder.success(response)
-            
+            auth_service.initiate_password_reset(data['email'])
+            return ResponseBuilder.success({"message": "Password reset instructions sent"})
         except ValidationError as e:
             return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
@@ -256,14 +189,7 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
         try:
             data = request.get_json()
             auth_service.reset_password(data['token'], data['new_password'])
-            
-            return ResponseBuilder.success({
-                "message": "Password reset successful",
-                "reset_at": datetime.utcnow().isoformat()
-            })
-            
-        except ValidationError as e:
-            return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
+            return ResponseBuilder.success({"message": "Password reset successful"})
         except Exception as e:
             logger.error(f"Password reset error: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Password reset failed", status_code=500)
@@ -274,22 +200,18 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
         """Get user's profile information."""
         try:
             current_user_id = get_jwt_identity()
-            user = auth_service.get_user_profile(current_user_id)
+            user = auth_service.get_user_by_id(current_user_id)
             
             if not user:
                 return ResponseBuilder.error("User not found", status_code=404)
             
-            response = UserProfileResponseSchema().dump({
-                'user': user,
-                'fetched_at': datetime.utcnow().isoformat()
+            return ResponseBuilder.success({
+                "user": UserProfileResponseSchema().dump(user)
             })
-            
-            return ResponseBuilder.success(response)
-            
         except Exception as e:
             logger.error(f"Profile fetch error: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to fetch profile", status_code=500)
-
+        
     @auth_bp.route('/profile', methods=['PUT'])
     @jwt_required()
     def update_profile():
@@ -298,16 +220,8 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
             current_user_id = get_jwt_identity()
             schema = UserProfileResponseSchema()
             data = schema.load(request.get_json())
-            
             updated_user = auth_service.update_user_profile(current_user_id, data)
-            
-            response = schema.dump({
-                'user': updated_user,
-                'updated_at': datetime.utcnow().isoformat()
-            })
-            
-            return ResponseBuilder.success(response)
-            
+            return ResponseBuilder.success({"user": schema.dump(updated_user), "updated_at": datetime.utcnow().isoformat()})
         except ValidationError as e:
             return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
@@ -320,14 +234,8 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
         try:
             schema = EmailVerificationRequestSchema()
             data = schema.load(request.get_json())
-            
             auth_service.verify_email(data['token'])
-            
-            return ResponseBuilder.success({
-                "message": "Email verified successfully",
-                "verified_at": datetime.utcnow().isoformat()
-            })
-            
+            return ResponseBuilder.success({"message": "Email verified successfully"})
         except ValidationError as e:
             return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
@@ -342,78 +250,12 @@ def create_auth_blueprint(auth_service: AuthService, db_session):
             current_user_id = get_jwt_identity()
             schema = ChangePasswordRequestSchema()
             data = schema.load(request.get_json())
-            
-            auth_service.change_password(
-                current_user_id,
-                data['current_password'],
-                data['new_password']
-            )
-            
-            return ResponseBuilder.success({
-                "message": "Password changed successfully",
-                "changed_at": datetime.utcnow().isoformat()
-            })
-            
+            auth_service.change_password(current_user_id, data['current_password'], data['new_password'])
+            return ResponseBuilder.success({"message": "Password changed successfully"})
         except ValidationError as e:
             return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
         except Exception as e:
             logger.error(f"Password change error: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to change password", status_code=500)
 
-    # Error handlers
-    @auth_bp.errorhandler(401)
-    def unauthorized_error(error):
-        return ResponseBuilder.error("Unauthorized", status_code=401)
-
-    @auth_bp.errorhandler(403)
-    def forbidden_error(error):
-        return ResponseBuilder.error("Forbidden", status_code=403)
-
-    @auth_bp.errorhandler(404)
-    def not_found_error(error):
-        return ResponseBuilder.error("Resource not found", status_code=404)
-
-    @auth_bp.errorhandler(422)
-    def validation_error(error):
-        return ResponseBuilder.error(
-            "Validation Error", 
-            details=error.description, 
-            status_code=422
-        )
-
-    @auth_bp.errorhandler(500)
-    def internal_error(error):
-        logger.error(f"Internal error: {error}", exc_info=True)
-        return ResponseBuilder.error(
-            "Internal server error",
-            status_code=500
-        )
-
-    @auth_bp.route('/verify', methods=['POST'])
-    def verify_account():
-        """Verify user's account."""
-        try:
-            data = request.get_json()
-            verification_token = data.get('token')
-            
-            if not verification_token:
-                return ResponseBuilder.error("Verification token is required", status_code=400)
-            
-            user = auth_service.verify_account(verification_token)
-            
-            tokens = create_auth_tokens(user.id)
-            
-            return ResponseBuilder.success({
-                'message': 'Account verified successfully',
-                'user': UserProfileResponseSchema().dump(user),
-                'tokens': tokens,
-                'verified_at': datetime.utcnow().isoformat()
-            })
-            
-        except ValidationError as e:
-            return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
-        except Exception as e:
-            logger.error(f"Account verification error: {str(e)}", exc_info=True)
-            return ResponseBuilder.error("Account verification failed", status_code=500)
-        
     return auth_bp

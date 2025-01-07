@@ -1,13 +1,10 @@
 // auth/hooks/useSession.ts
 import { useEffect, useCallback, useRef } from 'react';
 import { useDispatch } from 'react-redux';
-import { storageUtils } from '@/common/utils/storage/storageUtils';
 import { authApi } from '../api';
 import { setAuth, clearAuth } from '../store/authSlice';
 import { useAuthStatus } from './useAuthStatus';
-import type { AuthTokens } from '../types';
 
-const AUTH_STORAGE_KEY = 'auth_tokens';
 const REFRESH_INTERVAL = 14 * 60 * 1000; // 14 minutes
 
 export function useSession() {
@@ -16,18 +13,10 @@ export function useSession() {
   const isRefreshing = useRef(false);
 
   const validateSession = useCallback(async () => {
-    const tokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-    
-    if (!tokens?.accessToken) {
-      dispatch(clearAuth());
-      return false;
-    }
-
     try {
-      // Changed from getCurrentUser to getProfile
       const userResponse = await authApi.getProfile();
-      if (userResponse.data) {
-        dispatch(setAuth({ user: userResponse.data, tokens }));
+      if (userResponse) {
+        dispatch(setAuth({ user: userResponse }));
         return true;
       }
       return false;
@@ -42,16 +31,8 @@ export function useSession() {
     
     isRefreshing.current = true;
     try {
-      const tokens = storageUtils.getItem<AuthTokens>(AUTH_STORAGE_KEY);
-      
-      if (!tokens?.refreshToken) {
-        dispatch(clearAuth());
-        return false;
-      }
-
-      const response = await authApi.refreshToken(tokens.refreshToken);
-      if (response.data) {
-        storageUtils.setItem(AUTH_STORAGE_KEY, response.data);
+      const response = await authApi.refresh();
+      if (response) {
         await validateSession();
         return true;
       }
@@ -64,7 +45,6 @@ export function useSession() {
     }
   }, [dispatch, validateSession]);
 
-  // Initialize auth state - run only once
   useEffect(() => {
     let mounted = true;
 
@@ -73,9 +53,8 @@ export function useSession() {
     }
 
     return () => { mounted = false; };
-  }, [isInitialized]); // Remove validateSession from dependencies
+  }, [isInitialized]);
 
-  // Set up refresh interval with cleanup
   useEffect(() => {
     let mounted = true;
     
@@ -89,7 +68,7 @@ export function useSession() {
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [isAuthenticated]); // Remove refreshSession from dependencies
+  }, [isAuthenticated]);
 
   return {
     validateSession,

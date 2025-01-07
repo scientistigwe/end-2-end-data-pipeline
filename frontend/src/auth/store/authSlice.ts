@@ -1,4 +1,4 @@
-// auth/store/authSlice.ts
+// src/auth/store/authSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { AuthState, AuthStatus } from '../types';
 import type { User } from '@/common/types/user';
@@ -97,41 +97,5 @@ export const {
     resetAuthState
 } = authSlice.actions;
 
-// Selectors
-export const selectAuth = (state: { auth: AuthState }) => state.auth;
-export const selectUser = (state: { auth: AuthState }) => state.auth.user;
-export const selectAuthStatus = (state: { auth: AuthState }) => state.auth.status;
-export const selectAuthError = (state: { auth: AuthState }) => state.auth.error;
-export const selectIsLoading = (state: { auth: AuthState }) => state.auth.isLoading;
-export const selectIsInitialized = (state: { auth: AuthState }) => state.auth.initialized;
-export const selectIsAuthenticated = (state: { auth: AuthState }) => 
-    state.auth.status === 'authenticated' && !!state.auth.user;
-
-// Thunks (if needed)
-// export const loginThunk = createAsyncThunk(
-//     'auth/login',
-//     async (credentials: LoginCredentials, { dispatch }) => {
-//         try {
-//             dispatch(startAuthRequest());
-//             const response = await authApi.login(credentials);
-//             dispatch(authSuccess({ user: response.user }));
-//             return response;
-//         } catch (error) {
-//             const message = error instanceof Error ? error.message : 'Login failed';
-//             dispatch(authFailure(message));
-//             throw error;
-//         }
-//     }
-// );
-
 // Reducer
 export default authSlice.reducer;
-
-// Types
-export interface AuthState {
-    user: User | null;
-    status: AuthStatus;
-    error: string | null;
-    isLoading: boolean;
-    initialized: boolean;
-}

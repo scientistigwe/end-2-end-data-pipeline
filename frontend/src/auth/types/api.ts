@@ -1,77 +1,55 @@
 // auth/types/api.ts
 import type { User } from '@/common/types/user';
 import type { 
+  ApiResponse, 
+  ApiError,
+  ApiErrorResponse,
+  ValidationError 
+} from '@/common/types/api';
+import type { 
   LoginCredentials, 
   RegisterData, 
-  AuthTokens, 
-  AuthValidationErrors 
+  ValidationErrors 
 } from './auth';
 
-// Base API Response Structure
-export interface ApiBaseResponse<T = unknown> {
-  success: boolean;
-  message: string;
-  data: T;
-  status?: number;
-}
-
-// Error Types
-export interface ApiErrorDetail {
-  code: number;
-  description: string;
-  name: string;
-  message: string;
-}
-
-export interface ApiErrorResponse {
-  success: false;
-  message: string;
-  error?: ApiErrorDetail;
-  details?: AuthValidationErrors;
-}
-
-// Auth Response Types
-interface BaseAuthResponse {
+// Auth-specific API Response Types
+export interface AuthBaseResponse<T = unknown> extends ApiResponse<T> {
   user: User;
-  tokens: AuthTokens;
 }
 
-interface LoginResponseData extends BaseAuthResponse {
+// Auth-specific Response Data Types
+export interface BaseAuthResponse {
+  user: User;
+}
+
+export interface LoginResponseData extends BaseAuthResponse {
   logged_in_at: string;
 }
 
-interface RegisterResponseData extends BaseAuthResponse {
+export interface RegisterResponseData extends BaseAuthResponse {
   registered_at: string;
 }
 
-export type LoginApiResponse = ApiBaseResponse<LoginResponseData>;
-export type RegisterApiResponse = ApiBaseResponse<RegisterResponseData>;
+// Auth-specific API Response Types
+export type LoginApiResponse = AuthBaseResponse<LoginResponseData>;
+export type RegisterApiResponse = AuthBaseResponse<RegisterResponseData>;
 
-// Auth Request Types
-export interface LoginRequest extends LoginCredentials {
-  rememberMe?: boolean;
-}
-
-export interface RegisterRequest extends RegisterData {}
-
-export interface RefreshTokenRequest {
-  refresh_token: string;
-}
-
-// Auth Error Types
-export interface AuthApiError extends Error {
+// Auth-specific Error Types
+export interface AuthApiError extends ApiError {
   response: {
     data: ApiErrorResponse;
     status: number;
   };
 }
 
-// Generic Auth API Response Type
-export interface AuthApiResponse<T = unknown> extends ApiBaseResponse<T> {
-  tokens?: AuthTokens;
+// Auth-specific Request Types
+export interface LoginRequest extends LoginCredentials {
+  rememberMe?: boolean;
 }
 
-// Response Type Guards
+export interface RegisterRequest extends RegisterData {}
+
+// Type Guards
 export function isAuthError(error: unknown): error is AuthApiError {
   return (
     error !== null &&
@@ -84,12 +62,13 @@ export function isAuthError(error: unknown): error is AuthApiError {
 
 export function isValidAuthResponse<T>(
   response: unknown
-): response is AuthApiResponse<T> {
+): response is AuthBaseResponse<T> {
   return (
     typeof response === 'object' &&
     response !== null &&
     'success' in response &&
     'data' in response &&
+    'user' in response &&
     Boolean(response.success)
   );
 }

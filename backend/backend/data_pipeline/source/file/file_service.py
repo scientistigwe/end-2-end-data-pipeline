@@ -1,12 +1,12 @@
-# backend\backend\data_pipeline\source\file\file_service.py
+# backend/data_pipeline/source/file/file_service.py
 from datetime import datetime
 from typing import Dict, Any
 import logging
 from .file_manager import FileManager
 from backend.core.messaging.broker import MessageBroker
-from backend.core.orchestration.conductor import DataConductor
-from backend.core.staging.staging_area import EnhancedStagingArea
-from backend.core.orchestration.orchestrator import DataOrchestrator
+from backend.core.orchestration.data_conductor import DataConductor
+from backend.core.orchestration.staging_manager import StagingManager
+from backend.core.orchestration.pipeline_manager import PipelineManager
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -15,59 +15,37 @@ logger = logging.getLogger(__name__)
 class FileService:
     """Service layer for managing file operations"""
 
-    def __init__(self, message_broker=None, orchestrator=None):
+    def __init__(self, message_broker=None, pipeline_manager=None):
         """Initialize FileService with dependency injection"""
         self.message_broker = message_broker or MessageBroker()
         self.file_manager = FileManager(self.message_broker)
-        self.orchestrator = orchestrator
+        self.pipeline_manager = pipeline_manager or self._initialize_pipeline_manager()
         logger.info("FileService initialized with MessageBroker")
 
-    def _initialize_data_orchestrator(self):
-        """
-        Initialize the DataOrchestrator to ensure all required modules are registered
-        """
+    def _initialize_pipeline_manager(self):
+        """Initialize PipelineManager with required dependencies"""
         try:
-            # Create necessary dependencies
+            # Create data conductor for routing
             data_conductor = DataConductor(self.message_broker)
-            staging_area = EnhancedStagingArea(self.message_broker)
 
-            # Directly instantiate the DataOrchestrator
-            data_orchestrator = DataOrchestrator(
+            # Create staging manager for data storage
+            staging_manager = StagingManager(self.message_broker)
+
+            # Initialize pipeline manager
+            pipeline_manager = PipelineManager(
                 message_broker=self.message_broker,
-                data_conductor=data_conductor,
-                staging_area=staging_area
+                db_session=None  # Add if needed
             )
+
+            logger.info("Initialized PipelineManager with dependencies")
+            return pipeline_manager
 
         except Exception as e:
-            logger.error(f"Failed to initialize DataOrchestrator: {str(e)}", exc_info=True)
+            logger.error(f"Failed to initialize PipelineManager: {str(e)}", exc_info=True)
             raise
-
-    def _get_orchestrator(self):
-        """Get or create orchestrator instance"""
-        if not self.orchestrator:
-            # Create necessary dependencies
-            data_conductor = DataConductor(self.message_broker)
-            staging_area = EnhancedStagingArea(self.message_broker)
-
-            # Create orchestrator
-            self.orchestrator = DataOrchestrator(
-                message_broker=self.message_broker,
-                data_conductor=data_conductor,
-                staging_area=staging_area
-            )
-            logger.info("Created new orchestrator instance")
-
-        return self.orchestrator
 
     def _create_pipeline_entry(self, filename: str, upload_result: Dict) -> str:
         """Create a pipeline entry for tracking"""
-        if not hasattr(self, 'pipeline_service'):
-            from backend.data_pipeline.pipeline_service import PipelineService
-            self.pipeline_service = PipelineService(
-                message_broker=self.message_broker,
-                orchestrator=self._get_orchestrator()  # Now this will work
-            )
-
         # Create pipeline config
         config = {
             'filename': filename,
@@ -76,8 +54,8 @@ class FileService:
             'start_time': datetime.now().isoformat()
         }
 
-        # Start pipeline
-        pipeline_id = self.pipeline_service.start_pipeline(config)
+        # Start pipeline using pipeline manager
+        pipeline_id = self.pipeline_manager.start_pipeline(config)
         logger.info(f"Created pipeline {pipeline_id} for file {filename}")
         return pipeline_id
 
@@ -124,7 +102,6 @@ class FileService:
 
         except Exception as e:
             logger.error(f"Unexpected error during file upload for {filename}", exc_info=True)
-
             return {
                 'status': 'error',
                 'message': f"File upload failed: {str(e)}",
@@ -146,4 +123,15 @@ class FileService:
             return {
                 'status': 'error',
                 'message': f"Failed to retrieve metadata: {str(e)}"
+            }
+
+    def get_pipeline_status(self, pipeline_id: str) -> Dict[str, Any]:
+        """Get pipeline status"""
+        try:
+            return self.pipeline_manager.get_pipeline_status(pipeline_id)
+        except Exception as e:
+            logger.error(f"Error getting pipeline status: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f"Failed to get pipeline status: {str(e)}"
             }

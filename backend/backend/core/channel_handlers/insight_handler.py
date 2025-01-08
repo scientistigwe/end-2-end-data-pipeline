@@ -6,12 +6,12 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.channel_handlers.base_handler import BaseHandler
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
 # Import the insight module manager
-from backend.data_pipeline.insight.insight_module_manager import InsightModuleManager
+from backend.data_pipeline.insight_analysis.insight_processor import InsightProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class InsightContext:
     status: str = "pending"
 
 
-class InsightHandler(BaseHandler):
+class InsightChannelHandler(BaseChannelHandler):
     """
     Handles communication between orchestrator and insight module manager
     """

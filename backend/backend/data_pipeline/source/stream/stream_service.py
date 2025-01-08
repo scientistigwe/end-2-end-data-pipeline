@@ -5,7 +5,7 @@ import logging
 from .stream_manager import StreamManager
 from backend.core.messaging.broker import MessageBroker
 from backend.core.orchestration.conductor import DataConductor
-from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.staging_manager import StagingManager
 from backend.core.orchestration.orchestrator import DataOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,8 @@ class StreamService:
     def _create_pipeline_entry(self, stream_id: str, config: Dict) -> str:
         """Create a pipeline entry for tracking"""
         if not hasattr(self, 'pipeline_service'):
-            from backend.data_pipeline.pipeline_service import PipelineService
-            self.pipeline_service = PipelineService(
+            from backend.backend.core.orchestration.pipeline_manager import PipelineManager
+            self.pipeline_service = PipelineManager(
                 message_broker=self.message_broker,
                 orchestrator=self._get_orchestrator()
             )

@@ -21,7 +21,7 @@ facilitating a robust and maintainable data pipeline system.
 from typing import Dict, Any
 from backend.core.messaging.broker import MessageBroker
 from backend.core.orchestration.conductor import DataConductor
-from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.staging_manager import StagingManager
 from backend.core.orchestration.orchestrator import DataOrchestrator
 from backend.core.config.config_manager import ConfigurationManager
 from backend.data_pipeline.analysis.quality_report_messenger import QualityReportMessenger
@@ -68,7 +68,7 @@ def create_application_components() -> Dict[str, Any]:
     message_broker = MessageBroker(config_manager)
 
     # Initialize Processing Components
-    staging_area = EnhancedStagingArea(message_broker)
+    staging_area = StagingManager(message_broker)
     conductor = DataConductor(
         message_broker=message_broker,
         config_manager=config_manager

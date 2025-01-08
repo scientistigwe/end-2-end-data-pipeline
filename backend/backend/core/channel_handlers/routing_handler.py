@@ -6,12 +6,12 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.channel_handlers.base_handler import BaseHandler
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
 # Import the conductor module
-from backend.core.orchestration.route_manager import DataConductor
+from backend.core.orchestration.data_conductor import DataConductor
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class RouteContext:
     status: str = "active"
 
 
-class RoutingHandler(BaseHandler):
+class RoutingChannelHandler(BaseChannelHandler):
     """
     Handles communication between orchestrator and conductor
     """

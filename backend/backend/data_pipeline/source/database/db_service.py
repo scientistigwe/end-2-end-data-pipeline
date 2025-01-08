@@ -5,7 +5,7 @@ import logging
 from .db_manager import DBManager
 from backend.core.messaging.broker import MessageBroker
 from backend.core.orchestration.conductor import DataConductor
-from backend.core.staging.staging_area import EnhancedStagingArea
+from backend.core.orchestration.staging_manager import StagingManager
 from backend.core.orchestration.orchestrator import DataOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class DBService:
         """Get or create orchestrator instance"""
         if not self.orchestrator:
             data_conductor = DataConductor(self.message_broker)
-            staging_area = EnhancedStagingArea(self.message_broker)
+            staging_area = StagingManager(self.message_broker)
 
             self.orchestrator = DataOrchestrator(
                 message_broker=self.message_broker,
@@ -39,8 +39,8 @@ class DBService:
     def _create_pipeline_entry(self, connection_id: str, query_result: Dict) -> str:
         """Create a pipeline entry for tracking"""
         if not hasattr(self, 'pipeline_service'):
-            from backend.data_pipeline.pipeline_service import PipelineService
-            self.pipeline_service = PipelineService(
+            from backend.backend.core.orchestration.pipeline_manager import PipelineManager
+            self.pipeline_service = PipelineManager(
                 message_broker=self.message_broker,
                 orchestrator=self._get_orchestrator()
             )

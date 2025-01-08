@@ -39,7 +39,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.channel_handlers.base_handler import BaseHandler
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
@@ -100,7 +100,7 @@ class SourceContext:
     error: Optional[str] = field(default=None)
 
 
-class SourceHandler(BaseHandler):
+class DataSourceChannelHandler(BaseChannelHandler):
     """
     Handles communication between pipeline manager and source managers.
 

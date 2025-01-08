@@ -6,12 +6,12 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.channel_handlers.base_handler import BaseHandler
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
-from backend.data_pipeline.processing.quality_module_manager import (
-    QualityModuleManager,
+from backend.data_pipeline.quality_analysis.data_quality_processor import (
+    DataQualityProcessor,
     QualityPhase
 )
 
@@ -28,7 +28,7 @@ class ProcessingContext:
     status: str = "pending"
 
 
-class ProcessingHandler(BaseHandler):
+class ProcessingChannelHandler(BaseChannelHandler):
     """
     Handles communication between orchestrator and quality module manager
     """
@@ -37,7 +37,7 @@ class ProcessingHandler(BaseHandler):
         super().__init__(message_broker, "processing_handler")
 
         # Initialize quality module manager
-        self.quality_manager = QualityModuleManager(message_broker)
+        self.quality_manager = QualityManager(message_broker)
 
         # Track active processing
         self.active_processing: Dict[str, ProcessingContext] = {}

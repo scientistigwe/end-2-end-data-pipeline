@@ -1,5 +1,5 @@
 # app/blueprints/pipeline/routes.py
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, current_app
 from marshmallow import ValidationError
 from uuid import UUID
 import logging
@@ -21,13 +21,14 @@ from ...utils.response_builder import ResponseBuilder
 
 logger = logging.getLogger(__name__)
 
+
 def create_pipeline_blueprint(pipeline_service, db_session):
     """Create pipeline blueprint with all routes.
-    
+
     Args:
         pipeline_service: Instance of PipelineService
         db_session: Database session
-        
+
     Returns:
         Blueprint: Configured pipeline blueprint
     """
@@ -53,7 +54,7 @@ def create_pipeline_blueprint(pipeline_service, db_session):
             schema = PipelineRequestSchema()
             data = schema.load(request.get_json())
             data['owner_id'] = g.current_user.id
-            
+
             pipeline = pipeline_service.create_pipeline(data)
             return ResponseBuilder.success(
                 PipelineResponseSchema().dump({'pipeline': pipeline})
@@ -68,9 +69,16 @@ def create_pipeline_blueprint(pipeline_service, db_session):
     def get_pipeline(pipeline_id):
         """Get pipeline details."""
         try:
-            pipeline = pipeline_service.get_pipeline(UUID(pipeline_id))
+            # Get status from both service and manager
+            pipeline_details = pipeline_service.get_pipeline(UUID(pipeline_id))
+            runtime_status = current_app.pipeline_manager.get_pipeline_status(pipeline_id)
+
+            # Merge the information
+            if runtime_status:
+                pipeline_details['runtime_status'] = runtime_status
+
             return ResponseBuilder.success(
-                PipelineResponseSchema().dump({'pipeline': pipeline})
+                PipelineResponseSchema().dump({'pipeline': pipeline_details})
             )
         except ValueError:
             return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
@@ -78,30 +86,14 @@ def create_pipeline_blueprint(pipeline_service, db_session):
             logger.error(f"Error getting pipeline: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to get pipeline", status_code=500)
 
-    @pipeline_bp.route('/<pipeline_id>', methods=['PUT'])
-    def update_pipeline(pipeline_id):
-        """Update pipeline configuration."""
-        try:
-            schema = PipelineUpdateRequestSchema()
-            data = schema.load(request.get_json())
-            
-            pipeline = pipeline_service.update_pipeline(UUID(pipeline_id), data)
-            return ResponseBuilder.success(
-                PipelineResponseSchema().dump({'pipeline': pipeline})
-            )
-        except ValidationError as e:
-            return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
-        except Exception as e:
-            logger.error(f"Error updating pipeline: {str(e)}", exc_info=True)
-            return ResponseBuilder.error("Failed to update pipeline", status_code=500)
-
     @pipeline_bp.route('/<pipeline_id>/start', methods=['POST'])
     def start_pipeline(pipeline_id):
         """Start pipeline execution."""
         try:
             schema = PipelineStartRequestSchema()
             config = schema.load(request.get_json() or {})
-            
+
+            # Start pipeline using core manager through service
             result = pipeline_service.start_pipeline(UUID(pipeline_id), config)
             return ResponseBuilder.success(
                 PipelineStartResponseSchema().dump(result)
@@ -114,17 +106,41 @@ def create_pipeline_blueprint(pipeline_service, db_session):
             logger.error(f"Error starting pipeline: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to start pipeline", status_code=500)
 
+    @pipeline_bp.route('/<pipeline_id>/status', methods=['GET'])
+    def get_pipeline_status(pipeline_id):
+        """Get pipeline execution status."""
+        try:
+            # Get both persistent and runtime status
+            db_status = pipeline_service.get_pipeline_status(UUID(pipeline_id))
+            runtime_status = current_app.pipeline_manager.get_pipeline_status(pipeline_id)
+
+            # Merge statuses
+            combined_status = {
+                **db_status,
+                'runtime_info': runtime_status if runtime_status else {}
+            }
+
+            return ResponseBuilder.success(
+                PipelineStatusResponseSchema().dump({'status': combined_status})
+            )
+        except ValueError:
+            return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
+        except Exception as e:
+            logger.error(f"Error getting pipeline status: {str(e)}", exc_info=True)
+            return ResponseBuilder.error("Failed to get pipeline status", status_code=500)
+
     @pipeline_bp.route('/<pipeline_id>/stop', methods=['POST'])
     def stop_pipeline(pipeline_id):
         """Stop pipeline execution."""
         try:
-            result = pipeline_service.stop_pipeline(UUID(pipeline_id))
-            return ResponseBuilder.success(
-                PipelineStatusResponseSchema().dump({
-                    'status': result,
-                    'message': 'Pipeline stopped successfully'
-                })
-            )
+            # Stop in both service and manager
+            pipeline_service.stop_pipeline(UUID(pipeline_id))
+            current_app.pipeline_manager.stop_pipeline(pipeline_id)
+
+            return ResponseBuilder.success({
+                'status': 'stopped',
+                'message': 'Pipeline stopped successfully'
+            })
         except ValueError:
             return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
         except Exception as e:
@@ -135,13 +151,11 @@ def create_pipeline_blueprint(pipeline_service, db_session):
     def pause_pipeline(pipeline_id):
         """Pause pipeline execution."""
         try:
-            result = pipeline_service.pause_pipeline(UUID(pipeline_id))
-            return ResponseBuilder.success(
-                PipelineStatusResponseSchema().dump({
-                    'status': result,
-                    'message': 'Pipeline paused successfully'
-                })
-            )
+            pipeline_service.pause_pipeline(UUID(pipeline_id))
+            return ResponseBuilder.success({
+                'status': 'paused',
+                'message': 'Pipeline paused successfully'
+            })
         except ValueError:
             return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
         except Exception as e:
@@ -152,13 +166,11 @@ def create_pipeline_blueprint(pipeline_service, db_session):
     def resume_pipeline(pipeline_id):
         """Resume pipeline execution."""
         try:
-            result = pipeline_service.resume_pipeline(UUID(pipeline_id))
-            return ResponseBuilder.success(
-                PipelineStatusResponseSchema().dump({
-                    'status': result,
-                    'message': 'Pipeline resumed successfully'
-                })
-            )
+            pipeline_service.resume_pipeline(UUID(pipeline_id))
+            return ResponseBuilder.success({
+                'status': 'running',
+                'message': 'Pipeline resumed successfully'
+            })
         except ValueError:
             return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
         except Exception as e:
@@ -178,6 +190,23 @@ def create_pipeline_blueprint(pipeline_service, db_session):
         except Exception as e:
             logger.error(f"Error retrying pipeline: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to retry pipeline", status_code=500)
+
+    @pipeline_bp.route('/<pipeline_id>', methods=['PUT'])
+    def update_pipeline(pipeline_id):
+        """Update pipeline configuration."""
+        try:
+            schema = PipelineUpdateRequestSchema()
+            data = schema.load(request.get_json())
+            
+            pipeline = pipeline_service.update_pipeline(UUID(pipeline_id), data)
+            return ResponseBuilder.success(
+                PipelineResponseSchema().dump({'pipeline': pipeline})
+            )
+        except ValidationError as e:
+            return ResponseBuilder.error("Validation error", details=e.messages, status_code=400)
+        except Exception as e:
+            logger.error(f"Error updating pipeline: {str(e)}", exc_info=True)
+            return ResponseBuilder.error("Failed to update pipeline", status_code=500)
 
     @pipeline_bp.route('/<pipeline_id>/status', methods=['GET'])
     def get_pipeline_status(pipeline_id):

@@ -1,4 +1,5 @@
 # app/services/pipeline/pipeline_service.py
+
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -8,11 +9,59 @@ from .....database.models.pipeline import (
     Pipeline, PipelineStep, PipelineRun,
     PipelineStepRun, QualityGate
 )
+from backend.core.messaging.broker import MessageBroker
+from backend.core.orchestration.pipeline_manager import PipelineManager
 
 class PipelineService:
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: Session, message_broker: Optional[MessageBroker] = None):
         self.db_session = db_session
+        self.message_broker = message_broker or MessageBroker()
+        # Initialize PipelineManager with both message broker and db session
+        self.pipeline_manager = PipelineManager(self.message_broker, db_session)
         self.logger = logging.getLogger(__name__)
+
+    def start_pipeline(self, config: Dict[str, Any]) -> str:
+        """Start a new pipeline with comprehensive error handling."""
+        try:
+            # Validate configuration
+            if not self._validate_pipeline_config(config):
+                raise ValueError("Invalid pipeline configuration")
+
+            # Start pipeline using core manager
+            pipeline_id = self.pipeline_manager.start_pipeline(config)
+
+            # Log event
+            self._log_pipeline_event(
+                pipeline_id,
+                'START',
+                f"Pipeline started for {config.get('filename', 'unknown')}"
+            )
+
+            return pipeline_id
+
+        except Exception as e:
+            self.logger.error(f"Failed to start pipeline: {str(e)}", exc_info=True)
+            raise
+
+    def stop_pipeline(self, pipeline_id: str) -> None:
+        """Stop an active pipeline with error handling."""
+        try:
+            # Use core manager to stop pipeline
+            self.pipeline_manager.stop_pipeline(pipeline_id)
+
+        except Exception as e:
+            self.logger.error(f"Error stopping pipeline: {str(e)}", exc_info=True)
+            raise
+
+    def get_pipeline_status(self, pipeline_id: str) -> Dict[str, Any]:
+        """Get detailed pipeline status with error handling."""
+        try:
+            # Get status from core manager
+            return self.pipeline_manager.get_pipeline_status(pipeline_id)
+
+        except Exception as e:
+            self.logger.error(f"Error getting pipeline status: {str(e)}", exc_info=True)
+            raise
 
     def list_pipelines(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """List all pipelines with optional filtering."""
@@ -139,83 +188,6 @@ class PipelineService:
             self.db_session.rollback()
             raise
 
-    def start_pipeline(self, pipeline_id: UUID, config: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Start pipeline execution."""
-        try:
-            pipeline = self.db_session.query(Pipeline).get(pipeline_id)
-            if not pipeline:
-                raise ValueError("Pipeline not found")
-            
-            if pipeline.status == 'running':
-                raise ValueError("Pipeline is already running")
-            
-            # Create pipeline run
-            run = PipelineRun(
-                pipeline_id=pipeline_id,
-                version=pipeline.version,
-                status='running',
-                start_time=datetime.utcnow()
-            )
-            
-            # Create step runs
-            for step in pipeline.steps:
-                if step.enabled:
-                    step_run = PipelineStepRun(
-                        step_id=step.id,
-                        status='pending',
-                        start_time=datetime.utcnow()
-                    )
-                    run.step_runs.append(step_run)
-            
-            pipeline.status = 'running'
-            pipeline.last_run = datetime.utcnow()
-            
-            self.db_session.add(run)
-            self.db_session.commit()
-            
-            return {
-                'run_id': str(run.id),
-                'status': 'running',
-                'start_time': run.start_time.isoformat()
-            }
-        except Exception as e:
-            self.logger.error(f"Error starting pipeline: {str(e)}")
-            self.db_session.rollback()
-            raise
-
-    def stop_pipeline(self, pipeline_id: UUID) -> None:
-        """Stop pipeline execution."""
-        try:
-            pipeline = self.db_session.query(Pipeline).get(pipeline_id)
-            if not pipeline:
-                raise ValueError("Pipeline not found")
-            
-            if pipeline.status != 'running':
-                raise ValueError("Pipeline is not running")
-            
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id,
-                PipelineRun.status == 'running'
-            ).first()
-            
-            if current_run:
-                current_run.status = 'cancelled'
-                current_run.end_time = datetime.utcnow()
-                
-                # Update step runs
-                for step_run in current_run.step_runs:
-                    if step_run.status in ['pending', 'running']:
-                        step_run.status = 'cancelled'
-                        step_run.end_time = datetime.utcnow()
-            
-            pipeline.status = 'idle'
-            self.db_session.commit()
-        except Exception as e:
-            self.logger.error(f"Error stopping pipeline: {str(e)}")
-            self.db_session.rollback()
-            raise
-
     def pause_pipeline(self, pipeline_id: UUID) -> None:
         """Pause pipeline execution."""
         try:
@@ -274,50 +246,7 @@ class PipelineService:
             self.db_session.rollback()
             raise
 
-    def get_pipeline_status(self, pipeline_id: UUID) -> Dict[str, Any]:
-        """Get pipeline execution status."""
-        try:
-            pipeline = self.db_session.query(Pipeline).get(pipeline_id)
-            if not pipeline:
-                raise ValueError("Pipeline not found")
-            
-            current_run = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id,
-                PipelineRun.status.in_(['running', 'paused'])
-            ).first()
-            
-            status = {
-                'pipeline_status': pipeline.status,
-                'current_run': None,
-                'steps': [],
-                'progress': pipeline.progress
-            }
-            
-            if current_run:
-                status['current_run'] = {
-                    'id': str(current_run.id),
-                    'status': current_run.status,
-                    'start_time': current_run.start_time.isoformat(),
-                    'duration': (datetime.utcnow() - current_run.start_time).total_seconds()
-                }
-                
-                for step_run in current_run.step_runs:
-                    status['steps'].append({
-                        'id': str(step_run.id),
-                        'name': step_run.step.name,
-                        'status': step_run.status,
-                        'start_time': step_run.start_time.isoformat() if step_run.start_time else None,
-                        'end_time': step_run.end_time.isoformat() if step_run.end_time else None,
-                        'duration': (step_run.end_time - step_run.start_time).total_seconds() if step_run.end_time else None,
-                        'error': step_run.error
-                    })
-            
-            return status
-        except Exception as e:
-            self.logger.error(f"Error getting pipeline status: {str(e)}")
-            raise
-
-    def get_pipeline_logs(self, pipeline_id: UUID, start_time: str = None, 
+    def get_pipeline_logs(self, pipeline_id: UUID, start_time: str = None,
                          end_time: str = None, level: str = None) -> List[Dict[str, Any]]:
         """Get pipeline execution logs."""
         # Implementation depends on your logging strategy
@@ -409,3 +338,5 @@ class PipelineService:
             'last_run': pipeline.last_run.isoformat() if pipeline.last_run else None,
             'next_run': pipeline.next_run.isoformat() if pipeline.next_run else None
         }
+
+

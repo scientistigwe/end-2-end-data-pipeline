@@ -1,4 +1,4 @@
-# backend/core/channel_handlers/base_handler.py
+# backend/backend/core/channel_handlers/base_channel_handler.py
 
 import logging
 import threading
@@ -48,7 +48,7 @@ class HandlerMetrics:
     retry_count: int = 0
 
 
-class BaseHandler:
+class BaseChannelHandler:
     """
     Base handler providing common functionality for all channel handlers
     """

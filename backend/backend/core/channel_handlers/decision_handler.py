@@ -6,12 +6,12 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.channel_handlers.base_handler import BaseHandler
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
 # Import the decision module manager
-from backend.data_pipeline.decision.decision_module_manager import DecisionModuleManager
+from backend.data_pipeline.decision.decision_processor import DecisionProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class DecisionContext:
     status: str = "pending"
 
 
-class DecisionHandler(BaseHandler):
+class DecisionChannelHandler(BaseChannelHandler):
     """
     Handles communication between orchestrator and decision module manager
     """

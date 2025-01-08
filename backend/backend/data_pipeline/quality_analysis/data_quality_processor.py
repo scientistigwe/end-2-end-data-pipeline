@@ -1,4 +1,4 @@
-# backend/data_pipeline/processing/quality_module_manager.py
+# backend/data_pipeline/processing/data_quality_processor.py
 
 import logging
 from typing import Dict, Any, Optional, List
@@ -10,7 +10,7 @@ from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage
 
 # Import quality modules
-from backend.data_pipeline.processing.data_issue_detector import (
+from backend.data_pipeline.quality_analysis.data_issue_detector import (
     basic_data_validation,
     address_location,
     code_classification,
@@ -23,7 +23,7 @@ from backend.data_pipeline.processing.data_issue_detector import (
     text_standardization
 )
 
-from backend.data_pipeline.processing.data_issue_analyser import (
+from backend.data_pipeline.quality_analysis.data_issue_analyser import (
     basic_data_validation,
     address_location,
     code_classification,
@@ -36,7 +36,7 @@ from backend.data_pipeline.processing.data_issue_analyser import (
     text_standardization
 )
 
-from backend.data_pipeline.processing.data_issue_resolver import (
+from backend.data_pipeline.quality_analysis.data_issue_resolver import (
     basic_data_validation,
     address_location,
     code_classification,
@@ -72,7 +72,47 @@ class QualityContext:
     updated_at: datetime = field(default_factory=datetime.now)
 
 
-class QualityModuleManager:
+@dataclass
+class QualityAnalysisResult:
+    """Results from quality analysis process"""
+    pipeline_id: str
+    detection_results: Dict[str, Any]
+    analysis_results: Dict[str, Any]
+    resolution_results: Dict[str, Any]
+    metadata: Dict[str, Any]
+    generated_at: datetime = field(default_factory=datetime.now)
+    status: str = "completed"
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert results to dictionary format"""
+        return {
+            'pipeline_id': self.pipeline_id,
+            'detection_results': self.detection_results,
+            'analysis_results': self.analysis_results,
+            'resolution_results': self.resolution_results,
+            'metadata': self.metadata,
+            'generated_at': self.generated_at.isoformat(),
+            'status': self.status,
+            'error': self.error
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QualityAnalysisResult':
+        """Create instance from dictionary"""
+        return cls(
+            pipeline_id=data['pipeline_id'],
+            detection_results=data.get('detection_results', {}),
+            analysis_results=data.get('analysis_results', {}),
+            resolution_results=data.get('resolution_results', {}),
+            metadata=data.get('metadata', {}),
+            generated_at=datetime.fromisoformat(data['generated_at'])
+                if 'generated_at' in data else datetime.now(),
+            status=data.get('status', 'completed'),
+            error=data.get('error')
+        )
+
+class DataQualityProcessor:
     """
     Manages interaction with quality analysis modules
     """

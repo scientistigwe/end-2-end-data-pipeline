@@ -36,6 +36,8 @@ from .services.decision_recommendation.decision_service import DecisionService
 from .services.monitoring.monitoring_service import MonitoringService
 from .services.reports.report_service import ReportService
 from .services.settings.settings_service import SettingsService
+from backend.core.messaging.broker import MessageBroker
+from backend.core.orchestration.pipeline_manager import PipelineManager
 
 logger = logging.getLogger(__name__)
 
@@ -177,34 +179,6 @@ def _configure_paths(app: Flask) -> None:
         logger.error(f"Path configuration error: {str(e)}", exc_info=True)
         raise
 
-def _initialize_services(app: Flask, db_session) -> None:
-    """Initialize all application services."""
-    try:
-        app.services = {
-            'auth_service': AuthService(db_session),
-            'file_service': FileSourceService(
-                db_session, 
-                allowed_extensions=app.config['ALLOWED_EXTENSIONS'],
-                max_file_size=app.config['MAX_CONTENT_LENGTH']
-            ),
-            'db_service': DatabaseSourceService(db_session),
-            's3_service': S3SourceService(db_session),
-            'api_service': APISourceService(db_session),
-            'stream_service': StreamSourceService(db_session),
-            'pipeline_service': PipelineService(db_session),
-            'quality_service': QualityService(db_session),
-            'insight_service': InsightService(db_session),
-            'recommendation_service': RecommendationService(db_session),
-            'decision_service': DecisionService(db_session),
-            'monitoring_service': MonitoringService(db_session),
-            'report_service': ReportService(db_session),
-            'settings_service': SettingsService(db_session)
-        }
-        logger.info("Services initialized successfully")
-    except Exception as e:
-        logger.error(f"Service initialization error: {str(e)}", exc_info=True)
-        raise
-
 def register_blueprints(app: Flask, db_session) -> None:
     """Register all application blueprints with JWT protection."""
     try:
@@ -292,46 +266,101 @@ def register_blueprints(app: Flask, db_session) -> None:
         logger.error(f"Error registering blueprints: {str(e)}", exc_info=True)
         raise
 
+def _initialize_services(app: Flask, db_session) -> None:
+    """Initialize all application services."""
+    try:
+        # Initialize MessageBroker first
+        message_broker = MessageBroker()
+
+        # Initialize PipelineManager
+        pipeline_manager = PipelineManager(
+            message_broker=message_broker,
+            db_session=db_session
+        )
+
+        app.services = {
+            'auth_service': AuthService(db_session),
+            'file_service': FileSourceService(
+                db_session,
+                allowed_extensions=app.config['ALLOWED_EXTENSIONS'],
+                max_file_size=app.config['MAX_CONTENT_LENGTH']
+            ),
+            'db_service': DatabaseSourceService(db_session),
+            's3_service': S3SourceService(db_session),
+            'api_service': APISourceService(db_session),
+            'stream_service': StreamSourceService(db_session),
+            'pipeline_service': PipelineService(
+                db_session=db_session,
+                message_broker=message_broker,
+                pipeline_manager=pipeline_manager
+            ),
+            'quality_service': QualityService(db_session),
+            'insight_service': InsightService(db_session),
+            'recommendation_service': RecommendationService(db_session),
+            'decision_service': DecisionService(db_session),
+            'monitoring_service': MonitoringService(db_session),
+            'report_service': ReportService(db_session),
+            'settings_service': SettingsService(db_session)
+        }
+
+        # Store message_broker and pipeline_manager in app context for potential reuse
+        app.message_broker = message_broker
+        app.pipeline_manager = pipeline_manager
+
+        logger.info("Services initialized successfully")
+    except Exception as e:
+        logger.error(f"Service initialization error: {str(e)}", exc_info=True)
+        raise
+
 def create_app(config_name: str = 'development') -> Flask:
     """Application factory function."""
     try:
         # Initialize Flask app
         app = Flask(__name__)
-        
+
         # Load configuration
         app_config = get_config(config_name)
         app.config.from_object(app_config)
-        
+
         # Configure logging first
         configure_logging(app)
-        
+
         # Initialize components in order
         _configure_paths(app)
         _init_extensions(app)
         _init_jwt(app)
-        
+
         # Initialize database and get session
         engine, SessionLocal = _init_database(app)
         db_session = SessionLocal()
-        
+
         # Initialize all services
         with app.app_context():
             _initialize_services(app, db_session)
-        
-        # Register error handlers and blueprints  
+
+        # Register error handlers and blueprints
         register_error_handlers(app)
         with app.app_context():
             register_blueprints(app, db_session)
-        
+
         # Add request logging middleware
         app.wsgi_app = RequestLoggingMiddleware(app.wsgi_app)
-        
+
         # Add auth middleware
         app.before_request(auth_middleware())
-        
+
+        # Add cleanup on app context teardown
+        @app.teardown_appcontext
+        def cleanup_services(exception=None):
+            if hasattr(app, 'message_broker'):
+                app.message_broker.cleanup()
+            if hasattr(app, 'pipeline_manager'):
+                # Ensure proper cleanup of pipeline manager resources
+                app.pipeline_manager._cleanup_all_pipelines()
+
         logger.info(f"Application initialized successfully in {config_name} mode")
         return app
-        
+
     except Exception as e:
         logger.error(f"Failed to create application: {str(e)}", exc_info=True)
         raise

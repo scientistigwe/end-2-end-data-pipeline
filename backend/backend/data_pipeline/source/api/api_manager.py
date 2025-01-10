@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .api_validator import APIValidator
@@ -21,9 +22,14 @@ class APIManager:
         self.registry = ComponentRegistry()
         self.validator = APIValidator()
 
-        # Initialize with consistent UUID
+        # Initialize with consistent UUID and proper ComponentType
         component_uuid = self.registry.get_component_uuid("APIManager")
-        self.module_id = ModuleIdentifier("APIManager", "process_api", component_uuid)
+        self.module_id = ModuleIdentifier(
+            component_name="APIManager",
+            component_type=ComponentType.MODULE,  # Add proper component type
+            method_name="process_api",
+            instance_id=component_uuid
+        )
 
         # Track processing state
         self.pending_requests: Dict[str, Dict[str, Any]] = {}
@@ -36,21 +42,33 @@ class APIManager:
         """Set up message broker registration and subscriptions"""
         try:
             # Register with message broker
-            self.message_broker.register_module(self.module_id)
+            self.message_broker.register_component(self.module_id)
 
-            # Get orchestrator ID with consistent UUID
+            # Get orchestrator ID
             orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+                component_name="DataOrchestrator",
+                component_type=ComponentType.ORCHESTRATOR,
+                method_name="manage_pipeline",
+                instance_id=self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            # Subscribe to orchestrator responses
-            self.message_broker.subscribe_to_module(
-                orchestrator_id.get_tag(),
-                self._handle_orchestrator_response
-            )
-            logger.info("APIManager messaging initialized successfully")
+            # Subscribe to relevant patterns based on source type
+            patterns = []
+
+            # For APIManager
+            patterns = [
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}"
+            ]
+
+            for pattern in patterns:
+                self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._handle_orchestrator_response,
+                    timeout=10.0
+                )
+            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing messaging: {str(e)}")
             raise
@@ -154,7 +172,7 @@ class APIManager:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
                 target_identifier=orchestrator_id,
-                message_type=MessageType.ACTION,
+                message_type=MessageType.SOURCE_SUCCESS,
                 content={
                     'request_id': request_id,
                     'action': 'process_api_data',
@@ -172,6 +190,25 @@ class APIManager:
             logger.error(f"Error sending to orchestrator: {str(e)}")
             raise
 
+    def _handle_orchestrator_error(self, request_id: str, error_message: str) -> None:
+        """Handle orchestrator-reported errors"""
+        try:
+            if request_id in self.pending_requests:
+                request_data = self.pending_requests[request_id]
+                logger.error(f"Processing failed for API request to {request_data['endpoint']}: {error_message}")
+
+                # Update request status
+                request_data['status'] = 'error'
+                request_data['error_message'] = error_message
+                request_data['error_timestamp'] = datetime.now().isoformat()
+
+                # Cleanup
+                self._cleanup_pending_request(request_id)
+            else:
+                logger.warning(f"Received error for unknown request ID: {request_id}")
+        except Exception as e:
+            logger.error(f"Error handling orchestrator error: {str(e)}")
+
     def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
         """Handle responses from orchestrator"""
         try:
@@ -182,25 +219,18 @@ class APIManager:
 
             request_data = self.pending_requests[request_id]
 
-            if message.message_type == MessageType.ACTION:
-                logger.info(f"API request {request_data['endpoint']} processed successfully")
+            if message.message_type == MessageType.SOURCE_SUCCESS:
+                logger.info(f"API request {request_id} processed successfully")
                 self._cleanup_pending_request(request_id)
-            elif message.message_type == MessageType.ERROR:
-                logger.error(f"Error processing API request {request_data['endpoint']}")
+            elif message.message_type == MessageType.SOURCE_ERROR:
+                logger.error(f"Error processing API request {request_id}")
                 self._handle_orchestrator_error(request_id, message.content.get('error'))
+            elif message.message_type == MessageType.SOURCE_VALIDATE:
+                logger.info(f"Validation in progress for request {request_id}")
+                request_data['status'] = 'validating'
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")
-
-    def _handle_orchestrator_error(self, request_id: str, error_message: str) -> None:
-        """Handle orchestrator-reported errors"""
-        try:
-            if request_id in self.pending_requests:
-                request_data = self.pending_requests[request_id]
-                logger.error(f"Processing failed for API request {request_data['endpoint']}: {error_message}")
-                self._cleanup_pending_request(request_id)
-        except Exception as e:
-            logger.error(f"Error handling orchestrator error: {str(e)}")
 
     def _cleanup_pending_request(self, request_id: str) -> None:
         """Clean up processed request data"""

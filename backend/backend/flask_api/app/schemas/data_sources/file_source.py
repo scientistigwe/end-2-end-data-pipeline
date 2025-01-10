@@ -2,6 +2,10 @@
 from marshmallow import Schema, fields, validate
 from ..base import BaseRequestSchema, BaseResponseSchema
 
+# In schemas/data_sources/file_source.py
+from marshmallow import Schema, fields, validate, post_load
+
+
 class FileSourceConfigSchema(BaseRequestSchema):
    original_filename = fields.String(required=True)
    file_type = fields.String(required=True, validate=validate.OneOf(['csv', 'json', 'xlsx', 'parquet']))
@@ -9,8 +13,21 @@ class FileSourceConfigSchema(BaseRequestSchema):
    size = fields.Integer()
    hash = fields.String()  # For integrity checking
    encoding = fields.String()
-   delimiter = fields.String()  # For CSV files
-   compression = fields.String(validate=validate.OneOf(['gzip', 'zip', None]))
+
+   # New fields to match the payload
+   delimiter = fields.String(required=False)
+   compression = fields.String(
+      validate=validate.OneOf(['gzip', 'zip', None]),
+      allow_none=True
+   )
+
+   # Additional fields for CSV parsing
+   parse_options = fields.Dict(keys=fields.String(), values=fields.Raw(), required=False)
+
+   @post_load
+   def process_config(self, data, **kwargs):
+      # Remove any keys with None values
+      return {k: v for k, v in data.items() if v is not None}
 
 class FileSourceResponseSchema(BaseResponseSchema):
    location = fields.String()

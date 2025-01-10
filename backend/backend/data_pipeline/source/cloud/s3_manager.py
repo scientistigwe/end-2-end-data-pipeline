@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import pandas as pd
 
+from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .s3_validator import S3Validator
@@ -22,9 +23,14 @@ class S3Manager:
         self.registry = ComponentRegistry()
         self.validator = S3Validator()
 
-        # Initialize with consistent UUID
+        # Initialize with consistent UUID and proper ComponentType
         component_uuid = self.registry.get_component_uuid("S3Manager")
-        self.module_id = ModuleIdentifier("S3Manager", "process_s3", component_uuid)
+        self.module_id = ModuleIdentifier(
+            component_name="S3Manager",
+            component_type=ComponentType.MODULE,  # Add proper component type
+            method_name="process_s3",
+            instance_id=component_uuid
+        )
 
         # Track active connections and operations
         self.active_connections: Dict[str, S3Fetcher] = {}
@@ -38,21 +44,33 @@ class S3Manager:
         """Set up message broker registration and subscriptions"""
         try:
             # Register with message broker
-            self.message_broker.register_module(self.module_id)
+            self.message_broker.register_component(self.module_id)
 
-            # Get orchestrator ID with consistent UUID
+            # Get orchestrator ID
             orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+                component_name="DataOrchestrator",
+                component_type=ComponentType.ORCHESTRATOR,
+                method_name="manage_pipeline",
+                instance_id=self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            # Subscribe to orchestrator responses
-            self.message_broker.subscribe_to_module(
-                orchestrator_id.get_tag(),
-                self._handle_orchestrator_response
-            )
-            logger.info("S3Manager messaging initialized successfully")
+            # Subscribe to relevant patterns based on source type
+            patterns = []
+
+            # For S3Manager
+            patterns = [
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}"
+            ]
+
+            for pattern in patterns:
+                self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._handle_orchestrator_response,
+                    timeout=10.0
+                )
+            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing messaging: {str(e)}")
             raise
@@ -184,7 +202,7 @@ class S3Manager:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
                 target_identifier=orchestrator_id,
-                message_type=MessageType.ACTION,
+                message_type=MessageType.SOURCE_SUCCESS,
                 content={
                     'operation_id': operation_id,
                     'action': 'process_s3_data',
@@ -202,6 +220,26 @@ class S3Manager:
             logger.error(f"Error sending to orchestrator: {str(e)}")
             raise
 
+    def _handle_orchestrator_error(self, operation_id: str, error_message: str) -> None:
+        """Handle orchestrator-reported errors"""
+        try:
+            if operation_id in self.pending_operations:
+                operation_data = self.pending_operations[operation_id]
+                logger.error(
+                    f"Processing failed for S3 operation (bucket: {operation_data['bucket']}, key: {operation_data['key']}): {error_message}")
+
+                # Update operation status
+                operation_data['status'] = 'error'
+                operation_data['error_message'] = error_message
+                operation_data['error_timestamp'] = datetime.now().isoformat()
+
+                # Cleanup
+                self._cleanup_pending_operation(operation_id)
+            else:
+                logger.warning(f"Received error for unknown operation ID: {operation_id}")
+        except Exception as e:
+            logger.error(f"Error handling orchestrator error: {str(e)}")
+
     def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
         """Handle responses from orchestrator"""
         try:
@@ -212,12 +250,15 @@ class S3Manager:
 
             operation_data = self.pending_operations[operation_id]
 
-            if message.message_type == MessageType.ACTION:
+            if message.message_type == MessageType.SOURCE_SUCCESS:
                 logger.info(f"S3 operation {operation_id} processed successfully")
                 self._cleanup_pending_operation(operation_id)
-            elif message.message_type == MessageType.ERROR:
+            elif message.message_type == MessageType.SOURCE_ERROR:
                 logger.error(f"Error processing S3 operation {operation_id}")
                 self._handle_orchestrator_error(operation_id, message.content.get('error'))
+            elif message.message_type == MessageType.SOURCE_EXTRACT:
+                logger.info(f"Data extraction in progress for {operation_id}")
+                operation_data['status'] = 'extracting'
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")

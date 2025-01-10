@@ -23,18 +23,32 @@ class BaseSourceService:
     def list_sources(self) -> List[DataSource]:
         """
         List all data sources of the specific type.
-        
+
         Returns:
             List[DataSource]: List of all data sources of the specific type
         """
         try:
-            return (self.db_session.query(DataSource)
-                    .filter(DataSource.type == self.source_type)
-                    .all())
+            # Reset the session if it's in a failed transaction state
+            self.db_session.rollback()
+
+            query = self.db_session.query(DataSource)
+
+            # Use exact match for type
+            if self.source_type:
+                query = query.filter(DataSource.type == self.source_type)
+
+            sources = query.all()
+
+            # Log for debugging
+            self.logger.info(f"Retrieved {len(sources)} sources of type {self.source_type}")
+
+            return sources
         except Exception as exc:
+            # Ensure session is rolled back
+            self.db_session.rollback()
             self.logger.error(f"Error listing {self.source_type} sources: {str(exc)}")
             raise
-        
+
     def validate_config(self, config: Dict[str, Any]) -> ValidationResult:
         """Validate source configuration and return validation result."""
         try:

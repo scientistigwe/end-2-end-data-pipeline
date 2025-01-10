@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .file_validator import FileValidator
@@ -20,9 +21,14 @@ class FileManager:
         self.registry = ComponentRegistry()
         self.validator = FileValidator()
 
-        # Initialize with consistent UUID
+        # Initialize with consistent UUID and proper ComponentType
         component_uuid = self.registry.get_component_uuid("FileManager")
-        self.module_id = ModuleIdentifier("FileManager", "process_file", component_uuid)
+        self.module_id = ModuleIdentifier(
+            component_name="FileManager",
+            component_type=ComponentType.MODULE,  # Add proper component type
+            method_name="process_file",
+            instance_id=component_uuid
+        )
 
         # Track processing state
         self.pending_files: Dict[str, Dict[str, Any]] = {}
@@ -35,20 +41,30 @@ class FileManager:
         """Set up message broker registration and subscriptions"""
         try:
             # Register with message broker
-            self.message_broker.register_module(self.module_id)
+            self.message_broker.register_component(self.module_id)
 
             # Get orchestrator ID with consistent UUID
             orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+                component_name="DataOrchestrator",
+                component_type=ComponentType.ORCHESTRATOR,
+                method_name="manage_pipeline",
+                instance_id=self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            # Subscribe to orchestrator responses
-            self.message_broker.subscribe_to_module(
-                orchestrator_id.get_tag(),
-                self._handle_orchestrator_response
-            )
+            # Subscribe to patterns we care about
+            patterns = [
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_COMPLETE.value}"
+            ]
+
+            for pattern in patterns:
+                self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._handle_orchestrator_response,
+                    timeout=10.0
+                )
             logger.info("FileManager messaging initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing messaging: {str(e)}")
@@ -173,7 +189,7 @@ class FileManager:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
                 target_identifier=orchestrator_id,
-                message_type=MessageType.ACTION,
+                message_type=MessageType.SOURCE_SUCCESS,
                 content={
                     'file_id': file_id,
                     'action': 'process_file_data',
@@ -201,12 +217,15 @@ class FileManager:
 
             file_data = self.pending_files[file_id]
 
-            if message.message_type == MessageType.ACTION:
+            if message.message_type == MessageType.SOURCE_SUCCESS:
                 logger.info(f"File {file_data['filename']} processed successfully")
                 self._cleanup_pending_file(file_id)
-            elif message.message_type == MessageType.ERROR:
+            elif message.message_type == MessageType.SOURCE_ERROR:
                 logger.error(f"Error processing file {file_data['filename']}")
                 self._handle_orchestrator_error(file_id, message.content.get('error'))
+            elif message.message_type == MessageType.PIPELINE_COMPLETE:
+                logger.info(f"Pipeline completed for file {file_data['filename']}")
+                self._cleanup_pending_file(file_id)
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")
@@ -217,7 +236,16 @@ class FileManager:
             if file_id in self.pending_files:
                 file_data = self.pending_files[file_id]
                 logger.error(f"Processing failed for file {file_data['filename']}: {error_message}")
+
+                # Update file status to error
+                file_data['status'] = 'error'
+                file_data['error_message'] = error_message
+                file_data['error_timestamp'] = datetime.now().isoformat()
+
+                # Perform cleanup
                 self._cleanup_pending_file(file_id)
+            else:
+                logger.warning(f"Received error for unknown file ID: {file_id}")
         except Exception as e:
             logger.error(f"Error handling orchestrator error: {str(e)}")
 

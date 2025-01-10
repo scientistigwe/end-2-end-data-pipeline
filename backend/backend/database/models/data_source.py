@@ -2,7 +2,7 @@ from sqlalchemy import (
     Column, String, DateTime, Enum, ForeignKey, Text, Boolean, Integer, Index
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship, validates, configure_mappers
 from .base import BaseModel
 
 class DataSource(BaseModel):
@@ -106,9 +106,25 @@ class DataSource(BaseModel):
 
     # Polymorphic Identity
     __mapper_args__ = {
-        'polymorphic_identity': 'base',
-        'polymorphic_on': type
+        'polymorphic_identity': 'base_source',
+        'polymorphic_on': type,
+        'with_polymorphic': '*'
     }
+
+    @classmethod
+    def __declare_last__(cls):
+        """
+        Ensures that polymorphic identities are correctly registered.
+        This method is called after all mappers are configured.
+        """
+        from sqlalchemy.orm import registry
+
+        # Create a mapper registry if not exists
+        mapper_reg = registry()
+
+        # Explicitly register all polymorphic identities
+        mapper_reg.configure_mappers()
+
 
     @validates('config')
     def validate_config(self, key, config):
@@ -301,3 +317,28 @@ class SourceSyncHistory(BaseModel):
 
     def __repr__(self):
         return f"<SourceSyncHistory(source_id='{self.source_id}', status='{self.status}')>"
+
+class FileDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'file'
+    }
+
+class DatabaseDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'database'
+    }
+
+class APIDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'api'
+    }
+
+class S3DataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 's3'
+    }
+
+class StreamDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'stream'
+    }

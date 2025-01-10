@@ -53,6 +53,46 @@ class PipelineService:
             self.logger.error(f"Error stopping pipeline: {str(e)}", exc_info=True)
             raise
 
+    def _validate_pipeline_config(self, config: Dict[str, Any]) -> bool:
+        """Validate pipeline configuration"""
+        try:
+            required_fields = ['name', 'mode']
+            for field in required_fields:
+                if field not in config:
+                    self.logger.error(f"Missing required field: {field}")
+                    return False
+
+            # Validate mode
+            valid_modes = ['development', 'production', 'testing']
+            if config['mode'] not in valid_modes:
+                self.logger.error(f"Invalid mode: {config['mode']}")
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Error validating pipeline config: {str(e)}")
+            return False
+
+    def _log_pipeline_event(self, pipeline_id: str, event_type: str, message: str) -> None:
+        """Log pipeline events to database"""
+        try:
+            # Add pipeline event to database
+            pipeline = self.db_session.query(Pipeline).get(pipeline_id)
+            if pipeline:
+                event = {
+                    'pipeline_id': pipeline_id,
+                    'event_type': event_type,
+                    'message': message,
+                    'timestamp': datetime.now().isoformat()
+                }
+                pipeline.events.append(event)
+                self.db_session.commit()
+
+            self.logger.info(f"Pipeline {pipeline_id} event logged: {event_type} - {message}")
+        except Exception as e:
+            self.logger.error(f"Error logging pipeline event: {str(e)}")
+            # Don't raise the error as this is a non-critical operation
+
     def get_pipeline_status(self, pipeline_id: str) -> Dict[str, Any]:
         """Get detailed pipeline status with error handling."""
         try:
@@ -222,35 +262,61 @@ class PipelineService:
             self.db_session.rollback()
             raise
 
-    def retry_pipeline(self, pipeline_id: UUID) -> Dict[str, Any]:
+    def retry_pipeline(self, pipeline_id: UUID, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Retry failed pipeline."""
         try:
             pipeline = self.db_session.query(Pipeline).get(pipeline_id)
             if not pipeline:
                 raise ValueError("Pipeline not found")
-            
+
             if pipeline.status not in ['failed', 'cancelled']:
                 raise ValueError("Pipeline is not in failed or cancelled state")
-            
-            # Create new run with same configuration
-            last_run = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id
-            ).order_by(PipelineRun.start_time.desc()).first()
-            
-            if not last_run:
-                raise ValueError("No previous run found")
-            
-            return self.start_pipeline(pipeline_id, last_run.config)
+
+            # Use provided config or get from last run
+            if config is None:
+                last_run = self.db_session.query(PipelineRun).filter(
+                    PipelineRun.pipeline_id == pipeline_id
+                ).order_by(PipelineRun.start_time.desc()).first()
+
+                if not last_run:
+                    raise ValueError("No previous run found")
+                config = last_run.config
+
+            return self.start_pipeline(config)
         except Exception as e:
             self.logger.error(f"Error retrying pipeline: {str(e)}")
             self.db_session.rollback()
             raise
 
     def get_pipeline_logs(self, pipeline_id: UUID, start_time: str = None,
-                         end_time: str = None, level: str = None) -> List[Dict[str, Any]]:
+                          end_time: str = None, level: str = None) -> List[Dict[str, Any]]:
         """Get pipeline execution logs."""
-        # Implementation depends on your logging strategy
-        pass
+        try:
+            query = self.db_session.query(PipelineRun).filter(
+                PipelineRun.pipeline_id == pipeline_id
+            )
+
+            if start_time:
+                query = query.filter(PipelineRun.start_time >= start_time)
+            if end_time:
+                query = query.filter(PipelineRun.start_time <= end_time)
+            if level:
+                query = query.filter(PipelineRun.level == level)
+
+            runs = query.order_by(PipelineRun.start_time.desc()).all()
+
+            return [{
+                'id': str(run.id),
+                'start_time': run.start_time.isoformat(),
+                'end_time': run.end_time.isoformat() if run.end_time else None,
+                'status': run.status,
+                'level': run.level,
+                'message': run.message,
+                'details': run.details
+            } for run in runs]
+        except Exception as e:
+            self.logger.error(f"Error getting pipeline logs: {str(e)}")
+            raise
 
     def get_pipeline_metrics(self, pipeline_id: UUID) -> Dict[str, Any]:
         """Get pipeline performance metrics."""

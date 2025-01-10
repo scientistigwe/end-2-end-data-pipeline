@@ -208,19 +208,6 @@ def create_pipeline_blueprint(pipeline_service, db_session):
             logger.error(f"Error updating pipeline: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Failed to update pipeline", status_code=500)
 
-    @pipeline_bp.route('/<pipeline_id>/status', methods=['GET'])
-    def get_pipeline_status(pipeline_id):
-        """Get pipeline execution status."""
-        try:
-            status = pipeline_service.get_pipeline_status(UUID(pipeline_id))
-            return ResponseBuilder.success(
-                PipelineStatusResponseSchema().dump({'status': status})
-            )
-        except ValueError:
-            return ResponseBuilder.error("Invalid pipeline ID", status_code=400)
-        except Exception as e:
-            logger.error(f"Error getting pipeline status: {str(e)}", exc_info=True)
-            return ResponseBuilder.error("Failed to get pipeline status", status_code=500)
 
     @pipeline_bp.route('/<pipeline_id>/logs', methods=['GET'])
     def get_pipeline_logs(pipeline_id):

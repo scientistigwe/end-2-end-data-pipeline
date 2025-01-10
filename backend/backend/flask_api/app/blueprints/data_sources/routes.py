@@ -97,6 +97,10 @@ def create_data_source_blueprint(
     def create_source():
         """Create a new data source."""
         try:
+            # Log the raw request data for debugging
+            request_data = request.get_json()
+            logger.info(f"[DEBUG]: Received create source request: {request_data}")
+
             # 1. Validate request data
             schema = DataSourceRequestSchema()
             data = schema.load(request.get_json())
@@ -120,11 +124,14 @@ def create_data_source_blueprint(
                 'source': DataSourceResponseSchema().dump(result)
             })
         except ValidationError as e:
+            # Log specific validation errors
+            logger.error(f"Validation errors: {e.messages}")
             return ResponseBuilder.error(
-                "Validation error", 
-                details=e.messages, 
+                "Validation error",
+                details=e.messages,
                 status_code=400
             )
+
         except Exception as e:
             logger.error(f"Source creation error: {str(e)}")
             return ResponseBuilder.error("Failed to create source", status_code=500)

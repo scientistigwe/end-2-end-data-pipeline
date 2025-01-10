@@ -1,53 +1,88 @@
+# backend/database/models/__init__.py
+import logging
 from sqlalchemy import Column, String, DateTime, Boolean, Enum, ForeignKey, Text, Integer, Float, JSON, Table
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 
-# Import base model
-from .base import Base, BaseModel
+logger = logging.getLogger(__name__)
 
-# Import all models
-from .auth import User, UserSession
-from .dataset import Dataset
-from .validation import (  # Updated: QualityCheck moved to validation
-    ValidationRule,
-    QualityCheck,
-    ValidationResult,
-    RemediationAction
-)
-from .analysis import (  # Removed QualityCheck from here
-    InsightAnalysis,
-    Pattern,
-    Correlation,
-    Anomaly
-)
-from .data_source import (
-    DataSource, APISourceConfig, DatabaseSourceConfig,
-    S3SourceConfig, StreamSourceConfig, FileSourceInfo,
-    SourceConnection, SourceSyncHistory
-)
-from .pipeline import (
-    Pipeline, PipelineStep, PipelineRun,
-    PipelineStepRun, QualityGate
-)
-from .decisions_recommendations import (
-    Decision, DecisionOption, DecisionComment,
-    DecisionHistory, Recommendation, RecommendationFeedback
-)
-from .monitoring import (
-    MonitoringMetric, ResourceUsage, Alert,
-    AlertRule, HealthCheck
-)
-from .reports import (
-    Report, ReportTemplate, ReportSection,
-    ReportSchedule, ReportExecution
-)
-from .settings import (
-    UserSettings, SystemSettings, Integration
-)
-from .utils import (
-    Tag, AuditLog, Notification, Comment, File
-)
+try:
+    logger.info("Importing base model...")
+    from .base import Base, BaseModel
+
+    # Import all models with error handling
+    logger.info("Importing auth models...")
+    from .auth import User, UserSession, UserActivityLog
+
+    logger.info("Importing dataset model...")
+    from .dataset import Dataset
+
+    logger.info("Importing validation models...")
+    from .validation import (
+        ValidationRule,
+        QualityCheck,
+        ValidationResult,
+        RemediationAction
+    )
+
+    logger.info("Importing analysis models...")
+    from .analysis import (
+        InsightAnalysis,
+        Pattern,
+        Correlation,
+        Anomaly
+    )
+
+    logger.info("Importing data source models...")
+    from .data_source import (
+        DataSource, APISourceConfig, DatabaseSourceConfig,
+        S3SourceConfig, StreamSourceConfig, FileSourceInfo,
+        SourceConnection, SourceSyncHistory
+    )
+
+    logger.info("Importing pipeline models...")
+    from .pipeline import (
+        Pipeline, PipelineStep, PipelineRun,
+        PipelineStepRun, QualityGate
+    )
+
+    logger.info("Importing decisions and recommendations models...")
+    from .decisions_recommendations import (
+        Decision, DecisionOption, DecisionComment,
+        DecisionHistory, Recommendation, RecommendationFeedback
+    )
+
+    logger.info("Importing monitoring models...")
+    from .monitoring import (
+        MonitoringMetric, ResourceUsage, Alert,
+        AlertRule, HealthCheck
+    )
+
+    logger.info("Importing report models...")
+    from .reports import (
+        Report, ReportTemplate, ReportSection,
+        ReportSchedule, ReportExecution
+    )
+
+    logger.info("Importing settings models...")
+    from .settings import (
+        UserSettings, SystemSettings, Integration
+    )
+
+    logger.info("Importing utility models...")
+    from .utils import (
+        Tag, AuditLog, Notification, Comment, File
+    )
+
+    logger.info("All models imported successfully")
+
+except Exception as e:
+    logger.error(f"Error importing models: {str(e)}")
+    import traceback
+
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    raise
 
 # Export all models
 __all__ = [
@@ -63,6 +98,7 @@ __all__ = [
     # Auth
     'User',
     'UserSession',
+    'UserActivityLog',
     # Analysis
     'InsightAnalysis',
     'Pattern',

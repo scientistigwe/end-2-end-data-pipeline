@@ -121,6 +121,7 @@ const DataSourcesPage: React.FC = () => {
 
   const handleSourceSubmit = async (config: BaseDataSourceConfig) => {
     try {
+      console.log('Submitting data source config:', config);
       await dispatch(createDataSource(config)).unwrap();
       setIsCreating(false);
       showNotification({
@@ -129,6 +130,7 @@ const DataSourcesPage: React.FC = () => {
         type: "success",
       });
     } catch (err) {
+      console.error('Failed to create data source', err);
       showNotification({
         title: "Error",
         message: "Failed to create data source",

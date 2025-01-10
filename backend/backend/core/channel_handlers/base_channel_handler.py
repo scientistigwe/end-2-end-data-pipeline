@@ -1,6 +1,7 @@
 # backend/backend/core/channel_handlers/base_channel_handler.py
 
 import logging
+import uuid
 import threading
 from typing import Dict, Any, Optional, List, Callable, Set
 from dataclasses import dataclass, field
@@ -75,7 +76,6 @@ class BaseChannelHandler:
         """Initialize handler components"""
         try:
             self._register_with_broker()
-            self._setup_error_handling()
             self.logger.info(f"{self.handler_name} handler initialized")
         except Exception as e:
             self.status = HandlerStatus.ERROR
@@ -188,6 +188,88 @@ class BaseChannelHandler:
                 }
             )
             self._cleanup_context(context.message_id)
+
+    def _setup_error_handling(self) -> None:
+        """Setup error handling and recovery mechanisms"""
+        try:
+            # Register error message handler
+            self.register_callback(MessageType.SOURCE_ERROR, self._handle_error_message)
+            self.register_callback(MessageType.PIPELINE_ERROR, self._handle_error_message)
+            self.register_callback(MessageType.QUALITY_ERROR, self._handle_error_message)
+            self.register_callback(MessageType.STAGE_ERROR, self._handle_error_message)
+            self.register_callback(MessageType.ROUTE_ERROR, self._handle_error_message)
+
+            # Set up basic error recovery
+            self._error_recovery_attempts = 0
+            self._max_recovery_attempts = 3
+            self._error_states: Dict[str, Any] = {}
+
+            self.logger.info(f"Error handling setup complete for {self.handler_name}")
+        except Exception as e:
+            self.logger.error(f"Failed to setup error handling: {str(e)}")
+            raise
+
+    def _handle_error_message(self, message: ProcessingMessage) -> None:
+        """Handle incoming error messages"""
+        try:
+            error_info = message.content.get('error', {})
+            error_source = message.source_identifier.get_tag()
+
+            self.logger.error(f"Error from {error_source}: {error_info}")
+
+            # Track error state
+            self._error_states[message.message_id] = {
+                'source': error_source,
+                'error': error_info,
+                'timestamp': datetime.now().isoformat(),
+                'recovery_attempted': False
+            }
+
+            # Attempt recovery if possible
+            if self._error_recovery_attempts < self._max_recovery_attempts:
+                self._attempt_error_recovery(message)
+            else:
+                self.logger.error(f"Max recovery attempts reached for {message.message_id}")
+                # Propagate error up
+                self.send_response(
+                    target_id=message.source_identifier,
+                    message_type=MessageType.SOURCE_ERROR,
+                    content={
+                        'error': 'Max recovery attempts reached',
+                        'original_error': error_info,
+                        'handler': self.handler_name
+                    }
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error handling error message: {str(e)}")
+            raise
+
+    def _attempt_error_recovery(self, message: ProcessingMessage) -> None:
+        """Attempt to recover from error state"""
+        try:
+            self._error_recovery_attempts += 1
+            error_state = self._error_states.get(message.message_id)
+
+            if error_state and not error_state['recovery_attempted']:
+                error_state['recovery_attempted'] = True
+
+                # Notify about recovery attempt
+                self.send_response(
+                    target_id=message.source_identifier,
+                    message_type=MessageType.SOURCE_VALIDATE,
+                    content={
+                        'action': 'recovery_attempt',
+                        'attempt_number': self._error_recovery_attempts,
+                        'handler': self.handler_name,
+                        'original_message_id': message.message_id
+                    }
+                )
+
+                self.logger.info(f"Recovery attempt {self._error_recovery_attempts} initiated for {message.message_id}")
+        except Exception as e:
+            self.logger.error(f"Error recovery attempt failed: {str(e)}")
+            raise
 
     def _update_metrics(self, success: bool) -> None:
         """Update handler metrics"""

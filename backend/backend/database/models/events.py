@@ -74,7 +74,12 @@ class EventSubscription(BaseModel):
     config = Column(JSONB)
     is_active = Column(Boolean, default=True)
 
-    user = relationship('User')
+    user = relationship(
+        'User',
+        foreign_keys=[user_id],  # Explicitly specify foreign keys
+        back_populates='event_subscriptions'  # Add back_populates to complete the relationship
+    )
+
 
 class EventProcessor(BaseModel):
     """Model for event processing configurations."""

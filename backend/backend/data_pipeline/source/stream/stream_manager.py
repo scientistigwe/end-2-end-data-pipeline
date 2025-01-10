@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 import threading
 import queue
 
+from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .stream_validator import StreamValidator
@@ -22,9 +23,14 @@ class StreamManager:
         self.registry = ComponentRegistry()
         self.validator = StreamValidator()
 
-        # Initialize with consistent UUID
+        # Initialize with consistent UUID and proper ComponentType
         component_uuid = self.registry.get_component_uuid("StreamManager")
-        self.module_id = ModuleIdentifier("StreamManager", "process_stream", component_uuid)
+        self.module_id = ModuleIdentifier(
+            component_name="StreamManager",
+            component_type=ComponentType.MODULE,  # Add proper component type
+            method_name="process_stream",
+            instance_id=component_uuid
+        )
 
         # Track active streams and operations
         self.active_streams: Dict[str, Dict[str, Any]] = {}
@@ -38,19 +44,34 @@ class StreamManager:
     def _initialize_messaging(self) -> None:
         """Set up message broker registration and subscriptions"""
         try:
-            self.message_broker.register_module(self.module_id)
-            
+            # Register with message broker
+            self.message_broker.register_component(self.module_id)
+
+            # Get orchestrator ID
             orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+                component_name="DataOrchestrator",
+                component_type=ComponentType.ORCHESTRATOR,
+                method_name="manage_pipeline",
+                instance_id=self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            self.message_broker.subscribe_to_module(
-                orchestrator_id.get_tag(),
-                self._handle_orchestrator_response
-            )
-            logger.info("StreamManager messaging initialized successfully")
+            # Subscribe to relevant patterns based on source type
+            patterns = []
+
+            # For StreamManager
+            patterns = [
+                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_COMPLETE.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_ERROR.value}"
+            ]
+
+            for pattern in patterns:
+                self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._handle_orchestrator_response,
+                    timeout=10.0
+                )
+            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing messaging: {str(e)}")
             raise
@@ -170,7 +191,7 @@ class StreamManager:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
                 target_identifier=orchestrator_id,
-                message_type=MessageType.ACTION,
+                message_type=MessageType.SOURCE_SUCCESS,
                 content={
                     'stream_id': stream_id,
                     'action': 'process_stream_data',
@@ -196,12 +217,38 @@ class StreamManager:
 
             stream_info = self.active_streams[stream_id]
 
-            if message.message_type == MessageType.ERROR:
-                logger.error(f"Error in stream {stream_id}")
+            if message.message_type == MessageType.PIPELINE_COMPLETE:
+                logger.info(f"Stream {stream_id} processed successfully")
+                stream_info['status'] = 'completed'
+            elif message.message_type == MessageType.PIPELINE_ERROR:
+                logger.error(f"Error processing stream {stream_id}")
                 self._handle_orchestrator_error(stream_id, message.content.get('error'))
+            elif message.message_type == MessageType.PIPELINE_PAUSE:
+                logger.info(f"Stream {stream_id} paused")
+                stream_info['status'] = 'paused'
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")
+
+    def _handle_orchestrator_error(self, stream_id: str, error_message: str) -> None:
+        """Handle orchestrator-reported errors"""
+        try:
+            if stream_id in self.active_streams:
+                stream_info = self.active_streams[stream_id]
+                logger.error(f"Processing failed for stream {stream_id}: {error_message}")
+
+                # Update stream status
+                stream_info['status'] = 'error'
+                stream_info['error_message'] = error_message
+                stream_info['error_timestamp'] = datetime.now().isoformat()
+
+                # Stop the stream
+                self.stop_stream(stream_id)
+
+            else:
+                logger.warning(f"Received error for unknown stream ID: {stream_id}")
+        except Exception as e:
+            logger.error(f"Error handling orchestrator error: {str(e)}")
 
     def get_stream_status(self, stream_id: str) -> Dict[str, Any]:
         """Get current stream status"""

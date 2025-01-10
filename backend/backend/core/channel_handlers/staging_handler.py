@@ -22,17 +22,18 @@ class StagingChannelHandler(BaseChannelHandler):
 
     def _register_handlers(self) -> None:
         """Register message handlers"""
-        self.register_callback(MessageType.STAGE_REQUEST, self._handle_stage_request)
-        self.register_callback(MessageType.GET_STAGE_STATUS, self._handle_status_request)
-        self.register_callback(MessageType.RETRIEVE_REQUEST, self._handle_retrieve_request)
-        self.register_callback(MessageType.UPDATE_REQUEST, self._handle_update_request)
-        self.register_callback(MessageType.DELETE_REQUEST, self._handle_delete_request)
+        self.register_callback(MessageType.STAGE_STORE, self._handle_stage_request)
+        self.register_callback(MessageType.STAGE_RETRIEVE, self._handle_retrieve_request)
+        self.register_callback(MessageType.STAGE_UPDATE, self._handle_update_request)
+        self.register_callback(MessageType.STAGE_DELETE, self._handle_delete_request)
+        self.register_callback(MessageType.STAGE_SUCCESS, self._handle_status_request)
+        self.register_callback(MessageType.STAGE_ERROR, self._handle_error)
 
     def handle_staging_request(self, pipeline_id: str, operation: str, content: Dict[str, Any]) -> None:
         """Route staging request to appropriate handler"""
         try:
             self.send_message(
-                MessageType.STAGE_REQUEST,
+                MessageType.STAGE_STORE,  # Changed from STAGE_REQUEST
                 {
                     'pipeline_id': pipeline_id,
                     'operation': operation,
@@ -47,7 +48,7 @@ class StagingChannelHandler(BaseChannelHandler):
         """Notify staging completion"""
         try:
             self.send_message(
-                MessageType.STAGE_COMPLETE,
+                MessageType.STAGE_SUCCESS,  # Changed from STAGE_COMPLETE
                 {
                     'pipeline_id': pipeline_id,
                     'result': result

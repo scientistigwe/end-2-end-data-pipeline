@@ -10,8 +10,7 @@ from typing import Dict, Any, Tuple, List, Optional
 from functools import wraps
 
 # Import configurations
-from backend.config import get_config
-from backend.config import init_db
+from backend.config import get_config, init_db, cleanup_db
 
 # Import middleware
 from .middleware.error_handler import register_error_handlers
@@ -44,61 +43,76 @@ logger = logging.getLogger(__name__)
 # Initialize SQLAlchemy instance
 db = SQLAlchemy()
 
+
 def configure_logging(app: Flask) -> None:
-    """Configure application logging."""
-    log_dir = Path(app.config['LOG_FOLDER'])
-    log_dir.mkdir(exist_ok=True)
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_dir / 'app.log'),
-            logging.StreamHandler()
-        ]
-    )
+    """Configure application logging with proper handler configuration."""
+    try:
+        log_dir = Path(app.config['LOG_FOLDER'])
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        # Remove all existing handlers to avoid duplicates
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+
+        # Configure root logger at WARNING level
+        logging.basicConfig(level=logging.WARNING)
+
+        # Create formatters
+        standard_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+        # Create and configure file handler
+        file_handler = logging.FileHandler(log_dir / app.config['LOG_FILENAME'])
+        file_handler.setFormatter(standard_formatter)
+        file_handler.setLevel(logging.INFO)
+
+        # Create and configure console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(standard_formatter)
+        console_handler.setLevel(logging.INFO)
+
+        # Configure backend logger specifically
+        backend_logger = logging.getLogger('backend')
+        backend_logger.setLevel(logging.INFO)
+        backend_logger.propagate = False  # Prevent duplicate logs
+        backend_logger.addHandler(file_handler)
+        backend_logger.addHandler(console_handler)
+
+        # Configure SQLAlchemy logger
+        sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
+        sqlalchemy_logger.setLevel(logging.WARNING)  # Only show warnings and errors
+        sqlalchemy_logger.propagate = False  # Prevent duplicate logs
+        sqlalchemy_logger.addHandler(file_handler)
+        sqlalchemy_logger.addHandler(console_handler)
+
+        logger.info("Logging configured successfully")
+    except Exception as e:
+        print(f"Error configuring logging: {str(e)}")
+        raise
 
 def _init_extensions(app: Flask) -> None:
     """Initialize Flask extensions"""
     try:
-        CORS(app, 
-             resources={
-                 r"/api/*": {
-                     "origins": ["http://localhost:5173"],
-                     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-                     "allow_headers": [
-                         "Content-Type",
-                         "Authorization",
-                         "X-Requested-With",
-                         "Accept",
-                         "Origin",
-                         "X-Service",
-                         "Access-Control-Request-Method",
-                         "Access-Control-Request-Headers"
-                     ],
-                     "expose_headers": ["Content-Type", "Authorization"],
-                     "supports_credentials": True,
-                     "max_age": 3600,
-                     "send_wildcard": False,
-                     "automatic_options": True
-                 }
-             })
+        CORS(app, resources={r"/api/*": app.config['CORS_SETTINGS']})
 
         @app.after_request
         def after_request(response):
             if request.method == 'OPTIONS':
                 response.status_code = 200
-                response.headers.update({
-                    'Access-Control-Allow-Origin': 'http://localhost:5173',
-                    'Access-Control-Allow-Credentials': 'true',
-                    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Service',
+                headers = {
+                    'Access-Control-Allow-Origin': app.config['CORS_SETTINGS']['origins'][0],
+                    'Access-Control-Allow-Credentials': str(
+                        app.config['CORS_SETTINGS']['supports_credentials']).lower(),
+                    'Access-Control-Allow-Methods': ', '.join(app.config['CORS_SETTINGS']['methods']),
+                    'Access-Control-Allow-Headers': ', '.join(app.config['CORS_SETTINGS']['allow_headers']),
                     'Access-Control-Max-Age': '3600'
-                })
+                }
+                response.headers.update(headers)
             return response
 
         logger.info("CORS initialized successfully")
-        
+
     except Exception as e:
         logger.error(f"Extension initialization error: {str(e)}", exc_info=True)
         raise
@@ -144,8 +158,12 @@ def _init_jwt(app: Flask) -> None:
 def _init_database(app: Flask) -> Tuple[Any, Any]:
     """Initialize database connection and session management."""
     try:
+        logger.info("Starting database initialization...")
+
+        # Initialize database using the new init_db function
         engine, SessionLocal = init_db(app)
-        
+
+        # Set up request handlers
         @app.before_request
         def before_request():
             g.db = SessionLocal()
@@ -155,13 +173,10 @@ def _init_database(app: Flask) -> Tuple[Any, Any]:
             db = g.pop('db', None)
             if db is not None:
                 db.close()
-                
-        from backend.database.models import Base
-        Base.metadata.create_all(bind=engine)
-        
+
         logger.info("Database initialized successfully")
         return engine, SessionLocal
-        
+
     except Exception as e:
         logger.error(f"Database initialization error: {str(e)}", exc_info=True)
         raise
@@ -172,9 +187,9 @@ def _configure_paths(app: Flask) -> None:
         for folder in ['UPLOAD_FOLDER', 'LOG_FOLDER']:
             directory = Path(app.config[folder])
             directory.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info("Application paths configured successfully")
-        
+
     except Exception as e:
         logger.error(f"Path configuration error: {str(e)}", exc_info=True)
         raise
@@ -193,12 +208,12 @@ def register_blueprints(app: Flask, db_session) -> None:
         from backend.flask_api.app.blueprints.settings.routes import create_settings_blueprint
         from flask_jwt_extended import jwt_required
 
-        # Define blueprints
+        # Define blueprints with URLs from config
         public_blueprints = [
             (create_auth_blueprint(
                 auth_service=app.services['auth_service'],
                 db_session=db_session
-            ), '/api/v1/auth'),
+            ), f"/api/{app.config['API_VERSION']}{app.config['SERVICES']['auth']}"),
         ]
 
         protected_blueprints = [
@@ -209,36 +224,12 @@ def register_blueprints(app: Flask, db_session) -> None:
                 api_service=app.services['api_service'],
                 stream_service=app.services['stream_service'],
                 db_session=db_session
-            ), '/api/v1/data-sources'),
+            ), f"/api/{app.config['API_VERSION']}{app.config['SERVICES']['data-sources']}"),
             (create_pipeline_blueprint(
                 pipeline_service=app.services['pipeline_service'],
                 db_session=db_session
-            ), '/api/v1/pipelines'),
-            (create_analysis_blueprint(
-                quality_service=app.services['quality_service'],
-                insight_service=app.services['insight_service'],
-                db_session=db_session
-            ), '/api/v1/analysis'),
-            (create_recommendation_blueprint(
-                recommendation_service=app.services['recommendation_service'],
-                db_session=db_session
-            ), '/api/v1/recommendations'),
-            (create_decision_blueprint(
-                decision_service=app.services['decision_service'],
-                db_session=db_session
-            ), '/api/v1/decisions'),
-            (create_monitoring_blueprint(
-                monitoring_service=app.services['monitoring_service'],
-                db_session=db_session
-            ), '/api/v1/monitoring'),
-            (create_reports_blueprint(
-                report_service=app.services['report_service'],
-                db_session=db_session
-            ), '/api/v1/reports'),
-            (create_settings_blueprint(
-                settings_service=app.services['settings_service'],
-                db_session=db_session
-            ), '/api/v1/settings')
+            ), f"/api/{app.config['API_VERSION']}{app.config['SERVICES']['pipeline']}"),
+            # ... [remaining blueprint registrations] ...
         ]
 
         # Register blueprints
@@ -250,13 +241,12 @@ def register_blueprints(app: Flask, db_session) -> None:
 
             # Register protected blueprints
             for blueprint, url_prefix in protected_blueprints:
-                # Apply JWT protection
                 for view_function in blueprint.view_functions.values():
                     if not hasattr(view_function, '_jwt_required'):
                         protected_view = jwt_required()(view_function)
                         protected_view._jwt_required = True
                         blueprint.view_functions[view_function.__name__] = protected_view
-                
+
                 app.register_blueprint(blueprint, url_prefix=url_prefix)
                 logger.info(f"Registered protected blueprint at {url_prefix}")
 
@@ -269,10 +259,10 @@ def register_blueprints(app: Flask, db_session) -> None:
 def _initialize_services(app: Flask, db_session) -> None:
     """Initialize all application services."""
     try:
-        # Initialize MessageBroker first
-        message_broker = MessageBroker()
+        # Initialize MessageBroker first with thread pool settings
+        message_broker = MessageBroker(max_workers=app.config.get('PIPELINE_MAX_WORKERS', 4))
 
-        # Initialize PipelineManager
+        # Initialize PipelineManager with only required parameters
         pipeline_manager = PipelineManager(
             message_broker=message_broker,
             db_session=db_session
@@ -291,8 +281,7 @@ def _initialize_services(app: Flask, db_session) -> None:
             'stream_service': StreamSourceService(db_session),
             'pipeline_service': PipelineService(
                 db_session=db_session,
-                message_broker=message_broker,
-                pipeline_manager=pipeline_manager
+                message_broker=message_broker
             ),
             'quality_service': QualityService(db_session),
             'insight_service': InsightService(db_session),
@@ -303,7 +292,7 @@ def _initialize_services(app: Flask, db_session) -> None:
             'settings_service': SettingsService(db_session)
         }
 
-        # Store message_broker and pipeline_manager in app context for potential reuse
+        # Store message_broker and pipeline_manager in app context
         app.message_broker = message_broker
         app.pipeline_manager = pipeline_manager
 
@@ -353,10 +342,11 @@ def create_app(config_name: str = 'development') -> Flask:
         @app.teardown_appcontext
         def cleanup_services(exception=None):
             if hasattr(app, 'message_broker'):
-                app.message_broker.cleanup()
+                app.message_broker.thread_pool.shutdown(wait=True)  # Use the existing thread pool shutdown
             if hasattr(app, 'pipeline_manager'):
-                # Ensure proper cleanup of pipeline manager resources
-                app.pipeline_manager._cleanup_all_pipelines()
+                app.pipeline_manager.cleanup()
+            if hasattr(app, 'engine'):
+                cleanup_db(app.engine)
 
         logger.info(f"Application initialized successfully in {config_name} mode")
         return app

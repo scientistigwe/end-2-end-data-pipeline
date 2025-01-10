@@ -42,7 +42,7 @@ from .analysis import (
 )
 
 # Data source schemas
-from .data_source import (
+from .data_sources.data_source import (
     DataSourceRequestSchema, 
     DataSourceResponseSchema
 )

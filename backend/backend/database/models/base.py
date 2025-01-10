@@ -32,44 +32,57 @@ base_meta = MetaData(
 
 Base = declarative_base(metadata=base_meta)
 
+
+# backend/database/models/base.py
 class BaseModel(Base):
-    """Base model class with common fields and functionality."""
     __abstract__ = True
 
-    # Primary Key
+    # Keep the basic columns that don't reference users
     id = Column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4,
         unique=True,
         nullable=False
     )
-
-    # Timestamps
     created_at = Column(
-        DateTime, 
-        default=datetime.utcnow, 
-        nullable=False, 
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
         index=True
     )
     updated_at = Column(
-        DateTime, 
-        default=datetime.utcnow, 
-        onupdate=datetime.utcnow, 
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
         nullable=False
     )
 
-    # Tracking Fields
-    created_by = Column(
-        UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='SET NULL'),
-        index=True
-    )
-    updated_by = Column(
-        UUID(as_uuid=True), 
-        ForeignKey('users.id', ondelete='SET NULL')
-    )
-    
+    # Use declared_attr for all user references
+    @declared_attr
+    def created_by(cls):
+        if cls.__name__ == 'User':
+            return Column(UUID(as_uuid=True), nullable=True)
+        return Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), index=True)
+
+    @declared_attr
+    def updated_by(cls):
+        if cls.__name__ == 'User':
+            return Column(UUID(as_uuid=True), nullable=True)
+        return Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+
+    @declared_attr
+    def deleted_by(cls):
+        if cls.__name__ == 'User':
+            return Column(UUID(as_uuid=True), nullable=True)
+        return Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+
+    @declared_attr
+    def last_audit_by(cls):
+        if cls.__name__ == 'User':
+            return Column(UUID(as_uuid=True), nullable=True)
+        return Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+
     # Soft Delete Support
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime)

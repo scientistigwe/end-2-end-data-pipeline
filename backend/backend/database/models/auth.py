@@ -97,6 +97,11 @@ class User(BaseModel):
         foreign_keys='[Notification.user_id]',
         cascade='all, delete-orphan'
     )
+    event_subscriptions = relationship(
+        "EventSubscription",
+        back_populates="user",
+        foreign_keys="[EventSubscription.user_id]"
+    )
 
     __table_args__ = (
         Index('ix_users_email_status', 'email', 'status'),

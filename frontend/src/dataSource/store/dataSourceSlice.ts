@@ -58,10 +58,54 @@ export const createDataSource = createAsyncThunk(
   'dataSources/createDataSource',
   async (config: BaseDataSourceConfig, { rejectWithValue }) => {
     try {
-      const response = await dataSourceApi.createDataSource(config);
-      return response.data as BaseMetadata;
+      // Transform the config to match the backend schema
+      const transformedConfig = {
+        name: config.name,
+        type: config.type,
+        description: config.description || '',
+        // Conditionally add source-specific config based on type
+        ...(config.type === 'file' && {
+          file_config: {
+            original_filename: config.name,
+            file_type: config.config.type,
+            delimiter: config.config.delimiter,
+            encoding: config.config.encoding,
+            mime_type: 'text/csv', // Infer or set appropriately
+            size: 0, // You might want to calculate this
+            hash: '', // Generate a hash if possible
+            compression: null,
+            parse_options: config.config.parseOptions
+          }
+        }),
+        ...(config.type === 'database' && {
+          database_config: config.config
+        }),
+        ...(config.type === 'api' && {
+          api_config: config.config
+        }),
+        ...(config.type === 's3' && {
+          s3_config: config.config
+        }),
+        ...(config.type === 'stream' && {
+          stream_config: config.config
+        }),
+
+        // Additional common fields
+        is_active: config.status === 'active',
+        refresh_interval: config.refreshInterval || 0
+      };
+
+      console.log('Transformed config for backend:', transformedConfig);
+
+      const response = await dataSourceApi.createDataSource(transformedConfig);
+      return response.data as BaseMetadata || {
+        id: null,
+        name: config.name,
+        type: config.type
+      };
     } catch (error) {
       const apiError = error as ApiError;
+      console.error('Create data source error:', error);
       return rejectWithValue(
         apiError.response?.data || apiError.message || 'An error occurred'
       );

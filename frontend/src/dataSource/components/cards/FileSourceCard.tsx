@@ -8,52 +8,41 @@ import { Badge } from "../../../common/components/ui/badge";
 import { Progress } from "../../../common/components/ui/progress";
 import { FileIcon, CheckCircle2 } from "lucide-react";
 import { formatBytes } from "@/common/utils";
-import type { FileSourceConfig } from "@/dataSource/types";
+import type { BaseMetadata } from "@/dataSource/types/base";
 
 interface FileMetadata {
-  filename: string;
-  size: number;
+  filename?: string;
+  size?: number;
   rowCount?: number;
-  lastModified: string;
+  lastModified?: string;
 }
 
 interface FileSourceCardProps {
-  source: FileSourceConfig;
-  metadata: FileMetadata;
-  uploadProgress?: number;
+  source: BaseMetadata;
   className?: string;
 }
 
 export const FileSourceCard: React.FC<FileSourceCardProps> = ({
   source,
-  metadata,
-  uploadProgress,
   className = "",
 }) => {
+  // Safely extract metadata
+  const metadata: FileMetadata = {
+    filename: source.name || 'Unnamed File',
+    size: source.config?.size || 0,
+    lastModified: source.updatedAt || new Date().toISOString()
+  };
+
   const renderMetadataItem = (
     label: string,
     value: string | number | undefined
   ) => {
-    if (value === undefined) return null;
+    if (value === undefined || value === null) return null;
 
     return (
       <div className="flex justify-between text-sm">
         <span className="text-muted-foreground">{label}:</span>
         <span>{value}</span>
-      </div>
-    );
-  };
-
-  const renderUploadProgress = () => {
-    if (uploadProgress === undefined || uploadProgress >= 100) return null;
-
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span>Upload Progress</span>
-          <span>{uploadProgress}%</span>
-        </div>
-        <Progress value={uploadProgress} />
       </div>
     );
   };
@@ -64,11 +53,11 @@ export const FileSourceCard: React.FC<FileSourceCardProps> = ({
         <div className="flex items-center space-x-2">
           <FileIcon className="h-5 w-5" />
           <div>
-            <Badge variant="outline">{source.config.type}</Badge>
+            <Badge variant="outline">{source.config?.type || 'Unknown'}</Badge>
             <h3 className="text-lg font-medium mt-2">{metadata.filename}</h3>
           </div>
         </div>
-        {uploadProgress === 100 && (
+        {source.status === 'active' && (
           <CheckCircle2 className="h-5 w-5 text-green-500" />
         )}
       </CardHeader>
@@ -77,17 +66,15 @@ export const FileSourceCard: React.FC<FileSourceCardProps> = ({
         <div className="space-y-4">
           <div className="space-y-2">
             {renderMetadataItem("Size", formatBytes(metadata.size))}
-            {renderMetadataItem("Rows", metadata.rowCount?.toLocaleString())}
             {renderMetadataItem(
               "Last Modified",
               new Date(metadata.lastModified).toLocaleString()
             )}
-            {source.config.hasHeader && renderMetadataItem("Has Header", "Yes")}
-            {source.config.delimiter &&
+            {source.config?.delimiter &&
               renderMetadataItem("Delimiter", source.config.delimiter)}
+            {source.config?.encoding &&
+              renderMetadataItem("Encoding", source.config.encoding)}
           </div>
-
-          {renderUploadProgress()}
         </div>
       </CardContent>
     </Card>

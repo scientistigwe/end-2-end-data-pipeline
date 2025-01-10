@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from sqlalchemy.engine import Engine
 
+from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .db_validator import DBValidator
@@ -22,9 +23,14 @@ class DBManager:
         self.registry = ComponentRegistry()
         self.validator = DBValidator()
 
-        # Initialize with consistent UUID
+        # Initialize with consistent UUID and proper ComponentType
         component_uuid = self.registry.get_component_uuid("DBManager")
-        self.module_id = ModuleIdentifier("DBManager", "process_query", component_uuid)
+        self.module_id = ModuleIdentifier(
+            component_name="DBManager",
+            component_type=ComponentType.MODULE,  # Add proper component type
+            method_name="process_query",
+            instance_id=component_uuid
+        )
 
         # Track active queries and connections
         self.pending_queries: Dict[str, Dict[str, Any]] = {}
@@ -38,21 +44,33 @@ class DBManager:
         """Set up message broker registration and subscriptions"""
         try:
             # Register with message broker
-            self.message_broker.register_module(self.module_id)
+            self.message_broker.register_component(self.module_id)
 
-            # Get orchestrator ID with consistent UUID
+            # Get orchestrator ID
             orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+                component_name="DataOrchestrator",
+                component_type=ComponentType.ORCHESTRATOR,
+                method_name="manage_pipeline",
+                instance_id=self.registry.get_component_uuid("DataOrchestrator")
             )
 
-            # Subscribe to orchestrator responses
-            self.message_broker.subscribe_to_module(
-                orchestrator_id.get_tag(),
-                self._handle_orchestrator_response
-            )
-            logger.info("DBManager messaging initialized successfully")
+            # Subscribe to relevant patterns based on source type
+            patterns = []
+
+            # For DBManager
+            patterns = [
+                f"{orchestrator_id.get_tag()}.{MessageType.QUALITY_COMPLETE.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.QUALITY_ERROR.value}"
+            ]
+
+            for pattern in patterns:
+                self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._handle_orchestrator_response,
+                    timeout=10.0
+                )
+            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing messaging: {str(e)}")
             raise
@@ -156,7 +174,7 @@ class DBManager:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
                 target_identifier=orchestrator_id,
-                message_type=MessageType.ACTION,
+                message_type=MessageType.SOURCE_SUCCESS,
                 content={
                     'query_id': query_id,
                     'action': 'process_db_data',
@@ -173,6 +191,25 @@ class DBManager:
             logger.error(f"Error sending to orchestrator: {str(e)}")
             raise
 
+    def _handle_orchestrator_error(self, query_id: str, error_message: str) -> None:
+        """Handle orchestrator-reported errors"""
+        try:
+            if query_id in self.pending_queries:
+                query_data = self.pending_queries[query_id]
+                logger.error(f"Processing failed for query {query_id}: {error_message}")
+
+                # Update query status
+                query_data['status'] = 'error'
+                query_data['error_message'] = error_message
+                query_data['error_timestamp'] = datetime.now().isoformat()
+
+                # Cleanup
+                self._cleanup_pending_query(query_id)
+            else:
+                logger.warning(f"Received error for unknown query ID: {query_id}")
+        except Exception as e:
+            logger.error(f"Error handling orchestrator error: {str(e)}")
+
     def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
         """Handle responses from orchestrator"""
         try:
@@ -183,12 +220,15 @@ class DBManager:
 
             query_data = self.pending_queries[query_id]
 
-            if message.message_type == MessageType.ACTION:
-                logger.info(f"Query {query_id} processed successfully")
+            if message.message_type == MessageType.QUALITY_COMPLETE:
+                logger.info(f"Query {query_id} processed and validated successfully")
                 self._cleanup_pending_query(query_id)
-            elif message.message_type == MessageType.ERROR:
+            elif message.message_type == MessageType.QUALITY_ERROR:
                 logger.error(f"Error processing query {query_id}")
                 self._handle_orchestrator_error(query_id, message.content.get('error'))
+            elif message.message_type == MessageType.QUALITY_UPDATE:
+                logger.info(f"Quality check update for query {query_id}")
+                query_data['status'] = 'quality_check'
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")

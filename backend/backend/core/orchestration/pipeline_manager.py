@@ -1,666 +1,255 @@
-# backend/core/managers/pipeline_manager.py
+# backend/core/orchestration/pipeline_manager.py
 
 import logging
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
-from dataclasses import dataclass, field
-from collections import defaultdict
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import and_, or_
+import time
+from typing import Dict, Any, Optional
+from datetime import datetime
+from queue import Queue
+from threading import Thread
 
-from backend.core.orchestration.base_manager import BaseManager, ResourceState, ChannelType
+from backend.core.orchestration.base_manager import BaseManager
 from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType, ProcessingMessage, ProcessingStatus
-from backend.core.formatters.report_formatter import ReportFormatter
-from backend.data_pipeline.analytics.analytics_processor import AnalyticsProcessor
-
-# Import models
-from backend.database.models.pipeline import (
-    Pipeline, PipelineRun, PipelineStep, PipelineStepRun, QualityGate
+from backend.core.messaging.types import (
+    ModuleIdentifier,
+    ComponentType,
+    ProcessingMessage,
+    ProcessingStatus,
+    MessageType
 )
-from backend.database.models.dataset import Dataset
-from backend.database.models.data_source import DataSource
-from backend.database.models.validation import ValidationRule, QualityCheck, ValidationResult
-from backend.database.models.analysis import InsightAnalysis, Pattern, Correlation, Anomaly
-from backend.database.models.decisions_recommendations import (
-    Decision, DecisionOption, DecisionHistory, Recommendation
+
+from .pipeline_manager_helper import (
+    PipelineChannelType,
+    PipelineState,
+    MessageHandler,
+    PipelineStateManager,
+    DatabaseHelper,
+    PipelineOperations,
+    QualityHandler,
+    SourceHandler
 )
-from backend.database.models.events import Event
 
-
-@dataclass
-class PipelineState:
-    """Enhanced pipeline state tracking with SQLAlchemy model integration"""
-    pipeline_id: str
-    current_stage: str
-    status: ProcessingStatus
-    metadata: Dict[str, Any]
-    config: Dict[str, Any]
-    model: Pipeline  # SQLAlchemy Pipeline model instance
-    start_time: datetime = field(default_factory=datetime.utcnow)
-    end_time: Optional[datetime] = None
-    stages_completed: List[str] = field(default_factory=list)
-    stages_duration: Dict[str, float] = field(default_factory=dict)
-    error_history: List[Dict[str, Any]] = field(default_factory=list)
-    retry_attempts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    current_progress: float = 0.0
+logger = logging.getLogger(__name__)
 
 
 class PipelineManager(BaseManager):
-    """Unified pipeline manager with enhanced SQLAlchemy integration"""
+    """Pipeline manager for handling pipeline operations"""
 
-    def __init__(self, message_broker: MessageBroker, db_session: Session):
-        """Initialize with required dependencies"""
-        super().__init__(message_broker, "PipelineManager")
+    def __init__(self, message_broker: MessageBroker, db_session=None):
+        """Initialize pipeline manager"""
+        super().__init__(message_broker=message_broker, component_name="PipelineManager")
+
+        # Initialize components
         self.db_session = db_session
-        self.report_formatter = ReportFormatter(message_broker)
-        self.analytics_processor = AnalyticsProcessor(message_broker)
-        self.active_pipelines: Dict[str, PipelineState] = {}
+        self.state_manager = PipelineStateManager()
+        self.message_queue = Queue()
+        self._handlers = MessageHandler.get_default_handlers()
 
-        # Initialize handlers
-        self._initialize_handlers()
-        self.logger.info("PipelineManager initialized successfully")
+        # Start processing
+        self._initialize_pipeline_components()
+        self._start_message_processor()
 
-    def create_pipeline(self,
-                        name: str,
-                        owner_id: str,
-                        source_id: Optional[str] = None,
-                        dataset_id: Optional[str] = None,
-                        config: Optional[Dict[str, Any]] = None) -> Tuple[Pipeline, str]:
-        """Create a new pipeline with SQLAlchemy model"""
+    def _initialize_pipeline_components(self) -> None:
+        """Initialize pipeline components with retry logic"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self._register_pipeline_handlers()
+                self._initialize_messaging()
+                logger.info("Pipeline components initialized successfully")
+                break
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1} failed to initialize pipeline components: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(1)
+
+    def _register_pipeline_handlers(self) -> None:
+        """Register message type handlers"""
         try:
-            # Create Pipeline model instance
-            pipeline = Pipeline(
-                name=name,
-                owner_id=owner_id,
-                source_id=source_id,
-                dataset_id=dataset_id,
-                config=config or {},
-                status='idle',
-                mode='development'
-            )
-
-            # Add and commit to get ID
-            self.db_session.add(pipeline)
-            self.db_session.flush()
-
-            # Initialize pipeline state
-            state = PipelineState(
-                pipeline_id=str(pipeline.id),
-                current_stage='init',
-                status=ProcessingStatus.PENDING,
-                metadata={},
-                config=config or {},
-                model=pipeline
-            )
-
-            self.active_pipelines[str(pipeline.id)] = state
-
-            # Create initial pipeline run
-            run = PipelineRun(
-                pipeline_id=pipeline.id,
-                version=1,
-                status='running',
-                start_time=datetime.utcnow(),
-                triggered_by=owner_id
-            )
-            self.db_session.add(run)
-
-            self.db_session.commit()
-            return pipeline, str(pipeline.id)
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error creating pipeline: {str(e)}")
-            raise
+            self._handlers.update({
+                MessageType.PIPELINE_START: self._handle_pipeline_start,
+                MessageType.PIPELINE_PAUSE: self._handle_pipeline_pause,
+                MessageType.PIPELINE_RESUME: self._handle_pipeline_resume,
+                MessageType.PIPELINE_CANCEL: self._handle_pipeline_cancel,
+                MessageType.QUALITY_COMPLETE: self._handle_quality_message,
+                MessageType.SOURCE_SUCCESS: self._handle_source_message
+            })
+            logger.info("Pipeline handlers registered successfully")
         except Exception as e:
-            self.logger.error(f"Error creating pipeline: {str(e)}")
+            logger.error(f"Error registering handlers: {str(e)}")
             raise
 
-    def start_pipeline(self, pipeline_id: str) -> None:
-        """Start pipeline execution"""
+    def _initialize_messaging(self) -> None:
+        """Initialize pipeline-specific message handling"""
         try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
+            # First call parent's initialization
+            super()._initialize_messaging()
 
-            if not pipeline.can_start():
-                raise ValueError(f"Pipeline {pipeline_id} cannot be started in current state")
+            logger.info("Starting pipeline messaging initialization...")
+            logger.info(f"Message Broker Configuration: {self.message_broker}")
 
-            # Update model status
-            pipeline.status = 'running'
-            pipeline.last_run = datetime.utcnow()
-            pipeline.total_runs += 1
-
-            # Create new pipeline run
-            run = PipelineRun(
-                pipeline_id=pipeline.id,
-                version=pipeline.version,
-                status='running',
-                start_time=datetime.utcnow()
+            component_id = ModuleIdentifier(
+                component_name="pipeline",
+                component_type=ComponentType.MANAGER,
+                method_name="handle_pipeline_message"
             )
-            self.db_session.add(run)
 
-            # Update state
-            state = self.active_pipelines[pipeline_id]
-            state.status = ProcessingStatus.RUNNING
-            state.current_stage = 'data_validation'
+            base_patterns = [
+                f"{component_id.get_tag()}.{MessageType.PIPELINE_START.value}",
+                f"{component_id.get_tag()}.{MessageType.PIPELINE_PAUSE.value}",
+                f"{component_id.get_tag()}.{MessageType.PIPELINE_RESUME.value}",
+                f"{component_id.get_tag()}.{MessageType.PIPELINE_CANCEL.value}",
+                f"{component_id.get_tag()}.{MessageType.QUALITY_COMPLETE.value}",
+                f"{component_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}"
+            ]
 
-            self.db_session.commit()
+            success_count = 0
+            for pattern in base_patterns:
+                try:
+                    logger.info(f"Attempting to subscribe to pattern: {pattern}")
+                    logger.info(f"Component ID tag: {component_id.get_tag()}")
+                    logger.info(f"Full subscription pattern: {pattern}")
+                    logger.info(f"Current subscriptions: {self.message_broker.subscriptions}")
 
-            # Start first stage
-            self._start_next_stage(pipeline_id, 'data_validation')
-
-        except Exception as e:
-            self.db_session.rollback()
-            self._handle_pipeline_error(pipeline_id, "startup", e)
-
-    def _get_pipeline(self, pipeline_id: str) -> Optional[Pipeline]:
-        """Get pipeline model by ID"""
-        try:
-            return self.db_session.query(Pipeline).filter(
-                Pipeline.id == pipeline_id
-            ).first()
-        except SQLAlchemyError as e:
-            self.logger.error(f"Database error fetching pipeline: {str(e)}")
-            return None
-
-    def _create_validation_result(self,
-                                  pipeline_id: str,
-                                  check_id: str,
-                                  status: str,
-                                  results: Dict[str, Any]) -> ValidationResult:
-        """Create validation result record"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            validation_result = ValidationResult(
-                source_id=pipeline.source_id,
-                quality_check_id=check_id,
-                status=status,
-                results=results,
-                validated_at=datetime.utcnow()
-            )
-            self.db_session.add(validation_result)
-            self.db_session.commit()
-            return validation_result
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            raise
-
-    def _create_insight(self,
-                        pipeline_id: str,
-                        insight_type: str,
-                        results: Dict[str, Any]) -> InsightAnalysis:
-        """Create insight analysis record"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            insight = InsightAnalysis(
-                name=f"{pipeline.name} - {insight_type}",
-                analysis_type=insight_type,
-                source_id=pipeline.source_id,
-                results=results,
-                status='completed'
-            )
-            self.db_session.add(insight)
-            self.db_session.commit()
-            return insight
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            raise
-
-    def _update_pipeline_stats(self, pipeline_id: str) -> None:
-        """Update pipeline statistics"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                return
-
-            # Calculate stats from runs
-            runs = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id
-            ).all()
-
-            successful_runs = sum(1 for run in runs if run.status == 'completed')
-
-            # Update pipeline stats
-            pipeline.successful_runs = successful_runs
-            pipeline.total_runs = len(runs)
-
-            if runs:
-                durations = [
-                    (run.end_time - run.start_time).total_seconds()
-                    for run in runs
-                    if run.end_time and run.status == 'completed'
-                ]
-                if durations:
-                    pipeline.average_duration = sum(durations) / len(durations)
-
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Error updating pipeline stats: {str(e)}")
-
-    def _handle_pipeline_error(self, pipeline_id: str, stage: str, error: Exception) -> None:
-        """Handle pipeline errors with proper model updates"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                return
-
-            # Update pipeline state
-            pipeline.status = 'failed'
-            pipeline.error = str(error)
-            pipeline.failure_count += 1
-
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                and_(
-                    PipelineRun.pipeline_id == pipeline_id,
-                    PipelineRun.status == 'running'
-                )
-            ).first()
-
-            if current_run:
-                current_run.status = 'failed'
-                current_run.error = {
-                    'message': str(error),
-                    'stage': stage,
-                    'timestamp': datetime.utcnow().isoformat()
-                }
-                current_run.end_time = datetime.utcnow()
-
-            # Create error event
-            error_event = Event(
-                type='pipeline_state',
-                severity='error',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline error in stage {stage}: {str(error)}",
-                details={
-                    'error': str(error),
-                    'stage': stage,
-                    'stack_trace': getattr(error, '__traceback__', None)
-                }
-            )
-            self.db_session.add(error_event)
-
-            # Update state tracking
-            if pipeline_id in self.active_pipelines:
-                state = self.active_pipelines[pipeline_id]
-                state.status = ProcessingStatus.FAILED
-                state.error_history.append({
-                    'stage': stage,
-                    'error': str(error),
-                    'timestamp': datetime.utcnow().isoformat()
-                })
-
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Error handling pipeline error: {str(e)}")
-        finally:
-            self._cleanup_pipeline_resources(pipeline_id)
-
-    def _finalize_pipeline(self, pipeline_id: str) -> None:
-        """Finalize pipeline execution with model updates"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                return
-
-            # Update pipeline model
-            pipeline.status = 'completed'
-            pipeline.last_success = datetime.utcnow()
-            pipeline.progress = 100.0
-
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                and_(
-                    PipelineRun.pipeline_id == pipeline_id,
-                    PipelineRun.status == 'running'
-                )
-            ).first()
-
-            if current_run:
-                current_run.status = 'completed'
-                current_run.end_time = datetime.utcnow()
-
-            # Create completion event
-            completion_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} completed successfully"
-            )
-            self.db_session.add(completion_event)
-
-            # Update stats
-            self._update_pipeline_stats(pipeline_id)
-
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self._handle_pipeline_error(pipeline_id, "finalization", e)
-        finally:
-            self._cleanup_pipeline_resources(pipeline_id)
-
-    def get_pipeline_status(self, pipeline_id: str) -> Dict[str, Any]:
-        """Get comprehensive pipeline status"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
-
-            # Get latest run
-            latest_run = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id
-            ).order_by(PipelineRun.start_time.desc()).first()
-
-            # Get validation results
-            validation_results = self.db_session.query(ValidationResult).join(
-                QualityCheck
-            ).filter(
-                QualityCheck.pipeline_run_id == latest_run.id if latest_run else None
-            ).all()
-
-            # Get insights
-            insights = self.db_session.query(InsightAnalysis).filter(
-                InsightAnalysis.source_id == pipeline.source_id
-            ).all()
-
-            return {
-                'pipeline_id': str(pipeline.id),
-                'name': pipeline.name,
-                'status': pipeline.status,
-                'progress': pipeline.progress,
-                'current_run': {
-                    'id': str(latest_run.id) if latest_run else None,
-                    'status': latest_run.status if latest_run else None,
-                    'start_time': latest_run.start_time if latest_run else None,
-                    'end_time': latest_run.end_time if latest_run else None
-                } if latest_run else None,
-                'stats': {
-                    'total_runs': pipeline.total_runs,
-                    'successful_runs': pipeline.successful_runs,
-                    'average_duration': pipeline.average_duration,
-                    'failure_count': pipeline.failure_count
-                },
-                'validation_results': [
-                    {
-                        'id': str(result.id),
-                        'status': result.status,
-                        'error_count': result.error_count,
-                        'warning_count': result.warning_count
-                    }
-                    for result in validation_results
-                ],
-                'insights': [
-                    {
-                        'id': str(insight.id),
-                        'type': insight.analysis_type,
-                        'status': insight.status
-                    }
-                    for insight in insights
-                ]
-            }
-
-        except SQLAlchemyError as e:
-            self.logger.error(f"Database error getting pipeline status: {str(e)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error getting pipeline status: {str(e)}")
-            raise ValueError(f"Failed to get pipeline status: {str(e)}")
-
-    def pause_pipeline(self, pipeline_id: str) -> None:
-        """Pause pipeline execution"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
-
-            if pipeline.status != 'running':
-                raise ValueError(f"Pipeline {pipeline_id} is not running")
-
-            # Update pipeline state
-            pipeline.status = 'paused'
-
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                and_(
-                    PipelineRun.pipeline_id == pipeline_id,
-                    PipelineRun.status == 'running'
-                )
-            ).first()
-
-            if current_run:
-                current_run.status = 'paused'
-
-            # Create pause event
-            pause_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} paused"
-            )
-            self.db_session.add(pause_event)
-
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error pausing pipeline: {str(e)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error pausing pipeline: {str(e)}")
-            raise
-
-
-    def resume_pipeline(self, pipeline_id: str) -> None:
-        """Resume paused pipeline execution"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
-
-            if pipeline.status != 'paused':
-                raise ValueError(f"Pipeline {pipeline_id} is not paused")
-
-            # Update pipeline state
-            pipeline.status = 'running'
-
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                and_(
-                    PipelineRun.pipeline_id == pipeline_id,
-                    or_(PipelineRun.status == 'paused', PipelineRun.status == 'running')
-                )
-            ).first()
-
-            if current_run:
-                current_run.status = 'running'
-
-            # Create resume event
-            resume_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} resumed"
-            )
-            self.db_session.add(resume_event)
-
-            self.db_session.commit()
-
-            # Resume from last stage
-            state = self.active_pipelines.get(pipeline_id)
-            if state:
-                self._start_next_stage(pipeline_id, state.current_stage)
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error resuming pipeline: {str(e)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error resuming pipeline: {str(e)}")
-            raise
-
-
-    def cancel_pipeline(self, pipeline_id: str) -> None:
-        """Cancel pipeline execution"""
-        try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
-
-            # Update pipeline state
-            pipeline.status = 'cancelled'
-
-            # Update current run
-            current_run = self.db_session.query(PipelineRun).filter(
-                and_(
-                    PipelineRun.pipeline_id == pipeline_id,
-                    or_(
-                        PipelineRun.status == 'running',
-                        PipelineRun.status == 'paused'
+                    start_time = time.time()
+                    self.message_broker.subscribe(
+                        component=component_id,
+                        pattern=pattern,
+                        callback=self._handle_pipeline_message,
+                        timeout=5.0
                     )
-                )
-            ).first()
+                    success_count += 1
+                    logger.info(f"Successfully subscribed to {pattern} in {time.time() - start_time:.2f} seconds")
+                except Exception as e:
+                    logger.error(f"CRITICAL: Failed to subscribe to pattern {pattern}: {str(e)}")
+                    continue
 
-            if current_run:
-                current_run.status = 'cancelled'
-                current_run.end_time = datetime.utcnow()
+            if success_count == 0:
+                raise RuntimeError("Failed to subscribe to any patterns")
 
-            # Create cancel event
-            cancel_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} cancelled"
-            )
-            self.db_session.add(cancel_event)
+            logger.info(f"Successfully subscribed to {success_count} patterns")
 
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error cancelling pipeline: {str(e)}")
-            raise
         except Exception as e:
-            self.logger.error(f"Error cancelling pipeline: {str(e)}")
+            logger.error(f"CRITICAL: Pipeline messaging initialization failed: {str(e)}")
             raise
-        finally:
-            self._cleanup_pipeline_resources(pipeline_id)
 
+    def _start_message_processor(self) -> None:
+        """Start asynchronous message processing"""
 
-    def retry_pipeline(self, pipeline_id: str) -> None:
-        """Retry failed pipeline execution"""
+        def process_messages():
+            while True:
+                try:
+                    message = self.message_queue.get()
+                    MessageHandler.handle_pipeline_message(message, self._handlers)
+                except Exception as e:
+                    logger.error(f"Error processing message: {str(e)}")
+                finally:
+                    self.message_queue.task_done()
+
+        Thread(target=process_messages, daemon=True).start()
+        logger.info("Message processor started")
+
+    def _handle_pipeline_message(self, message: ProcessingMessage) -> None:
+        """Queue message for processing"""
+        self.message_queue.put(message)
+
+    def _handle_pipeline_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline start message"""
+        pipeline_id = message.metadata.get('pipeline_id')
         try:
-            pipeline = self._get_pipeline(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline {pipeline_id} not found")
-
-            if pipeline.status not in ['failed', 'cancelled']:
-                raise ValueError(f"Pipeline {pipeline_id} cannot be retried")
-
-            # Get last failed run
-            last_run = self.db_session.query(PipelineRun).filter(
-                PipelineRun.pipeline_id == pipeline_id
-            ).order_by(PipelineRun.start_time.desc()).first()
-
-            # Create new run
-            new_run = PipelineRun(
-                pipeline_id=pipeline_id,
-                version=pipeline.version,
-                status='running',
-                start_time=datetime.utcnow(),
-                triggered_by=last_run.triggered_by if last_run else None
-            )
-            self.db_session.add(new_run)
-
-            # Update pipeline state
-            pipeline.status = 'running'
-            pipeline.error = None
-
-            # Create retry event
-            retry_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} retry started"
-            )
-            self.db_session.add(retry_event)
-
-            self.db_session.commit()
-
-            # Start execution
-            self.start_pipeline(pipeline_id)
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error retrying pipeline: {str(e)}")
-            raise
+            PipelineOperations.start_pipeline(self.db_session, pipeline_id, self.state_manager)
         except Exception as e:
-            self.logger.error(f"Error retrying pipeline: {str(e)}")
+            logger.error(f"Error handling pipeline start: {str(e)}")
             raise
 
-
-    def _cleanup_pipeline_resources(self, pipeline_id: str) -> None:
-        """Clean up pipeline resources"""
+    def _handle_pipeline_pause(self, message: ProcessingMessage) -> None:
+        """Handle pipeline pause message"""
+        pipeline_id = message.metadata.get('pipeline_id')
         try:
-            # Clean up active pipeline state
-            if pipeline_id in self.active_pipelines:
-                del self.active_pipelines[pipeline_id]
-
-            # Clean up handlers
-            for handler in self.channel_handlers.values():
-                handler.cleanup_pipeline(pipeline_id)
-
-            # Create cleanup event
-            cleanup_event = Event(
-                type='pipeline_state',
-                severity='info',
-                source='pipeline_manager',
-                entity_type='pipeline',
-                entity_id=pipeline_id,
-                message=f"Pipeline {pipeline_id} resources cleaned up"
-            )
-            self.db_session.add(cleanup_event)
-
-            self.db_session.commit()
-
-        except SQLAlchemyError as e:
-            self.db_session.rollback()
-            self.logger.error(f"Database error during cleanup: {str(e)}")
+            PipelineOperations.pause_pipeline(self.db_session, pipeline_id, self.state_manager)
         except Exception as e:
-            self.logger.error(f"Error during pipeline cleanup: {str(e)}")
+            logger.error(f"Error handling pipeline pause: {str(e)}")
+            raise
 
+    def _handle_pipeline_resume(self, message: ProcessingMessage) -> None:
+        """Handle pipeline resume message"""
+        pipeline_id = message.metadata.get('pipeline_id')
+        try:
+            PipelineOperations.resume_pipeline(self.db_session, pipeline_id, self.state_manager)
+        except Exception as e:
+            logger.error(f"Error handling pipeline resume: {str(e)}")
+            raise
+
+    def _handle_pipeline_cancel(self, message: ProcessingMessage) -> None:
+        """Handle pipeline cancel message"""
+        pipeline_id = message.metadata.get('pipeline_id')
+        try:
+            PipelineOperations.cancel_pipeline(self.db_session, pipeline_id, self.state_manager)
+        except Exception as e:
+            logger.error(f"Error handling pipeline cancel: {str(e)}")
+            raise
+
+    def _handle_quality_message(self, message: ProcessingMessage) -> None:
+        """Handle quality check messages"""
+        try:
+            QualityHandler.handle_quality_message(self.db_session, message, self.state_manager)
+        except Exception as e:
+            logger.error(f"Error handling quality message: {str(e)}")
+            raise
+
+    def _handle_source_message(self, message: ProcessingMessage) -> None:
+        """Handle source messages"""
+        try:
+            SourceHandler.handle_source_message(self.db_session, message, self.state_manager)
+        except Exception as e:
+            logger.error(f"Error handling source message: {str(e)}")
+            raise
+
+    def cleanup(self) -> None:
+        """Cleanup pipeline manager resources"""
+        try:
+            logger.info("Starting pipeline manager cleanup...")
+            # Cleanup active pipelines
+            for pipeline_id in list(self.state_manager.active_pipelines.keys()):
+                try:
+                    self._cleanup_pipeline(pipeline_id)
+                except Exception as e:
+                    logger.error(f"Error cleaning up pipeline {pipeline_id}: {str(e)}")
+
+            # Clear message queue
+            while not self.message_queue.empty():
+                try:
+                    self.message_queue.get_nowait()
+                except Exception:
+                    pass
+
+            # Call parent cleanup
+            super().cleanup()
+            logger.info("Pipeline manager cleanup completed")
+
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+
+    def _cleanup_pipeline(self, pipeline_id: str) -> None:
+        """Cleanup single pipeline"""
+        try:
+            # Cancel if running
+            state = self.state_manager.get_pipeline_state(pipeline_id)
+            if state and state.status in [ProcessingStatus.RUNNING, ProcessingStatus.PENDING]:
+                PipelineOperations.cancel_pipeline(self.db_session, pipeline_id, self.state_manager)
+
+            # Remove from active pipelines
+            self.state_manager.remove_pipeline(pipeline_id)
+            logger.info(f"Pipeline {pipeline_id} cleaned up")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up pipeline {pipeline_id}: {str(e)}")
+            raise
 
     def __del__(self):
-        """Cleanup on deletion"""
+        """Safe deletion"""
         try:
-            # Cleanup all active pipelines
-            for pipeline_id in list(self.active_pipelines.keys()):
-                self.cancel_pipeline(pipeline_id)
-                self._cleanup_pipeline_resources(pipeline_id)
-
-            # Clear all data structures
-            self.active_pipelines.clear()
-
+            self.cleanup()
         except Exception as e:
-            self.logger.error(f"Error during manager cleanup: {str(e)}")
-        finally:
-            super().__del__()
+            logger.error(f"Error during deletion: {str(e)}")

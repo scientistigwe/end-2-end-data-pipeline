@@ -1,4 +1,4 @@
-# schemas/reports.py
+# schemas/report_model.py
 from marshmallow import Schema, fields, validate
 from .base import BaseRequestSchema, BaseResponseSchema
 

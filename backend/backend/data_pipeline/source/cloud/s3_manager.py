@@ -1,282 +1,735 @@
-# s3_manager.py
-import logging
-import uuid
-from datetime import datetime
-from typing import Dict, Any, Optional
-import pandas as pd
+from __future__ import annotations
 
-from backend.core.messaging.types import ComponentType
-from backend.core.registry.component_registry import ComponentRegistry
-from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
+import logging
+import asyncio
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
+    ComponentType,
+    MessageType,
+    ProcessingMessage,
+    ModuleIdentifier,
+    ProcessingStage,
+    ProcessingStatus
+)
+from backend.core.control.control_point_manager import ControlPointManager
+from backend.core.orchestration.base_manager import BaseManager
+from backend.core.monitoring.process import ProcessMonitor
+from backend.core.utils.process_manager import ProcessManager, with_process_handling
 from .s3_validator import S3Validator
 from .s3_fetcher import S3Fetcher
+from .s3_config import Config
 
 logger = logging.getLogger(__name__)
 
 
-class S3Manager:
-    """Enhanced S3 management system with messaging integration"""
+@dataclass
+class S3Context:
+    """Context for S3 operations"""
+    request_id: str
+    pipeline_id: str
+    stage: ProcessingStage
+    status: ProcessingStatus
+    metadata: Dict[str, Any]
+    created_at: datetime = field(default_factory=datetime.now)
+    error: Optional[str] = None
+    processing_history: List[Dict[str, Any]] = field(default_factory=list)
+    control_points: List[str] = field(default_factory=list)
 
-    def __init__(self, message_broker):
-        """Initialize S3Manager with component registration"""
-        self.message_broker = message_broker
-        self.registry = ComponentRegistry()
-        self.validator = S3Validator()
 
-        # Initialize with consistent UUID and proper ComponentType
-        component_uuid = self.registry.get_component_uuid("S3Manager")
-        self.module_id = ModuleIdentifier(
-            component_name="S3Manager",
-            component_type=ComponentType.MODULE,  # Add proper component type
-            method_name="process_s3",
-            instance_id=component_uuid
+class S3Manager(BaseManager):
+    """Enhanced S3 manager with control point integration"""
+
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            control_point_manager: ControlPointManager,
+            config: Optional[Config] = None
+    ):
+        """Initialize S3Manager with required components"""
+        super().__init__(
+            message_broker=message_broker,
+            component_name="S3Manager"
         )
 
-        # Track active connections and operations
+        self.control_point_manager = control_point_manager
+        self.config = config or Config()
+        self.validator = S3Validator(config=self.config)
+
+        # Initialize monitoring
+        self.process_monitor = ProcessMonitor(
+            metrics_collector=self.metrics_collector,
+            source_type="s3",
+            source_id=str(uuid4())
+        )
+
+        # Initialize process handler
+        self.process_handler = ProcessHandler(config=self.config.RETRY)
+
+        # State tracking
         self.active_connections: Dict[str, S3Fetcher] = {}
-        self.pending_operations: Dict[str, Dict[str, Any]] = {}
+        self.active_operations: Dict[str, S3Context] = {}
 
-        # Register and subscribe
-        self._initialize_messaging()
-        logger.info(f"S3Manager initialized with ID: {self.module_id.get_tag()}")
+        # Initialize handlers
+        self._setup_message_handlers()
 
-    def _initialize_messaging(self) -> None:
-        """Set up message broker registration and subscriptions"""
-        try:
-            # Register with message broker
-            self.message_broker.register_component(self.module_id)
+    def _setup_message_handlers(self) -> None:
+        """Set up message handlers"""
+        handlers = {
+            MessageType.S3_REQUEST: self._handle_s3_request,
+            MessageType.CONTROL_POINT_DECISION: self._handle_control_decision,
+            MessageType.STATUS_UPDATE: self._handle_status_update,
+            MessageType.ERROR: self._handle_error
+        }
 
-            # Get orchestrator ID
-            orchestrator_id = ModuleIdentifier(
-                component_name="DataOrchestrator",
-                component_type=ComponentType.ORCHESTRATOR,
-                method_name="manage_pipeline",
-                instance_id=self.registry.get_component_uuid("DataOrchestrator")
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                component=self.module_id,
+                pattern=f"{message_type.value}.#",
+                callback=handler
             )
 
-            # Subscribe to relevant patterns based on source type
-            patterns = []
+    @with_process_handling
+    async def process_s3_request(
+            self,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process S3 request with control points"""
+        try:
+            # Create operation context
+            context = S3Context(
+                request_id=str(uuid4()),
+                pipeline_id=str(uuid4()),
+                stage=ProcessingStage.INITIAL_VALIDATION,
+                status=ProcessingStatus.PENDING,
+                metadata=request_data.get('metadata', {})
+            )
 
-            # For S3Manager
-            patterns = [
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}"
+            self.active_operations[context.request_id] = context
+
+            # Process based on action
+            action = request_data.get('action')
+            if action == 'connect':
+                return await self._handle_connect_request(context, request_data)
+            elif action == 'process_object':
+                return await self._handle_object_request(context, request_data)
+            elif action == 'list_objects':
+                return await self._handle_list_request(context, request_data)
+            else:
+                raise ValueError(f"Unknown action: {action}")
+
+        except Exception as e:
+            logger.error(f"S3 request processing error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def _handle_connect_request(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle S3 connection request with control points"""
+        try:
+            stages = [
+                (ProcessingStage.INITIAL_VALIDATION, self._validate_connection),
+                (ProcessingStage.CONNECTION_CHECK, self._establish_connection),
+                (ProcessingStage.ACCESS_CHECK, self._verify_access)
             ]
 
-            for pattern in patterns:
-                self.message_broker.subscribe(
-                    component=self.module_id,
-                    pattern=pattern,
-                    callback=self._handle_orchestrator_response,
-                    timeout=10.0
+            for stage, processor in stages:
+                context.stage = stage
+                await self._update_status(context, f"Starting {stage.value}")
+
+                # Process stage
+                result = await processor(context, request_data)
+
+                # Create control point
+                decision = await self._create_control_point(
+                    context=context,
+                    stage=stage,
+                    data=result,
+                    options=['proceed', 'reject']
                 )
-            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing messaging: {str(e)}")
-            raise
 
-    def initialize_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Initialize S3 connection"""
-        try:
-            connection_id = str(uuid.uuid4())
-
-            # Create and validate connection
-            s3_fetcher = S3Fetcher(config)
-            is_valid, message = self.validator.validate_credentials(
-                config['credentials'],
-                config.get('region')
-            )
-
-            if not is_valid:
-                raise ValueError(message)
+                if decision['decision'] == 'reject':
+                    await self._handle_rejection(context, decision.get('details', {}))
+                    raise ValueError(f"Connection rejected at stage {stage.value}")
 
             # Store connection
-            self.active_connections[connection_id] = s3_fetcher
+            connection_id = str(uuid4())
+            fetcher = S3Fetcher(self.config)
+            self.active_connections[connection_id] = fetcher
 
             return {
                 'status': 'success',
+                'request_id': context.request_id,
                 'connection_id': connection_id,
-                'message': 'S3 connection established'
+                'pipeline_id': context.pipeline_id
             }
 
         except Exception as e:
-            logger.error(f"S3 connection error: {str(e)}")
+            await self._handle_error(context, str(e))
             raise
 
-    def process_s3_object(self, connection_id: str, bucket: str, key: str) -> Dict[str, Any]:
-        """Main entry point for S3 object processing"""
+    async def _validate_connection(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate connection configuration"""
+        validation_results = await self.validator.validate_connection_comprehensive(
+            request_data,
+            context.metadata
+        )
+
+        return {
+            'validation_results': validation_results,
+            'connection_preview': {
+                k: v for k, v in request_data.items()
+                if k not in ['credentials', 'secret_key']
+            }
+        }
+
+    async def _establish_connection(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Establish S3 connection"""
+        fetcher = S3Fetcher(request_data)
+        connection_check = await fetcher.check_connection()
+
+        return {
+            'connection_status': connection_check.get('status'),
+            'diagnostics': connection_check.get('diagnostics', {}),
+            'capabilities': connection_check.get('capabilities', {})
+        }
+
+    async def _verify_access(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Verify S3 access permissions"""
+        access_check = await self.validator.verify_access_permissions(
+            request_data.get('bucket'),
+            request_data.get('credentials')
+        )
+
+        return {
+            'access_check': access_check,
+            'permissions': access_check.get('permissions', []),
+            'restrictions': access_check.get('restrictions', [])
+        }
+
+    async def _create_control_point(
+            self,
+            context: S3Context,
+            stage: ProcessingStage,
+            data: Dict[str, Any],
+            options: List[str]
+    ) -> Dict[str, Any]:
+        """Create control point and wait for decision"""
         try:
+            control_point_id = await self.control_point_manager.create_control_point(
+                pipeline_id=context.pipeline_id,
+                stage=stage,
+                data={
+                    'request_id': context.request_id,
+                    'stage_data': data,
+                    'metadata': context.metadata
+                },
+                options=options
+            )
+
+            context.control_points.append(control_point_id)
+            context.status = ProcessingStatus.AWAITING_DECISION
+
+            await self._update_status(
+                context,
+                f"Awaiting decision at {stage.value}"
+            )
+
+            return await self.control_point_manager.wait_for_decision(
+                control_point_id,
+                timeout=self.config.REQUEST_TIMEOUT
+            )
+
+        except Exception as e:
+            logger.error(f"Control point creation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _handle_object_request(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle S3 object operation with control points"""
+        try:
+            # Verify connection
+            connection_id = request_data.get('connection_id')
             if connection_id not in self.active_connections:
-                raise ValueError("Invalid connection ID")
+                raise ValueError(f"Connection {connection_id} not found")
 
-            operation_id = str(uuid.uuid4())
-            s3_fetcher = self.active_connections[connection_id]
+            fetcher = self.active_connections[connection_id]
 
-            # Store operation info
-            self.pending_operations[operation_id] = {
-                'connection_id': connection_id,
-                'bucket': bucket,
-                'key': key,
-                'status': 'pending',
-                'created_at': datetime.now().isoformat()
-            }
+            stages = [
+                (ProcessingStage.INITIAL_VALIDATION, self._validate_object_request),
+                (ProcessingStage.ACCESS_CHECK, self._verify_object_access),
+                (ProcessingStage.DATA_EXTRACTION, self._fetch_object),
+                (ProcessingStage.DATA_VALIDATION, self._validate_object_data),
+                (ProcessingStage.PROCESSING, self._process_object_data)
+            ]
 
-            logger.info(f"Starting S3 object processing: {bucket}/{key}")
+            stage_results = {}
 
-            # Step 1: Validate S3 object
-            self._validate_s3_object(s3_fetcher, bucket, key)
+            for stage, processor in stages:
+                context.stage = stage
+                await self._update_status(context, f"Starting {stage.value}")
 
-            # Step 2: Process S3 data
-            processed_data = self._process_s3_data(s3_fetcher, bucket, key)
+                # Process stage
+                result = await processor(
+                    context,
+                    request_data,
+                    fetcher=fetcher
+                )
 
-            # Step 3: Update operation status
-            self.pending_operations[operation_id]['status'] = 'processed'
-            self.pending_operations[operation_id]['processed_data'] = processed_data
+                # Create control point
+                decision = await self._create_control_point(
+                    context=context,
+                    stage=stage,
+                    data=result,
+                    options=['proceed', 'modify', 'reject']
+                )
 
-            # Step 4: Send processed data to orchestrator
-            self._send_to_orchestrator(operation_id, processed_data)
+                if decision['decision'] == 'reject':
+                    await self._handle_rejection(context, decision.get('details', {}))
+                    raise ValueError(f"Processing rejected at stage {stage.value}")
 
-            return processed_data
+                elif decision['decision'] == 'modify':
+                    request_data = await self._apply_modifications(
+                        request_data,
+                        decision.get('modifications', {})
+                    )
 
-        except Exception as e:
-            logger.error(f"S3 processing error: {str(e)}")
-            raise
-
-    def _validate_s3_object(self, s3_fetcher: S3Fetcher, bucket: str, key: str) -> None:
-        """Validate S3 object before processing"""
-        try:
-            # Validate bucket access
-            bucket_valid, bucket_msg = self.validator.validate_bucket_access(
-                s3_fetcher.s3_client, bucket
-            )
-            if not bucket_valid:
-                raise ValueError(bucket_msg)
-
-            # Validate object format
-            format_valid, format_msg = self.validator.validate_object_format(key)
-            if not format_valid:
-                raise ValueError(format_msg)
-
-            # Validate object size
-            size_valid, size_msg = self.validator.validate_object_size(
-                s3_fetcher.s3_client, bucket, key
-            )
-            if not size_valid:
-                raise ValueError(size_msg)
-
-            logger.info("S3 object validation successful")
-
-        except Exception as e:
-            logger.error(f"S3 validation error: {str(e)}")
-            raise
-
-    def _process_s3_data(self, s3_fetcher: S3Fetcher, bucket: str, key: str) -> Dict[str, Any]:
-        """Process S3 object data"""
-        try:
-            # Fetch and process object
-            result = s3_fetcher.fetch_object(bucket, key)
+                stage_results[stage.value] = result
 
             return {
-                "status": "success",
-                "source": f"s3://{bucket}/{key}",
-                "data": result['data'].to_dict(orient="records"),
-                "metadata": {
-                    **result['metadata'],
-                    "bucket": bucket,
-                    "key": key,
-                    "processed_at": datetime.now().isoformat()
+                'status': 'success',
+                'request_id': context.request_id,
+                'pipeline_id': context.pipeline_id,
+                'data': stage_results
+            }
+
+        except Exception as e:
+            await self._handle_error(context, str(e))
+            raise
+
+    async def _validate_object_request(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Validate object request parameters"""
+        validation_results = await self.validator.validate_object_request(
+            request_data,
+            context.metadata
+        )
+
+        return {
+            'validation_results': validation_results,
+            'object_preview': {
+                'bucket': request_data.get('bucket'),
+                'key': request_data.get('key'),
+                'operation': request_data.get('operation')
+            }
+        }
+
+    async def _verify_object_access(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Verify access to specific S3 object"""
+        bucket = request_data.get('bucket')
+        key = request_data.get('key')
+
+        access_check = await self.validator.verify_object_access(
+            fetcher.s3_client,
+            bucket,
+            key
+        )
+
+        return {
+            'access_check': access_check,
+            'object_metadata': access_check.get('metadata', {}),
+            'permissions': access_check.get('permissions', [])
+        }
+
+    async def _fetch_object(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Fetch object from S3"""
+        try:
+            bucket = request_data.get('bucket')
+            key = request_data.get('key')
+
+            # Record start of fetch
+            await self.process_monitor.record_operation_metric(
+                'object_fetch_start',
+                1,
+                bucket=bucket,
+                key=key
+            )
+
+            start_time = datetime.now()
+            result = await fetcher.fetch_object_async(bucket, key)
+            duration = (datetime.now() - start_time).total_seconds()
+
+            # Record fetch metrics
+            await self.process_monitor.record_operation_metric(
+                'object_fetch',
+                success=True,
+                duration=duration,
+                bytes_transferred=result.get('metadata', {}).get('size', 0)
+            )
+
+            return {
+                'data': result.get('data'),
+                'metadata': result.get('metadata'),
+                'fetch_stats': {
+                    'duration': duration,
+                    'timestamp': datetime.now().isoformat()
                 }
             }
-        except Exception as e:
-            raise ValueError(str(e))
-
-    def _send_to_orchestrator(self, operation_id: str, processed_data: Dict[str, Any]) -> None:
-        """Send processed data to orchestrator"""
-        try:
-            orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
-            )
-
-            message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=orchestrator_id,
-                message_type=MessageType.SOURCE_SUCCESS,
-                content={
-                    'operation_id': operation_id,
-                    'action': 'process_s3_data',
-                    'data': processed_data['data'],
-                    'metadata': processed_data['metadata'],
-                    'source_type': 's3',
-                    'source': processed_data['source']
-                }
-            )
-
-            logger.info(f"Sending data to orchestrator: {orchestrator_id.get_tag()}")
-            self.message_broker.publish(message)
 
         except Exception as e:
-            logger.error(f"Error sending to orchestrator: {str(e)}")
+            await self.process_monitor.record_error(
+                'object_fetch_error',
+                error=str(e),
+                bucket=bucket,
+                key=key
+            )
             raise
 
-    def _handle_orchestrator_error(self, operation_id: str, error_message: str) -> None:
-        """Handle orchestrator-reported errors"""
+    async def _validate_object_data(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Validate fetched object data"""
+        data = request_data.get('data', {})
+
+        validation_results = await self.validator.validate_object_data(
+            data,
+            context.metadata
+        )
+
+        return {
+            'validation_results': validation_results,
+            'data_preview': data.get('preview', []),
+            'issues': validation_results.get('issues', []),
+            'recommendations': validation_results.get('recommendations', [])
+        }
+
+    async def _process_object_data(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Process object data based on format"""
         try:
-            if operation_id in self.pending_operations:
-                operation_data = self.pending_operations[operation_id]
-                logger.error(
-                    f"Processing failed for S3 operation (bucket: {operation_data['bucket']}, key: {operation_data['key']}): {error_message}")
+            data = request_data.get('data', {})
+            format_type = self._determine_format(request_data.get('key', ''))
 
-                # Update operation status
-                operation_data['status'] = 'error'
-                operation_data['error_message'] = error_message
-                operation_data['error_timestamp'] = datetime.now().isoformat()
+            # Record processing start
+            await self.process_monitor.record_metric(
+                'data_processing_start',
+                1,
+                format=format_type
+            )
 
-                # Cleanup
-                self._cleanup_pending_operation(operation_id)
+            start_time = datetime.now()
+
+            # Process based on format
+            if format_type == 'csv':
+                processed_data = await self._process_csv_data(data)
+            elif format_type == 'json':
+                processed_data = await self._process_json_data(data)
+            elif format_type == 'parquet':
+                processed_data = await self._process_parquet_data(data)
             else:
-                logger.warning(f"Received error for unknown operation ID: {operation_id}")
-        except Exception as e:
-            logger.error(f"Error handling orchestrator error: {str(e)}")
+                processed_data = await self._process_generic_data(data)
 
-    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
-        """Handle responses from orchestrator"""
-        try:
-            operation_id = message.content.get('operation_id')
-            if not operation_id or operation_id not in self.pending_operations:
-                logger.warning(f"Received response for unknown operation ID: {operation_id}")
-                return
+            duration = (datetime.now() - start_time).total_seconds()
 
-            operation_data = self.pending_operations[operation_id]
+            # Record processing metrics
+            await self.process_monitor.record_operation_metric(
+                'data_processing',
+                success=True,
+                duration=duration,
+                format=format_type,
+                rows_processed=processed_data.get('row_count', 0)
+            )
 
-            if message.message_type == MessageType.SOURCE_SUCCESS:
-                logger.info(f"S3 operation {operation_id} processed successfully")
-                self._cleanup_pending_operation(operation_id)
-            elif message.message_type == MessageType.SOURCE_ERROR:
-                logger.error(f"Error processing S3 operation {operation_id}")
-                self._handle_orchestrator_error(operation_id, message.content.get('error'))
-            elif message.message_type == MessageType.SOURCE_EXTRACT:
-                logger.info(f"Data extraction in progress for {operation_id}")
-                operation_data['status'] = 'extracting'
+            return {
+                'processed_data': processed_data,
+                'format': format_type,
+                'processing_stats': {
+                    'duration': duration,
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
 
         except Exception as e:
-            logger.error(f"Error handling orchestrator response: {str(e)}")
-
-    def _cleanup_pending_operation(self, operation_id: str) -> None:
-        """Clean up processed operation data"""
-        if operation_id in self.pending_operations:
-            del self.pending_operations[operation_id]
-            logger.info(f"Cleaned up pending operation: {operation_id}")
-
-    def close_connection(self, connection_id: str) -> None:
-        """Close S3 connection and cleanup"""
-        try:
-            if connection_id in self.active_connections:
-                self.active_connections[connection_id].close()
-                del self.active_connections[connection_id]
-                logger.info(f"Closed S3 connection: {connection_id}")
-        except Exception as e:
-            logger.error(f"Error closing S3 connection: {str(e)}")
+            await self.process_monitor.record_error(
+                'data_processing_error',
+                error=str(e),
+                format=format_type
+            )
             raise
 
+    async def _handle_list_request(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle S3 object listing with control points"""
+        try:
+            connection_id = request_data.get('connection_id')
+            if connection_id not in self.active_connections:
+                raise ValueError(f"Connection {connection_id} not found")
+
+            fetcher = self.active_connections[connection_id]
+
+            stages = [
+                (ProcessingStage.INITIAL_VALIDATION, self._validate_list_request),
+                (ProcessingStage.ACCESS_CHECK, self._verify_list_access),
+                (ProcessingStage.DATA_EXTRACTION, self._list_objects),
+                (ProcessingStage.PROCESSING, self._process_object_list)
+            ]
+
+            stage_results = {}
+
+            for stage, processor in stages:
+                context.stage = stage
+                await self._update_status(context, f"Starting {stage.value}")
+
+                result = await processor(
+                    context,
+                    request_data,
+                    fetcher=fetcher
+                )
+
+                decision = await self._create_control_point(
+                    context=context,
+                    stage=stage,
+                    data=result,
+                    options=['proceed', 'reject']
+                )
+
+                if decision['decision'] == 'reject':
+                    await self._handle_rejection(context, decision.get('details', {}))
+                    raise ValueError(f"Listing rejected at stage {stage.value}")
+
+                stage_results[stage.value] = result
+
+            return {
+                'status': 'success',
+                'request_id': context.request_id,
+                'pipeline_id': context.pipeline_id,
+                'data': stage_results
+            }
+
+        except Exception as e:
+            await self._handle_error(context, str(e))
+            raise
+
+    async def _validate_list_request(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Validate object listing request"""
+        validation_results = await self.validator.validate_list_request(
+            request_data,
+            context.metadata
+        )
+
+        return {
+            'validation_results': validation_results,
+            'list_parameters': {
+                'bucket': request_data.get('bucket'),
+                'prefix': request_data.get('prefix', ''),
+                'max_items': request_data.get('max_items')
+            }
+        }
+
+    async def _verify_list_access(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Verify access for object listing"""
+        bucket = request_data.get('bucket')
+        access_check = await self.validator.verify_list_access(
+            fetcher.s3_client,
+            bucket
+        )
+
+        return {
+            'access_check': access_check,
+            'bucket_metadata': access_check.get('metadata', {}),
+            'permissions': access_check.get('permissions', [])
+        }
+
+    async def _list_objects(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """List objects from S3"""
+        try:
+            bucket = request_data.get('bucket')
+            prefix = request_data.get('prefix', '')
+
+            start_time = datetime.now()
+            result = await fetcher.list_objects_async(
+                bucket,
+                prefix=prefix,
+                max_items=request_data.get('max_items')
+            )
+            duration = (datetime.now() - start_time).total_seconds()
+
+            # Record metrics
+            await self.process_monitor.record_operation_metric(
+                'object_listing',
+                success=True,
+                duration=duration,
+                object_count=len(result.get('objects', []))
+            )
+
+            return {
+                'objects': result.get('objects', []),
+                'continuation_token': result.get('continuation_token'),
+                'is_truncated': result.get('is_truncated', False),
+                'listing_stats': {
+                    'duration': duration,
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
+
+        except Exception as e:
+            await self.process_monitor.record_error(
+                'object_listing_error',
+                error=str(e),
+                bucket=bucket,
+                prefix=prefix
+            )
+            raise
+
+    async def _process_object_list(
+            self,
+            context: S3Context,
+            request_data: Dict[str, Any],
+            fetcher: S3Fetcher
+    ) -> Dict[str, Any]:
+        """Process object listing results"""
+        objects = request_data.get('objects', [])
+
+        # Analyze object types and sizes
+        analysis = {
+            'total_objects': len(objects),
+            'total_size': sum(obj.get('size', 0) for obj in objects),
+            'format_distribution': self._analyze_format_distribution(objects),
+            'size_distribution': self._analyze_size_distribution(objects)
+        }
+
+        return {
+            'analysis': analysis,
+            'objects': objects,
+            'recommendations': self._generate_list_recommendations(analysis)
+        }
+
+    def _determine_format(self, key: str) -> str:
+        """Determine file format from key"""
+        ext = key.split('.')[-1].lower() if '.' in key else 'unknown'
+        return ext if ext in self.config.SUPPORTED_FORMATS else 'unknown'
+
+    def _analyze_format_distribution(
+            self,
+            objects: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """Analyze distribution of object formats"""
+        formats = {}
+        for obj in objects:
+            fmt = self._determine_format(obj.get('key', ''))
+            formats[fmt] = formats.get(fmt, 0) + 1
+        return formats
+
+    def _analyze_size_distribution(
+            self,
+            objects: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """Analyze distribution of object sizes"""
+        size_ranges = {
+            'small': 0,  # < 1MB
+            'medium': 0,  # 1MB - 100MB
+            'large': 0,  # 100MB - 1GB
+            'very_large': 0  # > 1GB
+        }
+
+        for obj in objects:
+            size = obj.get('size', 0)
+            if size < 1024 * 1024:
+                size_ranges['small'] += 1
+            elif size < 100 * 1024 * 1024:
+                size_ranges['medium'] += 1
+            elif size < 1024 * 1024 * 1024:
+                size_ranges['large'] += 1
+            else:
+                size_ranges['very_large'] += 1
+
+        return size_ranges
+
+    def _generate_list_recommendations(
+            self,
+            analysis: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Generate recommendations based on object list analysis"""
+        recommendations = []
+
+        # Size-based recommendations
+        if analysis['size_distribution'].get('very_large', 0) > 0:
+            recommendations.append({
+                'type': 'optimization',
+                'message': 'Consider using multipart download for large objects',
+                'objects_affected': analysis['size_distribution']['very_large']
+            })
+
+        # Format-based recommendations
+        for fmt, count in analysis['format_distribution'].items():
+            if fmt == 'unknown':
+                recommendations.append({
+                    'type': 'format',
+                    'message': f'Found {count} objects with unknown format',
+                    'suggestion': 'Verify file extensions and content types'
+                })
+
+        return recommendations

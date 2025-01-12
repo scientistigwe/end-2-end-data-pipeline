@@ -1,9 +1,8 @@
-# backend/backend/core/channel_handlers/base_channel_handler.py
-
 import logging
 import uuid
+import asyncio
 import threading
-from typing import Dict, Any, Optional, List, Callable, Set
+from typing import Dict, Any, Optional, List, Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -13,7 +12,8 @@ from backend.core.messaging.types import (
     MessageType,
     ModuleIdentifier,
     ProcessingMessage,
-    ProcessingStatus
+    ProcessingStatus,
+    ComponentType
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class HandlerMetrics:
 
 class BaseChannelHandler:
     """
-    Base handler providing common functionality for all channel handlers
+    Base async handler providing common functionality for all channel handlers
     """
 
     def __init__(self, message_broker: MessageBroker, handler_name: str):
@@ -65,59 +65,60 @@ class BaseChannelHandler:
         self.metrics = HandlerMetrics()
 
         # Message handling
-        self._callbacks: Dict[str, Callable] = {}
+        self._callbacks: Dict[str, Callable[[ProcessingMessage], Coroutine]] = {}
         self._active_contexts: Dict[str, MessageContext] = {}
-        self._lock = threading.Lock()
+        self._async_lock = asyncio.Lock()
 
-        # Initialize handler
-        self._initialize_handler()
+        # Error handling
+        self._error_recovery_attempts = 0
+        self._max_recovery_attempts = 3
+        self._error_states: Dict[str, Any] = {}
 
-    def _initialize_handler(self) -> None:
-        """Initialize handler components"""
+    async def initialize(self) -> None:
+        """Asynchronous initialization of handler"""
         try:
-            self._register_with_broker()
+            # Register with message broker
+            await self.message_broker.register_component(
+                ModuleIdentifier(
+                    component_name=self.handler_name,
+                    component_type=ComponentType.HANDLER
+                ),
+                default_callback=self.handle_message
+            )
+
+            # Setup error handling
+            await self._setup_error_handling()
+
             self.logger.info(f"{self.handler_name} handler initialized")
         except Exception as e:
             self.status = HandlerStatus.ERROR
             self.logger.error(f"Handler initialization failed: {str(e)}")
             raise
 
-    def _register_with_broker(self) -> None:
-        """Register handler with message broker"""
-        try:
-            self.message_broker.register_handler(
-                self.handler_name,
-                self.handle_message
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to register with broker: {str(e)}")
-            raise
-
-    def register_callback(self, event_type: str, callback: Callable) -> None:
-        """Register callback for specific event type"""
-        with self._lock:
-            self._callbacks[event_type] = callback
+    async def register_callback(self, event_type: MessageType, callback: Callable[[ProcessingMessage], Coroutine]) -> None:
+        """Register async callback for specific event type"""
+        async with self._async_lock:
+            self._callbacks[event_type.value] = callback
             self.logger.debug(f"Registered callback for {event_type}")
 
-    def handle_message(self, message: ProcessingMessage) -> None:
-        """Main message handling entry point"""
+    async def handle_message(self, message: ProcessingMessage) -> None:
+        """Asynchronous message handling entry point"""
         try:
             context = self._create_message_context(message)
             self._active_contexts[context.message_id] = context
 
             # Process message
-            self._process_message(message, context)
+            await self._process_message(message, context)
 
             # Update metrics
             self._update_metrics(True)
 
         except Exception as e:
-            self._handle_error(message, e)
+            await self._handle_error(message, e)
             self._update_metrics(False)
 
-    def _process_message(self, message: ProcessingMessage,
-                         context: MessageContext) -> None:
-        """Process incoming message"""
+    async def _process_message(self, message: ProcessingMessage, context: MessageContext) -> None:
+        """Process incoming message asynchronously"""
         self.status = HandlerStatus.BUSY
 
         try:
@@ -127,7 +128,7 @@ class BaseChannelHandler:
                 raise ValueError(f"No callback registered for {message.message_type}")
 
             # Execute callback
-            callback(message)
+            await callback(message)
 
             # Cleanup context
             self._cleanup_context(context.message_id)
@@ -135,9 +136,11 @@ class BaseChannelHandler:
         finally:
             self.status = HandlerStatus.READY
 
-    def send_response(self, target_id: str, message_type: MessageType,
-                      content: Dict[str, Any]) -> None:
-        """Send response message"""
+    async def send_response(self, 
+                             target_id: ModuleIdentifier, 
+                             message_type: MessageType,
+                             content: Dict[str, Any]) -> None:
+        """Send response message asynchronously"""
         try:
             message = ProcessingMessage(
                 message_id=str(uuid.uuid4()),
@@ -147,7 +150,7 @@ class BaseChannelHandler:
                 content=content
             )
 
-            self.message_broker.publish(message)
+            await self.message_broker.publish(message)
 
         except Exception as e:
             self.logger.error(f"Failed to send response: {str(e)}")
@@ -161,8 +164,8 @@ class BaseChannelHandler:
             target_id=str(message.target_identifier)
         )
 
-    def _handle_error(self, message: ProcessingMessage, error: Exception) -> None:
-        """Handle processing errors"""
+    async def _handle_error(self, message: ProcessingMessage, error: Exception) -> None:
+        """Handle processing errors asynchronously"""
         context = self._active_contexts.get(message.message_id)
         if not context:
             self.logger.error("No context found for error handling")
@@ -173,11 +176,11 @@ class BaseChannelHandler:
         if context.retries < context.max_retries:
             # Retry processing
             context.retries += 1
-            self._process_message(message, context)
+            await self._process_message(message, context)
         else:
             # Send error notification
-            self.send_response(
-                context.source_id,
+            await self.send_response(
+                message.source_identifier,
                 MessageType.ERROR,
                 {
                     'error': str(error),
@@ -189,28 +192,28 @@ class BaseChannelHandler:
             )
             self._cleanup_context(context.message_id)
 
-    def _setup_error_handling(self) -> None:
-        """Setup error handling and recovery mechanisms"""
+    async def _setup_error_handling(self) -> None:
+        """Setup async error handling and recovery mechanisms"""
         try:
-            # Register error message handler
-            self.register_callback(MessageType.SOURCE_ERROR, self._handle_error_message)
-            self.register_callback(MessageType.PIPELINE_ERROR, self._handle_error_message)
-            self.register_callback(MessageType.QUALITY_ERROR, self._handle_error_message)
-            self.register_callback(MessageType.STAGE_ERROR, self._handle_error_message)
-            self.register_callback(MessageType.ROUTE_ERROR, self._handle_error_message)
+            # Register error message handlers
+            error_types = [
+                MessageType.SOURCE_ERROR, 
+                MessageType.PIPELINE_ERROR, 
+                MessageType.QUALITY_ERROR, 
+                MessageType.STAGE_ERROR, 
+                MessageType.ROUTE_ERROR
+            ]
 
-            # Set up basic error recovery
-            self._error_recovery_attempts = 0
-            self._max_recovery_attempts = 3
-            self._error_states: Dict[str, Any] = {}
+            for error_type in error_types:
+                await self.register_callback(error_type, self._handle_error_message)
 
             self.logger.info(f"Error handling setup complete for {self.handler_name}")
         except Exception as e:
             self.logger.error(f"Failed to setup error handling: {str(e)}")
             raise
 
-    def _handle_error_message(self, message: ProcessingMessage) -> None:
-        """Handle incoming error messages"""
+    async def _handle_error_message(self, message: ProcessingMessage) -> None:
+        """Handle incoming error messages asynchronously"""
         try:
             error_info = message.content.get('error', {})
             error_source = message.source_identifier.get_tag()
@@ -227,11 +230,11 @@ class BaseChannelHandler:
 
             # Attempt recovery if possible
             if self._error_recovery_attempts < self._max_recovery_attempts:
-                self._attempt_error_recovery(message)
+                await self._attempt_error_recovery(message)
             else:
                 self.logger.error(f"Max recovery attempts reached for {message.message_id}")
                 # Propagate error up
-                self.send_response(
+                await self.send_response(
                     target_id=message.source_identifier,
                     message_type=MessageType.SOURCE_ERROR,
                     content={
@@ -245,8 +248,8 @@ class BaseChannelHandler:
             self.logger.error(f"Error handling error message: {str(e)}")
             raise
 
-    def _attempt_error_recovery(self, message: ProcessingMessage) -> None:
-        """Attempt to recover from error state"""
+    async def _attempt_error_recovery(self, message: ProcessingMessage) -> None:
+        """Attempt to recover from error state asynchronously"""
         try:
             self._error_recovery_attempts += 1
             error_state = self._error_states.get(message.message_id)
@@ -255,7 +258,7 @@ class BaseChannelHandler:
                 error_state['recovery_attempted'] = True
 
                 # Notify about recovery attempt
-                self.send_response(
+                await self.send_response(
                     target_id=message.source_identifier,
                     message_type=MessageType.SOURCE_VALIDATE,
                     content={
@@ -273,7 +276,7 @@ class BaseChannelHandler:
 
     def _update_metrics(self, success: bool) -> None:
         """Update handler metrics"""
-        with self._lock:
+        with threading.Lock():
             self.metrics.messages_processed += 1
             if not success:
                 self.metrics.errors_count += 1
@@ -298,7 +301,7 @@ class BaseChannelHandler:
             }
         }
 
-    def __del__(self):
-        """Cleanup handler resources"""
+    async def cleanup(self) -> None:
+        """Asynchronous cleanup of handler resources"""
         self.status = HandlerStatus.DISCONNECTED
         self._active_contexts.clear()

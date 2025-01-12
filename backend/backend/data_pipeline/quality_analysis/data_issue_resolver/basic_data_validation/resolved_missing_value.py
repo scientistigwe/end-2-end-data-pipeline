@@ -12,7 +12,7 @@ import numpy as np
 from sklearn.impute import SimpleImputer, KNNImputer
 import logging
 
-from backend.backend.data_pipeline.quality_analysis.data_issue_analyser.basic_data_validation.analyse_missing_value import \
+from backend.data_pipeline.quality_analysis.data_issue_analyser.basic_data_validation.analyse_missing_value import \
     AnalysisResult
 
 logger = logging.getLogger(__name__)

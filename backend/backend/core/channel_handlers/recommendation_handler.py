@@ -1,14 +1,19 @@
-# backend/core/channel_handlers/recommendation_handler.py
-
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
+from uuid import UUID
 
 from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
+from backend.core.channel_handlers.core_process_handler import CoreProcessHandler
 from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType, ProcessingMessage
+from backend.core.messaging.types import (
+    MessageType,
+    ProcessingMessage,
+    ProcessingStatus,
+    ProcessingStage,
+    ModuleIdentifier,
+    ComponentType
+)
 from backend.data_pipeline.recommendation.recommendation_processor import (
     RecommendationProcessor,
     RecommendationPhase
@@ -17,215 +22,212 @@ from backend.data_pipeline.recommendation.recommendation_processor import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RecommendationContext:
-    """Context for recommendation processing"""
-    pipeline_id: str
-    user_id: str
-    context_type: str
-    current_phase: RecommendationPhase
-    source_data: Dict[str, Any]
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-    status: str = "pending"
-
-
 class RecommendationChannelHandler(BaseChannelHandler):
     """
-    Handles communication between orchestrator and recommendation processor
+    Handles communication and routing for recommendation-related messages
+
+    Responsibilities:
+    - Route recommendation-related messages
+    - Coordinate with recommendation processor
+    - Interface with recommendation manager
     """
 
-    def __init__(self, message_broker: MessageBroker):
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            process_handler: Optional[CoreProcessHandler] = None,
+            recommendation_processor: Optional[RecommendationProcessor] = None
+    ):
+        """Initialize recommendation channel handler"""
         super().__init__(message_broker, "recommendation_handler")
 
-        # Initialize recommendation processor
-        self.recommendation_processor = RecommendationProcessor(message_broker)
-
-        # Track active recommendations
-        self.active_recommendations: Dict[str, RecommendationContext] = {}
+        # Initialize dependencies
+        self.process_handler = process_handler or CoreProcessHandler(message_broker)
+        self.recommendation_processor = recommendation_processor or RecommendationProcessor(message_broker)
 
         # Register message handlers
         self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Register message handlers"""
+        """Register message handlers for recommendation processing"""
         self.register_callback(
-            MessageType.START_RECOMMENDATION,
+            MessageType.RECOMMENDATION_START,
             self._handle_recommendation_start
-        )
-        self.register_callback(
-            MessageType.GENERATE_RECOMMENDATIONS,
-            self._handle_recommendation_request
-        )
-        self.register_callback(
-            MessageType.RECOMMENDATION_UPDATE,
-            self._handle_recommendation_update
         )
         self.register_callback(
             MessageType.RECOMMENDATION_COMPLETE,
             self._handle_recommendation_complete
         )
         self.register_callback(
+            MessageType.RECOMMENDATION_UPDATE,
+            self._handle_recommendation_update
+        )
+        self.register_callback(
             MessageType.RECOMMENDATION_ERROR,
             self._handle_recommendation_error
         )
 
-    def initiate_recommendations(self, pipeline_id: str, user_id: str,
-                               context_type: str, data: Dict[str, Any],
-                               metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Entry point for recommendation process"""
-        try:
-            # Create recommendation context
-            rec_context = RecommendationContext(
-                pipeline_id=pipeline_id,
-                user_id=user_id,
-                context_type=context_type,
-                current_phase=RecommendationPhase.CANDIDATE_GENERATION,
-                source_data=data,
-                metadata=metadata or {}
-            )
-
-            self.active_recommendations[pipeline_id] = rec_context
-
-            # Start recommendation process
-            self.recommendation_processor.start_recommendation_process(
-                pipeline_id=pipeline_id,
-                user_id=user_id,
-                context_type=context_type,
-                metadata={**metadata, 'source_data': data} if metadata else {'source_data': data}
-            )
-
-        except Exception as e:
-            self.logger.error(f"Failed to initiate recommendations: {str(e)}")
-            self._handle_processing_error(pipeline_id, str(e))
-
     def _handle_recommendation_start(self, message: ProcessingMessage) -> None:
         """Handle recommendation process start request"""
-        pipeline_id = message.content['pipeline_id']
-        user_id = message.content['user_id']
-        context_type = message.content['context_type']
-        data = message.content.get('data', {})
-        metadata = message.content.get('metadata', {})
-
-        self.initiate_recommendations(pipeline_id, user_id, context_type, data, metadata)
-
-    def _handle_recommendation_request(self, message: ProcessingMessage) -> None:
-        """Process recommendation generation request"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            user_id = message.content.get('user_id', 'default_user')
-            context_type = message.content.get('context_type', 'general')
+            pipeline_id = message.content.get('pipeline_id')
             data = message.content.get('data', {})
-            metadata = message.content.get('metadata', {})
+            context = message.content.get('context', {})
 
-            self.initiate_recommendations(pipeline_id, user_id, context_type, data, metadata)
-
-        except Exception as e:
-            self.logger.error(f"Failed to process recommendation request: {str(e)}")
-            self._handle_processing_error(message.content.get('pipeline_id'), str(e))
-
-    def _handle_recommendation_update(self, message: ProcessingMessage) -> None:
-        """Handle recommendation process updates"""
-        pipeline_id = message.content['pipeline_id']
-        phase = message.content.get('phase')
-        status = message.content.get('status')
-
-        context = self.active_recommendations.get(pipeline_id)
-        if context:
-            context.current_phase = RecommendationPhase(phase)
-            context.status = status
-
-            # Forward update to orchestrator
-            self.send_response(
-                target_id=f"pipeline_manager_{pipeline_id}",
+            # Create response message to recommendation manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="recommendation_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_recommendation_start"
+                ),
                 message_type=MessageType.RECOMMENDATION_STATUS_UPDATE,
                 content={
                     'pipeline_id': pipeline_id,
-                    'phase': phase,
-                    'status': status,
-                    'timestamp': datetime.now().isoformat()
+                    'status': 'started',
+                    'phase': RecommendationPhase.CANDIDATE_GENERATION.value
                 }
             )
+
+            # Execute process via process handler
+            self.process_handler.execute_process(
+                self._run_recommendation_process,
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                message_type=MessageType.RECOMMENDATION_START,
+                data=data,
+                context=context
+            )
+
+            # Publish response to manager
+            self.message_broker.publish(response)
+
+        except Exception as e:
+            logger.error(f"Failed to start recommendation process: {e}")
+            self._handle_recommendation_error(
+                ProcessingMessage(
+                    source_identifier=self.module_id,
+                    target_identifier=ModuleIdentifier(
+                        component_name="recommendation_manager",
+                        component_type=ComponentType.MANAGER
+                    ),
+                    message_type=MessageType.RECOMMENDATION_ERROR,
+                    content={
+                        'error': str(e),
+                        'pipeline_id': message.content.get('pipeline_id')
+                    }
+                )
+            )
+
+    async def _run_recommendation_process(self, data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Core recommendation process execution logic"""
+        try:
+            # Run candidate generation phase
+            candidates = await self.recommendation_processor.generate_candidates(
+                context.get('recommendation_id'),
+                data,
+                context
+            )
+
+            # Run ranking phase
+            ranked_recommendations = await self.recommendation_processor.rank_recommendations(
+                context.get('recommendation_id'),
+                candidates
+            )
+
+            # Run filtering and finalization phase
+            final_recommendations = await self.recommendation_processor.finalize_recommendations(
+                context.get('recommendation_id'),
+                ranked_recommendations,
+                context
+            )
+
+            return {
+                'candidates': candidates,
+                'ranked_recommendations': ranked_recommendations,
+                'final_recommendations': final_recommendations,
+                'pipeline_id': context.get('pipeline_id')
+            }
+
+        except Exception as e:
+            logger.error(f"Recommendation process failed: {e}")
+            raise
 
     def _handle_recommendation_complete(self, message: ProcessingMessage) -> None:
         """Handle recommendation process completion"""
-        pipeline_id = message.content['pipeline_id']
-        context = self.active_recommendations.get(pipeline_id)
-
-        if context:
-            # Forward completion to orchestrator
-            self.send_response(
-                target_id=f"pipeline_manager_{pipeline_id}",
-                message_type=MessageType.RECOMMENDATIONS_READY,
+        try:
+            # Create completion response for manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="recommendation_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_recommendation_complete"
+                ),
+                message_type=MessageType.RECOMMENDATION_COMPLETE,
                 content={
-                    'pipeline_id': pipeline_id,
-                    'recommendations': message.content.get('recommendations', []),
-                    'metadata': context.metadata,
-                    'timestamp': datetime.now().isoformat()
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'results': message.content.get('results', {}),
+                    'status': 'completed'
                 }
             )
 
-            # Cleanup
-            self._cleanup_recommendation(pipeline_id)
+            # Publish completion to manager
+            self.message_broker.publish(response)
+
+        except Exception as e:
+            logger.error(f"Error handling recommendation completion: {e}")
+
+    def _handle_recommendation_update(self, message: ProcessingMessage) -> None:
+        """Handle recommendation process updates"""
+        try:
+            # Forward update to recommendation manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="recommendation_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_recommendation_update"
+                ),
+                message_type=MessageType.RECOMMENDATION_STATUS_UPDATE,
+                content={
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'status': message.content.get('status'),
+                    'progress': message.content.get('progress')
+                }
+            )
+
+            # Publish update to manager
+            self.message_broker.publish(response)
+
+        except Exception as e:
+            logger.error(f"Error handling recommendation update: {e}")
 
     def _handle_recommendation_error(self, message: ProcessingMessage) -> None:
         """Handle recommendation process errors"""
-        pipeline_id = message.content['pipeline_id']
-        error = message.content.get('error')
-        phase = message.content.get('phase')
-
-        self._handle_processing_error(pipeline_id, error, phase)
-
-    def _handle_processing_error(self, pipeline_id: str, error: str,
-                               phase: Optional[str] = None) -> None:
-        """Handle processing errors"""
-        context = self.active_recommendations.get(pipeline_id)
-        if context:
-            # Send error notification
-            self.send_response(
-                target_id=f"pipeline_manager_{pipeline_id}",
+        try:
+            # Forward error to recommendation manager
+            error_response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="recommendation_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_recommendation_error"
+                ),
                 message_type=MessageType.RECOMMENDATION_ERROR,
                 content={
-                    'pipeline_id': pipeline_id,
-                    'phase': phase or context.current_phase.value,
-                    'error': error,
-                    'timestamp': datetime.now().isoformat()
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'error': message.content.get('error')
                 }
             )
 
-            # Cleanup
-            self._cleanup_recommendation(pipeline_id)
+            # Publish error to manager
+            self.message_broker.publish(error_response)
 
-    def get_recommendation_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
-        """Get current recommendation status"""
-        context = self.active_recommendations.get(pipeline_id)
-        if not context:
-            return None
+        except Exception as e:
+            logger.error(f"Error handling recommendation error: {e}")
 
-        # Get status from both handler and processor
-        handler_status = {
-            'pipeline_id': pipeline_id,
-            'user_id': context.user_id,
-            'context_type': context.context_type,
-            'phase': context.current_phase.value,
-            'status': context.status,
-            'created_at': context.created_at.isoformat()
-        }
-
-        # Get detailed processor status
-        processor_status = self.recommendation_processor.get_process_status(pipeline_id)
-
-        return {
-            **handler_status,
-            'processor_details': processor_status
-        }
-
-    def _cleanup_recommendation(self, pipeline_id: str) -> None:
-        """Clean up recommendation resources"""
-        if pipeline_id in self.active_recommendations:
-            del self.active_recommendations[pipeline_id]
-
-    def __del__(self):
-        """Cleanup handler resources"""
-        self.active_recommendations.clear()
-        super().__del__()
+    def get_process_status(self, recommendation_id: str) -> Optional[Dict[str, Any]]:
+        """Get current process status"""
+        return self.process_handler.get_process_status(recommendation_id)

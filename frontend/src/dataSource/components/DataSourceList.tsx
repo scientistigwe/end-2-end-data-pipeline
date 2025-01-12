@@ -1,20 +1,34 @@
-// src/dataSource/components/DataSourceList.tsx
-import React from "react";
-import { Card } from "@/common/components/ui/card";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Settings, 
+  Trash2, 
+  RefreshCw, 
+  Database, 
+  FileText, 
+  Cloud, 
+  Network, 
+  Radio,
+  ChevronRight,
+  MoreHorizontal
+} from "lucide-react";
+import { 
+  Card, 
+  CardContent, 
+  CardHeader 
+} from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Button } from "@/common/components/ui/button";
-import {
-  Settings,
-  Trash2,
-  RefreshCw,
-  Database,
-  FileText,
-  Cloud,
-  Network,
-  Radio,
-} from "lucide-react";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/common/components/ui/dropdown-menu";
+import { Dialog, DialogTrigger } from "@/common/components/ui/dialog";
 import { ValidationDisplay } from "./validation";
 import { formatBytes } from "@/dataSource/utils";
+import { cn } from "@/lib/utils";
 import type {
   BaseMetadata,
   DataSourceStatus,
@@ -47,128 +61,217 @@ const TYPE_ICONS: Record<DataSourceType, React.ReactNode> = {
   stream: <Radio className="h-5 w-5" />,
 };
 
-export const DataSourceList = ({
+export const DataSourceList: React.FC<DataSourceListProps> = ({
   sources,
   onSelect,
   onEdit,
   onDelete,
   onSync,
   className = "",
-}: DataSourceListProps) => (
-  <div className={`space-y-4 ${className}`}>
-    {sources.map((source) => (
-      <Card
-        key={source.id}
-        className="p-4 hover:bg-gray-50 cursor-pointer"
-        onClick={() => onSelect(source.id)}
-      >
-        <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              {TYPE_ICONS[source.type]}
-              <h3 className="text-lg font-medium">{source.name}</h3>
-              <Badge className={STATUS_STYLES[source.status]}>
-                {source.status}
-              </Badge>
-            </div>
+}) => {
+  const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
 
-            {source.description && (
-              <p className="text-sm text-gray-600">{source.description}</p>
-            )}
+  const toggleExpand = (id: string) => {
+    setExpandedSourceId(prev => prev === id ? null : id);
+  };
 
-            {source.tags && source.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {source.tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex space-x-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSync(source.id);
-              }}
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className={cn("space-y-4", className)}
+    >
+      <AnimatePresence>
+        {sources.map((source) => (
+          <motion.div
+            key={source.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card 
+              className="overflow-hidden hover:shadow-lg transition-shadow"
             >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(source.id);
-              }}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-red-600 hover:text-red-700"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(source.id);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+              <CardHeader 
+                onClick={() => onSelect(source.id)}
+                className="cursor-pointer p-4 hover:bg-accent/5 transition-colors group"
+              >
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-3">
+                    {TYPE_ICONS[source.type]}
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-lg font-medium">
+                          {source.name}
+                        </h3>
+                        <Badge className={STATUS_STYLES[source.status]}>
+                          {source.status}
+                        </Badge>
+                      </div>
+                      {source.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {source.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
 
-        {source.error && (
-          <div className="mt-2">
-            <ValidationDisplay
-              validation={{
-                isValid: false,
-                issues: [
-                  {
-                    severity: "error",
-                    message: source.error.message,
-                    type: source.error.code || "Error",
-                    field: undefined,
-                  },
-                ],
-                warnings: [],
-              }}
-              compact
-            />
-          </div>
-        )}
+                  <div className="flex items-center space-x-2">
+                    {/* Dropdown Menu for Actions */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onSelect={() => onSync(source.id)}
+                          className="cursor-pointer"
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Sync
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onSelect={() => onEdit(source.id)}
+                          className="cursor-pointer"
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onSelect={() => onDelete(source.id)}
+                          className="text-destructive cursor-pointer focus:bg-destructive/10"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
 
-        <div className="mt-4 grid grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="text-gray-500">Last Sync</p>
-            <p className="font-medium">
-              {source.lastSync
-                ? new Date(source.lastSync).toLocaleString()
-                : "Never"}
-            </p>
-          </div>
-          <div>
-            <p className="text-gray-500">Type Details</p>
-            <p className="font-medium capitalize">{source.type}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Created</p>
-            <p className="font-medium">
-              {new Date(source.createdAt).toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-gray-500">Updated</p>
-            <p className="font-medium">
-              {new Date(source.updatedAt).toLocaleString()}
-            </p>
-          </div>
-        </div>
-      </Card>
-    ))}
-  </div>
-);
+                    {/* Expand/Collapse Button */}
+                    <motion.button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(source.id);
+                      }}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <motion.div
+                        animate={{ 
+                          rotate: expandedSourceId === source.id ? 90 : 0 
+                        }}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </motion.div>
+                    </motion.button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              {/* Expandable Details */}
+              <AnimatePresence>
+                {expandedSourceId === source.id && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ 
+                      opacity: 1, 
+                      height: 'auto',
+                      transition: { duration: 0.3 }
+                    }}
+                    exit={{ 
+                      opacity: 0, 
+                      height: 0,
+                      transition: { duration: 0.2 }
+                    }}
+                    className="border-t"
+                  >
+                    <CardContent className="p-4">
+                      {source.error && (
+                        <div className="mb-4">
+                          <ValidationDisplay
+                            validation={{
+                              isValid: false,
+                              issues: [
+                                {
+                                  severity: "error",
+                                  message: source.error.message,
+                                  type: source.error.code || "Error",
+                                  field: undefined,
+                                },
+                              ],
+                              warnings: [],
+                            }}
+                            compact
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Last Sync</p>
+                          <p className="font-medium">
+                            {source.lastSync
+                              ? new Date(source.lastSync).toLocaleString()
+                              : "Never"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Type Details</p>
+                          <p className="font-medium capitalize">
+                            {source.type}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Created</p>
+                          <p className="font-medium">
+                            {new Date(source.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Updated</p>
+                          <p className="font-medium">
+                            {new Date(source.updatedAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      {source.tags && source.tags.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {source.tags.map((tag, index) => (
+                            <Badge key={index} variant="secondary">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Card>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {sources.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center py-8 text-muted-foreground"
+        >
+          <p>No data sources found</p>
+          <p className="text-sm mt-2">Add a new data source to get started</p>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+};

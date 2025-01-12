@@ -1,207 +1,318 @@
-# stream_manager.py
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
-import threading
-import queue
+from typing import Dict, Any, Optional, List
 
 from backend.core.messaging.types import ComponentType
 from backend.core.registry.component_registry import ComponentRegistry
 from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
 from .stream_validator import StreamValidator
 from .stream_fetcher import StreamFetcher
+from .stream_config import Config
 
 logger = logging.getLogger(__name__)
 
 class StreamManager:
-    """Enhanced stream management system with messaging integration"""
+    """Core processing and orchestration for stream operations"""
 
     def __init__(self, message_broker):
-        """Initialize StreamManager with component registration"""
         self.message_broker = message_broker
         self.registry = ComponentRegistry()
         self.validator = StreamValidator()
-
-        # Initialize with consistent UUID and proper ComponentType
+        
+        # Component registration
         component_uuid = self.registry.get_component_uuid("StreamManager")
         self.module_id = ModuleIdentifier(
             component_name="StreamManager",
-            component_type=ComponentType.MODULE,  # Add proper component type
+            component_type=ComponentType.MODULE,
             method_name="process_stream",
             instance_id=component_uuid
         )
 
-        # Track active streams and operations
-        self.active_streams: Dict[str, Dict[str, Any]] = {}
-        self.stream_threads: Dict[str, threading.Thread] = {}
-        self.message_queues: Dict[str, queue.Queue] = {}
+        # State tracking
+        self.active_connections: Dict[str, StreamFetcher] = {}
+        self.pending_requests: Dict[str, Dict[str, Any]] = {}
 
-        # Register and subscribe
         self._initialize_messaging()
         logger.info(f"StreamManager initialized with ID: {self.module_id.get_tag()}")
 
     def _initialize_messaging(self) -> None:
-        """Set up message broker registration and subscriptions"""
+        """Initialize messaging with orchestrator"""
         try:
-            # Register with message broker
             self.message_broker.register_component(self.module_id)
+            orchestrator_id = self._get_orchestrator_id()
 
-            # Get orchestrator ID
-            orchestrator_id = ModuleIdentifier(
-                component_name="DataOrchestrator",
-                component_type=ComponentType.ORCHESTRATOR,
-                method_name="manage_pipeline",
-                instance_id=self.registry.get_component_uuid("DataOrchestrator")
-            )
-
-            # Subscribe to relevant patterns based on source type
-            patterns = []
-
-            # For StreamManager
             patterns = [
-                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_COMPLETE.value}",
-                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_ERROR.value}"
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
+                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}"
             ]
 
             for pattern in patterns:
                 self.message_broker.subscribe(
                     component=self.module_id,
                     pattern=pattern,
-                    callback=self._handle_orchestrator_response,
-                    timeout=10.0
+                    callback=self._handle_orchestrator_response
                 )
-            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
+            
+            logger.info("Messaging initialized")
         except Exception as e:
-            logger.error(f"Error initializing messaging: {str(e)}")
+            logger.error(f"Messaging initialization error: {str(e)}")
             raise
 
-    def initialize_stream(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Initialize stream connection"""
+    def process_stream_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process incoming stream requests"""
         try:
-            stream_id = str(uuid.uuid4())
-            
-            # Validate stream configuration
-            config_valid, config_msg = self.validator.validate_stream_config(config)
-            if not config_valid:
-                raise ValueError(config_msg)
+            request_id = str(uuid.uuid4())
+            action = request_data.get('action')
 
-            # Create and validate connection based on stream type
-            stream_fetcher = StreamFetcher(config)
-            if config['stream_type'] == 'kafka':
-                valid, msg = self.validator.validate_kafka_connection(config)
-            else:  # rabbitmq
-                valid, msg = self.validator.validate_rabbitmq_connection(config)
-
-            if not valid:
-                raise ValueError(msg)
-
-            # Initialize message queue and consumer thread
-            self.message_queues[stream_id] = queue.Queue()
-            self.active_streams[stream_id] = {
-                'fetcher': stream_fetcher,
-                'config': config,
-                'status': 'initialized',
+            # Track request
+            self.pending_requests[request_id] = {
+                'action': action,
+                'status': 'received',
                 'created_at': datetime.now().isoformat()
             }
 
-            return {
-                'status': 'success',
-                'stream_id': stream_id,
-                'message': 'Stream connection initialized'
-            }
+            logger.info(f"Processing {action} request (ID: {request_id})")
+
+            if action == 'connect':
+                return self._handle_connect_request(request_id, request_data.get('data', {}))
+            elif action == 'consumer':
+                return self._handle_consumer_request(
+                    request_id,
+                    request_data.get('connection_id'),
+                    request_data.get('consumer_data', {})
+                )
+            elif action == 'topic':
+                return self._handle_topic_request(
+                    request_id,
+                    request_data.get('connection_id'),
+                    request_data.get('topic_data', {})
+                )
+            else:
+                raise ValueError(f"Unknown action: {action}")
 
         except Exception as e:
-            logger.error(f"Stream initialization error: {str(e)}")
+            logger.error(f"Request processing error: {str(e)}")
+            if request_id:
+                self._handle_request_error(request_id, str(e))
             raise
 
-    def start_stream_processing(self, stream_id: str) -> Dict[str, Any]:
-        """Start stream processing"""
+    def _handle_connect_request(self, request_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle connection request"""
         try:
-            if stream_id not in self.active_streams:
-                raise ValueError("Invalid stream ID")
+            # Validate configuration
+            is_valid, message = self.validator.validate_stream_config(data)
+            if not is_valid:
+                raise ValueError(message)
 
-            stream_info = self.active_streams[stream_id]
-            stream_info['status'] = 'starting'
-
-            def stream_worker():
-                try:
-                    stream_info['fetcher'].initialize_consumer()
-                    stream_info['status'] = 'processing'
-                    
-                    def message_handler(message_data: Dict[str, Any]):
-                        try:
-                            processed_data = self._process_stream_data(
-                                stream_id, message_data
-                            )
-                            self._send_to_orchestrator(stream_id, processed_data)
-                        except Exception as e:
-                            logger.error(f"Message handling error: {str(e)}")
-
-                    stream_info['fetcher'].consume_stream(message_handler)
-                except Exception as e:
-                    logger.error(f"Stream processing error: {str(e)}")
-                    stream_info['status'] = 'error'
-                    stream_info['error'] = str(e)
-
-            # Start processing thread
-            processing_thread = threading.Thread(
-                target=stream_worker,
-                daemon=True
-            )
-            self.stream_threads[stream_id] = processing_thread
-            processing_thread.start()
-
-            return {
-                'status': 'success',
-                'message': 'Stream processing started'
-            }
-
-        except Exception as e:
-            logger.error(f"Stream start error: {str(e)}")
-            raise
-
-    def _process_stream_data(self, stream_id: str, message_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process stream message data"""
-        try:
-            stream_info = self.active_streams[stream_id]
+            # Create fetcher
+            connection_id = str(uuid.uuid4())
+            stream_fetcher = StreamFetcher(Config.get_fetcher_config(data))
             
-            return {
-                "status": "success",
-                "source_type": stream_info['config']['stream_type'],
-                "data": message_data['data'],
-                "metadata": {
-                    **message_data['metadata'],
-                    "stream_id": stream_id,
-                    "processed_at": datetime.now().isoformat()
-                }
-            }
-        except Exception as e:
-            raise ValueError(str(e))
+            # Test connection
+            test_result = stream_fetcher.test_connection()
+            if not test_result.get('connected'):
+                raise ValueError(f"Connection test failed: {test_result.get('message')}")
 
-    def _send_to_orchestrator(self, stream_id: str, processed_data: Dict[str, Any]) -> None:
-        """Send processed data to orchestrator"""
-        try:
-            orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+            # Store connection
+            self.active_connections[connection_id] = stream_fetcher
+            
+            # Update request status
+            self.pending_requests[request_id].update({
+                'connection_id': connection_id,
+                'status': 'connected'
+            })
+
+            # Notify orchestrator
+            self._send_to_orchestrator(
+                request_id,
+                'connect',
+                {
+                    'connection_id': connection_id,
+                    'config': data,
+                    'test_result': test_result
+                }
             )
 
+            return {
+                'status': 'success',
+                'request_id': request_id,
+                'connection_id': connection_id
+            }
+
+        except Exception as e:
+            self._handle_request_error(request_id, str(e))
+            raise
+
+    def _handle_consumer_request(
+        self, 
+        request_id: str, 
+        connection_id: str, 
+        consumer_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle consumer operations"""
+        try:
+            if connection_id not in self.active_connections:
+                raise ValueError(f"Connection {connection_id} not found")
+
+            fetcher = self.active_connections[connection_id]
+            operation = consumer_data.get('operation')
+
+            if operation == 'start':
+                result = fetcher.start_consumer(consumer_data)
+            elif operation == 'stop':
+                result = fetcher.stop_consumer(consumer_data.get('consumer_id'))
+            else:
+                raise ValueError(f"Unknown consumer operation: {operation}")
+
+            self._send_to_orchestrator(
+                request_id,
+                'consumer',
+                {
+                    'connection_id': connection_id,
+                    'operation': operation,
+                    'result': result
+                }
+            )
+
+            return {
+                'status': 'success',
+                'request_id': request_id,
+                'data': result
+            }
+
+        except Exception as e:
+            self._handle_request_error(request_id, str(e))
+            raise
+
+    def _handle_topic_request(
+        self, 
+        request_id: str, 
+        connection_id: str, 
+        topic_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle topic operations"""
+        try:
+            if connection_id not in self.active_connections:
+                raise ValueError(f"Connection {connection_id} not found")
+
+            fetcher = self.active_connections[connection_id]
+            operation = topic_data.get('operation')
+
+            if operation == 'create':
+                result = fetcher.create_topic(topic_data)
+            elif operation == 'delete':
+                result = fetcher.delete_topic(topic_data.get('topic_name'))
+            else:
+                raise ValueError(f"Unknown topic operation: {operation}")
+
+            self._send_to_orchestrator(
+                request_id,
+                'topic',
+                {
+                    'connection_id': connection_id,
+                    'operation': operation,
+                    'result': result
+                }
+            )
+
+            return {
+                'status': 'success',
+                'request_id': request_id,
+                'data': result
+            }
+
+        except Exception as e:
+            self._handle_request_error(request_id, str(e))
+            raise
+
+    def get_metrics(self, connection_id: str) -> Dict[str, Any]:
+        """Get metrics for a connection"""
+        try:
+            if connection_id not in self.active_connections:
+                raise ValueError(f"Connection {connection_id} not found")
+
+            fetcher = self.active_connections[connection_id]
+            return {
+                'status': 'success',
+                'data': fetcher.get_metrics()
+            }
+
+        except Exception as e:
+            logger.error(f"Metrics error: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    def list_connections(self) -> Dict[str, Any]:
+        """List all active connections"""
+        try:
+            connections = [
+                {
+                    'connection_id': conn_id,
+                    'status': 'active',
+                    'consumers': fetcher.list_consumers(),
+                    'topics': fetcher.list_topics()
+                }
+                for conn_id, fetcher in self.active_connections.items()
+            ]
+
+            return {
+                'status': 'success',
+                'data': connections
+            }
+
+        except Exception as e:
+            logger.error(f"List connections error: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    def close_connection(self, connection_id: str) -> Dict[str, Any]:
+            """Close a connection"""
+            try:
+                if connection_id not in self.active_connections:
+                    raise ValueError(f"Connection {connection_id} not found")
+
+                # Close fetcher
+                fetcher = self.active_connections[connection_id]
+                fetcher.close()
+
+                # Remove from active connections
+                del self.active_connections[connection_id]
+
+                return {
+                    'status': 'success',
+                    'message': f'Connection {connection_id} closed successfully'
+                }
+
+            except Exception as e:
+                logger.error(f"Connection closure error: {str(e)}")
+                return {
+                    'status': 'error',
+                    'message': str(e)
+                }
+
+    def _send_to_orchestrator(self, request_id: str, action: str, data: Dict[str, Any]) -> None:
+        """Send data to orchestrator"""
+        try:
             message = ProcessingMessage(
                 source_identifier=self.module_id,
-                target_identifier=orchestrator_id,
+                target_identifier=self._get_orchestrator_id(),
                 message_type=MessageType.SOURCE_SUCCESS,
                 content={
-                    'stream_id': stream_id,
-                    'action': 'process_stream_data',
-                    'data': processed_data['data'],
-                    'metadata': processed_data['metadata'],
-                    'source_type': processed_data['source_type']
+                    'request_id': request_id,
+                    'source_type': 'stream',
+                    'action': action,
+                    'data': data,
+                    'timestamp': datetime.now().isoformat()
                 }
             )
 
             self.message_broker.publish(message)
+            logger.info(f"Sent {action} request {request_id} to orchestrator")
 
         except Exception as e:
             logger.error(f"Error sending to orchestrator: {str(e)}")
@@ -210,86 +321,59 @@ class StreamManager:
     def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
         """Handle responses from orchestrator"""
         try:
-            stream_id = message.content.get('stream_id')
-            if not stream_id or stream_id not in self.active_streams:
-                logger.warning(f"Received response for unknown stream ID: {stream_id}")
+            content = message.content
+            request_id = content.get('request_id')
+            
+            if not request_id in self.pending_requests:
+                logger.warning(f"Response for unknown request: {request_id}")
                 return
 
-            stream_info = self.active_streams[stream_id]
+            request = self.pending_requests[request_id]
+            
+            if message.message_type == MessageType.SOURCE_SUCCESS:
+                request['status'] = 'completed'
+                request['result'] = content.get('result')
+                logger.info(f"Request {request_id} completed")
+            
+            elif message.message_type == MessageType.SOURCE_ERROR:
+                self._handle_request_error(request_id, content.get('error'))
 
-            if message.message_type == MessageType.PIPELINE_COMPLETE:
-                logger.info(f"Stream {stream_id} processed successfully")
-                stream_info['status'] = 'completed'
-            elif message.message_type == MessageType.PIPELINE_ERROR:
-                logger.error(f"Error processing stream {stream_id}")
-                self._handle_orchestrator_error(stream_id, message.content.get('error'))
-            elif message.message_type == MessageType.PIPELINE_PAUSE:
-                logger.info(f"Stream {stream_id} paused")
-                stream_info['status'] = 'paused'
+            # Update metrics if available
+            if metrics := content.get('metrics'):
+                connection_id = request.get('connection_id')
+                if connection_id in self.active_connections:
+                    self.active_connections[connection_id].update_metrics(metrics)
 
         except Exception as e:
             logger.error(f"Error handling orchestrator response: {str(e)}")
 
-    def _handle_orchestrator_error(self, stream_id: str, error_message: str) -> None:
-        """Handle orchestrator-reported errors"""
+    def _handle_request_error(self, request_id: str, error: str) -> None:
+        """Handle request errors"""
         try:
-            if stream_id in self.active_streams:
-                stream_info = self.active_streams[stream_id]
-                logger.error(f"Processing failed for stream {stream_id}: {error_message}")
+            if request_id in self.pending_requests:
+                self.pending_requests[request_id].update({
+                    'status': 'error',
+                    'error': error,
+                    'error_at': datetime.now().isoformat()
+                })
+                logger.error(f"Request {request_id} failed: {error}")
 
-                # Update stream status
-                stream_info['status'] = 'error'
-                stream_info['error_message'] = error_message
-                stream_info['error_timestamp'] = datetime.now().isoformat()
-
-                # Stop the stream
-                self.stop_stream(stream_id)
-
-            else:
-                logger.warning(f"Received error for unknown stream ID: {stream_id}")
-        except Exception as e:
-            logger.error(f"Error handling orchestrator error: {str(e)}")
-
-    def get_stream_status(self, stream_id: str) -> Dict[str, Any]:
-        """Get current stream status"""
-        try:
-            if stream_id not in self.active_streams:
-                raise ValueError("Invalid stream ID")
-
-            stream_info = self.active_streams[stream_id]
-            return {
-                'status': stream_info['status'],
-                'stream_type': stream_info['config']['stream_type'],
-                'created_at': stream_info['created_at'],
-                'error': stream_info.get('error')
-            }
-        except Exception as e:
-            logger.error(f"Status retrieval error: {str(e)}")
-            raise
-
-    def stop_stream(self, stream_id: str) -> None:
-        """Stop stream processing and cleanup"""
-        try:
-            if stream_id in self.active_streams:
-                stream_info = self.active_streams[stream_id]
-                stream_info['status'] = 'stopping'
-                
-                # Close stream fetcher
-                stream_info['fetcher'].close()
-                
-                # Wait for thread to finish
-                if stream_id in self.stream_threads:
-                    self.stream_threads[stream_id].join(timeout=5.0)
-                    del self.stream_threads[stream_id]
-
-                # Cleanup
-                del self.active_streams[stream_id]
-                if stream_id in self.message_queues:
-                    del self.message_queues[stream_id]
-
-                logger.info(f"Stopped stream: {stream_id}")
+                # Cleanup if needed
+                if error_type := self.pending_requests[request_id].get('action'):
+                    if error_type == 'connect':
+                        connection_id = self.pending_requests[request_id].get('connection_id')
+                        if connection_id in self.active_connections:
+                            self.active_connections[connection_id].close()
+                            del self.active_connections[connection_id]
 
         except Exception as e:
-            logger.error(f"Stream stop error: {str(e)}")
-            raise
+            logger.error(f"Error handling request error: {str(e)}")
 
+    def _get_orchestrator_id(self) -> ModuleIdentifier:
+        """Get orchestrator identifier"""
+        return ModuleIdentifier(
+            component_name="DataOrchestrator",
+            component_type=ComponentType.ORCHESTRATOR,
+            method_name="manage_pipeline",
+            instance_id=self.registry.get_component_uuid("DataOrchestrator")
+        )

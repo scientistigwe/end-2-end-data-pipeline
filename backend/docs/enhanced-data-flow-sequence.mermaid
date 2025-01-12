@@ -1,42 +1,163 @@
 sequenceDiagram
-    participant UI as User Interface
-    participant FileMgr as File Manager
-    participant Orch as DataOrchestrator
-    participant Broker as MessageBroker
-    participant Cond as DataConductor
-    participant Stage as EnhancedStagingArea
-    participant DQMod as data_quality_report.py
-    participant MVMod as issue_missing_values.py
+    participant UI as Frontend (React)
+    participant Auth as Auth Module
+    participant DSM as DataSource Manager
+    participant CPM as Control Point Manager
+    participant MB as Message Broker
+    participant PM as Pipeline Manager
+    participant QH as Quality Handler
+    participant QP as Quality Processor
+    participant DH as Decision Handler
+    participant AM as Analytics Module
+    participant IM as Insight Module
+    participant MM as Monitoring Module
+    participant DB as Database
+    participant Logger as Audit Logger
+    participant FS as FileService
+    participant FM as FileManager
+    participant Pipe as Pipeline
 
-    UI->>FileMgr: Upload xyz.csv
-    activate FileMgr
-    FileMgr->>FileMgr: Prepare Data (DataFrame/Parquet)
-    FileMgr->>Orch: Send Pre-processed Data & Metadata
-    deactivate FileMgr
-    activate Orch
+    Note over UI, DSM: Frontend Layer
+    Note over CPM: System Boundary
+    Note over MB, Logger: Backend Layer
 
-    Orch->>Stage: Stage Data & Confirm Staging
-    activate Stage
-    Stage-->>Orch: Return Staging Metadata
-    deactivate Stage
+    Note over UI, Auth: Stage 0: Authentication
+    UI->>Auth: Login Request
+    Auth->>Auth: Validate Credentials
+    Auth-->>UI: JWT Token
+    Logger->>Logger: Log Auth Success
 
-    Orch->>Cond: Request Processing Flow
-    activate Cond
-    Cond->>Orch: Return Flow Plan (Modules List)
-    deactivate Cond
+    Note over UI, DSM: Stage 1: Data Source Setup
+    UI->>DSM: Initialize Data Source
+    DSM->>DSM: Validate Configuration
 
-    Orch->>DQMod: Send Data for Quality Check
-    activate DQMod
-    DQMod->>Orch: Send Quality Report
-    deactivate DQMod
+    alt API Source Setup
+        DSM->>DSM: API Validation
+        DSM->>DSM: Connection Test
+    else Database Setup
+        DSM->>DSM: DB Connection Test
+        DSM->>DSM: Schema Validation
+    else File Upload
+        DSM->>DSM: File Validation
+        DSM->>DSM: Content Check
+    end
 
-    Orch->>MVMod: Send Data for Missing Values Check
-    activate MVMod
-    MVMod->>Orch: Send Missing Values Analysis
-    deactivate MVMod
+    %% Integrating Second Diagram's Initial Upload Flow
+    UI->>FS: Upload File Request
+    activate FS
+    FS->>CPM: Create Initial Control Point
+    CPM-->>FS: Control Point ID
+    FS-->>UI: Upload Accepted (Async)
 
-    Orch->>UI: Compile and Send Final Report
-    UI-->>Orch: Acknowledge Report Receipt
+    DSM->>CPM: Source Ready Event
+    CPM->>CPM: Create Control Point
+    CPM->>MB: Publish Source Event
+    MB->>PM: Route to Pipeline Manager
+    PM->>MB: Acknowledge Setup
+    MB->>CPM: Route Response
+    CPM->>DSM: Forward Response
+    DSM-->>UI: Show Status
 
-    Orch->>Broker: Log Processing Cycle (Optional)
-    deactivate Orch
+    Note over PM, QH: Stage 2: Pipeline Processing
+    PM->>MB: Publish Pipeline Start
+    MB->>MM: Route to Monitoring
+    MB->>QH: Route to Quality Handler
+    QH->>QP: Process Quality
+    QP->>MB: Publish Quality Results
+    MB->>CPM: Route Quality Results
+    CPM->>CPM: Create Quality Control Point
+    CPM->>DSM: Request Decision
+    DSM-->>UI: Show Quality Review UI
+
+    %% Integrating Second Diagram's Processing Flow
+    FS->>FM: Process File Request
+    activate FM
+    FM->>CPM: Create Processing Control Point
+    CPM-->>FM: Control Point ID
+    FM->>Pipe: Start Processing
+
+    alt Quality Issues Found
+        UI->>DSM: Select Resolution
+        DSM->>CPM: Forward Resolution
+        CPM->>MB: Publish Resolution
+        MB->>QP: Process Resolution
+        QP->>MB: Publish Results
+        MB->>CPM: Route Results
+        CPM->>DSM: Forward Results
+        DSM-->>UI: Show Results
+    else No Issues
+        UI->>DSM: Approve Quality
+        DSM->>CPM: Forward Approval
+        CPM->>MB: Publish Approval
+    end
+
+    Note over PM, AM: Stage 3: Analysis
+    CPM->>MB: Request Analysis
+    MB->>AM: Route to Analytics
+    AM->>AM: Execute Analysis
+    AM->>MB: Publish Results
+    MB->>CPM: Route Results
+    CPM->>CPM: Create Analysis Point
+    CPM->>DSM: Request Review
+    DSM-->>UI: Show Analysis UI
+
+    alt Needs Modification
+        UI->>DSM: Submit Changes
+        DSM->>CPM: Forward Changes
+        CPM->>MB: Publish Changes
+        MB->>AM: Process Changes
+        AM->>MB: New Results
+        MB->>CPM: Route Results
+        CPM->>DSM: Forward Results
+        DSM-->>UI: Show Updates
+    else Accept Analysis
+        UI->>DSM: Approve Analysis
+        DSM->>CPM: Forward Approval
+        CPM->>MB: Publish Approval
+    end
+
+    %% Integrating Second Diagram's Response Flow - Success Path
+    Pipe-->>FM: Processing Result
+    FM->>CPM: Update Control Point
+    CPM-->>FM: Decision Required
+    FM-->>FS: Stage Complete
+    FS-->>UI: Status Update
+    deactivate FM
+
+    %% Final Response
+    Pipe-->>FM: Final Result
+    FM-->>FS: Processing Complete
+    FS-->>UI: Final Response
+    deactivate FS
+
+    %% Error Path
+    Note over FM,CPM: Error Handling
+    FM->>CPM: Error Control Point
+    CPM-->>FS: Error Notification
+    FS-->>UI: Error Response
+
+    Note over PM, IM: Stage 4: Insights
+    CPM->>MB: Request Insights
+    MB->>IM: Generate Insights
+    IM->>MB: Publish Insights
+    MB->>CPM: Route Insights
+    CPM->>DSM: Forward Insights
+    DSM-->>UI: Show Insights
+
+    Note over MM, Logger: Continuous Monitoring
+    MM->>MB: Publish Health Updates
+    MB->>CPM: Route Health Status
+    CPM->>DSM: Forward Updates
+    DSM-->>UI: Show Updates
+    Logger->>Logger: Audit Trail
+
+    Note over CPM, MB: Error Handling
+    alt Error Occurs
+        CPM->>CPM: Create Error Point
+        CPM->>MB: Publish Error
+        MB->>PM: Handle Error
+        PM->>MB: Error Response
+        MB->>CPM: Route Response
+        CPM->>DSM: Forward Error
+        DSM-->>UI: Show Error
+    end

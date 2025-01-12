@@ -13,6 +13,14 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from .base import BaseModel
+from sqlalchemy import (
+    Column, String, Boolean, Enum,
+    ForeignKey, Integer
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
+from .base import BaseModel
+from typing import TYPE_CHECKING
 
 class Event(BaseModel):
     """Model for tracking system events."""
@@ -55,11 +63,20 @@ class Event(BaseModel):
         {'extend_existing': True}
     )
 
+
+if TYPE_CHECKING:
+    from .auth import User
+
 class EventSubscription(BaseModel):
     """Model for event subscriptions and notifications."""
     __tablename__ = 'event_subscriptions'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
     event_type = Column(String(100), nullable=False)
     entity_type = Column(String(50))
     entity_id = Column(UUID(as_uuid=True))
@@ -74,10 +91,16 @@ class EventSubscription(BaseModel):
     config = Column(JSONB)
     is_active = Column(Boolean, default=True)
 
+    # Use fully qualified string-based relationship
     user = relationship(
-        'User',
-        foreign_keys=[user_id],  # Explicitly specify foreign keys
-        back_populates='event_subscriptions'  # Add back_populates to complete the relationship
+        'auth.User',  # Fully qualified import path as a string
+        back_populates='event_subscriptions',
+        foreign_keys=[user_id]
+    )
+
+    __table_args__ = (
+        Index('ix_event_subscriptions_user_event', 'user_id', 'event_type'),
+        {'extend_existing': True}
     )
 
 

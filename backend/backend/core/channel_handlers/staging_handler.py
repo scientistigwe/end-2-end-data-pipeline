@@ -1,166 +1,275 @@
-# backend/core/channel_handlers/staging_handler.py
-
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, List
 from datetime import datetime
+from uuid import UUID
 
+from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import (
     MessageType,
     ProcessingMessage,
     ProcessingStatus,
+    ProcessingStage,
+    ModuleIdentifier,
     ComponentType
 )
-from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
+
+logger = logging.getLogger(__name__)
 
 
-class StagingChannelHandler(BaseChannelHandler):
-    """Handles communication between orchestrator and staging area"""
+class StagingHandler(BaseChannelHandler):
+    """
+    Enhanced staging handler with CPM integration and comprehensive resource management
 
-    def __init__(self, message_broker: MessageBroker):
+    Responsibilities:
+    - Handle resource staging requests
+    - Coordinate with control points
+    - Manage resource lifecycle
+    - Interface with storage system
+    """
+
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            control_point_manager: Optional[Any] = None,
+            storage_manager: Optional[Any] = None
+    ):
+        """Initialize staging handler"""
         super().__init__(message_broker, "staging_handler")
+
+        # Initialize dependencies
+        self.control_point_manager = control_point_manager
+        self.storage_manager = storage_manager
+
+        # Register message handlers
         self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Register message handlers"""
-        self.register_callback(MessageType.STAGE_STORE, self._handle_stage_request)
-        self.register_callback(MessageType.STAGE_RETRIEVE, self._handle_retrieve_request)
-        self.register_callback(MessageType.STAGE_UPDATE, self._handle_update_request)
-        self.register_callback(MessageType.STAGE_DELETE, self._handle_delete_request)
-        self.register_callback(MessageType.STAGE_SUCCESS, self._handle_status_request)
-        self.register_callback(MessageType.STAGE_ERROR, self._handle_error)
-
-    def handle_staging_request(self, pipeline_id: str, operation: str, content: Dict[str, Any]) -> None:
-        """Route staging request to appropriate handler"""
-        try:
-            self.send_message(
-                MessageType.STAGE_STORE,  # Changed from STAGE_REQUEST
-                {
-                    'pipeline_id': pipeline_id,
-                    'operation': operation,
-                    **content
-                }
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to handle staging request: {str(e)}")
-            raise
-
-    def notify_staging_complete(self, pipeline_id: str, result: Dict[str, Any]) -> None:
-        """Notify staging completion"""
-        try:
-            self.send_message(
-                MessageType.STAGE_SUCCESS,  # Changed from STAGE_COMPLETE
-                {
-                    'pipeline_id': pipeline_id,
-                    'result': result
-                }
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to notify staging complete: {str(e)}")
-            raise
-
-    def notify_staging_error(self, pipeline_id: str, error: Dict[str, Any]) -> None:
-        """Notify staging error"""
-        try:
-            self.send_message(
-                MessageType.STAGE_ERROR,
-                {
-                    'pipeline_id': pipeline_id,
-                    'error': error
-                }
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to notify staging error: {str(e)}")
-            raise
-
-    def _handle_stage_request(self, message: ProcessingMessage) -> None:
-        """Handle incoming stage request"""
-        try:
-            self.send_response(
-                target_id=message.source_identifier,
-                message_type=MessageType.STAGE_REQUEST_RECEIVED,
-                content={
-                    'pipeline_id': message.content['pipeline_id'],
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
-        except Exception as e:
-            self._handle_error(message, str(e))
-
-    def _handle_status_request(self, message: ProcessingMessage) -> None:
-        """Forward status request"""
-        try:
-            self.send_message(
-                MessageType.GET_STAGE_STATUS,
-                {
-                    'pipeline_id': message.content['pipeline_id'],
-                    'request_id': message.content.get('request_id'),
-                    'source_id': message.source_identifier
-                }
-            )
-        except Exception as e:
-            self._handle_error(message, str(e))
-
-    def _handle_retrieve_request(self, message: ProcessingMessage) -> None:
-        """Forward retrieve request"""
-        try:
-            self.send_message(
-                MessageType.RETRIEVE_DATA,
-                {
-                    'staging_id': message.content['staging_id'],
-                    'request_id': message.content.get('request_id'),
-                    'source_id': message.source_identifier
-                }
-            )
-        except Exception as e:
-            self._handle_error(message, str(e))
-
-    def _handle_update_request(self, message: ProcessingMessage) -> None:
-        """Forward update request"""
-        try:
-            self.send_message(
-                MessageType.UPDATE_DATA,
-                {
-                    'staging_id': message.content['staging_id'],
-                    'data': message.content.get('data'),
-                    'metadata_updates': message.content.get('metadata_updates'),
-                    'source_id': message.source_identifier
-                }
-            )
-        except Exception as e:
-            self._handle_error(message, str(e))
-
-    def _handle_delete_request(self, message: ProcessingMessage) -> None:
-        """Forward delete request"""
-        try:
-            self.send_message(
-                MessageType.DELETE_DATA,
-                {
-                    'staging_id': message.content['staging_id'],
-                    'source_id': message.source_identifier
-                }
-            )
-        except Exception as e:
-            self._handle_error(message, str(e))
-
-    def _handle_error(self, message: ProcessingMessage, error: str) -> None:
-        """Handle and forward errors"""
-        self.send_response(
-            target_id=message.source_identifier,
-            message_type=MessageType.STAGE_ERROR,
-            content={
-                'pipeline_id': message.content.get('pipeline_id'),
-                'staging_id': message.content.get('staging_id'),
-                'error': error,
-                'timestamp': datetime.now().isoformat()
-            }
+        """Register message handlers for staging operations"""
+        self.register_callback(
+            MessageType.STAGE_STORE,
+            self._handle_stage_request
+        )
+        self.register_callback(
+            MessageType.STAGE_RETRIEVE,
+            self._handle_retrieve_request
+        )
+        self.register_callback(
+            MessageType.STAGE_UPDATE,
+            self._handle_update_request
+        )
+        self.register_callback(
+            MessageType.STAGE_DELETE,
+            self._handle_delete_request
+        )
+        self.register_callback(
+            MessageType.CONTROL_POINT_DECISION,
+            self._handle_control_point_decision
+        )
+        self.register_callback(
+            MessageType.STAGE_VALIDATE,
+            self._handle_validation_request
         )
 
-    def cleanup_pipeline(self, pipeline_id: str) -> None:
-        """Request pipeline cleanup"""
+    async def _handle_stage_request(self, message: ProcessingMessage) -> None:
+        """Handle resource staging request"""
         try:
-            self.send_message(
-                MessageType.CLEANUP_REQUEST,
-                {'pipeline_id': pipeline_id}
+            pipeline_id = message.content.get('pipeline_id')
+            resource_data = message.content.get('resource_data', {})
+            requires_approval = message.content.get('requires_approval', True)
+
+            # Generate preview if possible
+            preview_data = await self._generate_preview(resource_data)
+
+            # Create control point if approval required
+            if requires_approval and self.control_point_manager:
+                control_point_id = await self.control_point_manager.create_control_point(
+                    pipeline_id=pipeline_id,
+                    stage=ProcessingStage.STAGING,
+                    data={
+                        'resource_preview': preview_data,
+                        'metadata': resource_data.get('metadata', {})
+                    },
+                    options=['approve', 'reject', 'modify']
+                )
+                resource_data['control_point_id'] = control_point_id
+                status = 'awaiting_decision'
+            else:
+                status = 'approved'
+
+            # Store resource
+            if self.storage_manager:
+                storage_location = await self.storage_manager.store_resource(
+                    pipeline_id,
+                    resource_data['data'],
+                    resource_data.get('format')
+                )
+                resource_data['storage_location'] = storage_location
+
+            # Notify resource staged
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=message.source_identifier,
+                message_type=MessageType.STAGE_SUCCESS,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'resource_id': resource_data.get('resource_id'),
+                    'status': status,
+                    'requires_approval': requires_approval
+                }
             )
+            await self.message_broker.publish(response)
+
         except Exception as e:
-            self.logger.error(f"Failed to request pipeline cleanup: {str(e)}")
+            logger.error(f"Failed to stage resource: {e}")
+            await self._handle_staging_error(
+                pipeline_id,
+                str(e),
+                message.source_identifier
+            )
+
+    async def _handle_retrieve_request(self, message: ProcessingMessage) -> None:
+        """Handle resource retrieval request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            resource_id = message.content.get('resource_id')
+
+            if not self.storage_manager:
+                raise ValueError("Storage manager not configured")
+
+            # Retrieve resource data
+            resource_data = await self.storage_manager.retrieve_resource(
+                pipeline_id,
+                resource_id
+            )
+
+            # Send response with resource data
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=message.source_identifier,
+                message_type=MessageType.STAGE_RETRIEVE_SUCCESS,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'resource_id': resource_id,
+                    'data': resource_data
+                }
+            )
+            await self.message_broker.publish(response)
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve resource: {e}")
+            await self._handle_staging_error(
+                pipeline_id,
+                str(e),
+                message.source_identifier
+            )
+
+    async def _handle_control_point_decision(self, message: ProcessingMessage) -> None:
+        """Handle control point decision"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            resource_id = message.content.get('resource_id')
+            decision = message.content.get('decision')
+
+            if decision == 'approve':
+                # Move to next stage
+                await self._process_approval(
+                    pipeline_id,
+                    resource_id,
+                    message.content.get('context', {})
+                )
+            elif decision == 'reject':
+                # Handle rejection
+                await self._process_rejection(
+                    pipeline_id,
+                    resource_id,
+                    message.content.get('reason')
+                )
+            elif decision == 'modify':
+                # Handle modification request
+                await self._process_modification(
+                    pipeline_id,
+                    resource_id,
+                    message.content.get('modifications', {})
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to process control point decision: {e}")
+            await self._handle_staging_error(pipeline_id, str(e))
+
+    async def _process_approval(
+            self,
+            pipeline_id: str,
+            resource_id: UUID,
+            context: Dict[str, Any]
+    ) -> None:
+        """Process resource approval"""
+        try:
+            # Notify pipeline manager
+            approval_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="pipeline_manager",
+                    component_type=ComponentType.MANAGER
+                ),
+                message_type=MessageType.RESOURCE_APPROVED,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'resource_id': resource_id,
+                    'context': context
+                }
+            )
+            await self.message_broker.publish(approval_message)
+
+        except Exception as e:
+            logger.error(f"Failed to process approval: {e}")
+            raise
+
+    async def _process_rejection(
+            self,
+            pipeline_id: str,
+            resource_id: UUID,
+            reason: Optional[str]
+    ) -> None:
+        """Process resource rejection"""
+        try:
+            # Notify pipeline manager
+            rejection_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="pipeline_manager",
+                    component_type=ComponentType.MANAGER
+                ),
+                message_type=MessageType.RESOURCE_REJECTED,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'resource_id': resource_id,
+                    'reason': reason
+                }
+            )
+            await self.message_broker.publish(rejection_message)
+
+        except Exception as e:
+            logger.error(f"Failed to process rejection: {e}")
+            raise
+
+    async def _process_modification(
+            self,
+            pipeline_id: str,
+            resource_id: UUID,
+            modifications: Dict[str, Any]
+    ) -> None:
+        pass
+    #     """Process resource modification request"""
+    #     try:
+    #         if not self.storage_manager:
+    #             raise ValueError("Storage manager not configured")
+    #
+    #         # Apply modifications to resource
+    #         modified_data = await self.storage_manager.modify_resource(
+    #             pipeline_id,
+    #             resource_id,
+    #             modifications
+    #         )
+    #
+    #         # Create new control

@@ -259,3 +259,57 @@ class QualityGate(BaseModel):
        CheckConstraint('threshold >= 0 AND threshold <= 1', name='ck_threshold_range'),
        {'extend_existing': True}
    )
+
+
+class PipelineLog(BaseModel):
+    __tablename__ = 'pipeline_logs'
+
+    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), nullable=False)
+    event_type = Column(String(100), nullable=False)
+    message = Column(Text)
+    details = Column(JSONB)
+    timestamp = Column(DateTime, nullable=False, index=True)
+
+    pipeline = relationship('Pipeline', backref='logs')
+
+    __table_args__ = (
+        Index('ix_pipeline_logs_pipeline_timestamp', 'pipeline_id', 'timestamp'),
+        {'extend_existing': True}
+    )
+
+class PipelineVersion(BaseModel):
+    __tablename__ = 'pipeline_versions'
+
+    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    config = Column(JSONB)
+    created_at = Column(DateTime, nullable=False)
+
+    pipeline = relationship('Pipeline', backref='versions')
+
+    __table_args__ = (
+        UniqueConstraint('pipeline_id', 'version_number', name='uq_pipeline_version'),
+        Index('ix_pipeline_versions_pipeline', 'pipeline_id'),
+        Index('ix_pipeline_versions_created_at', 'created_at'),
+        {'extend_existing': True}
+    )
+
+
+class PipelineTemplate(BaseModel):
+    __tablename__ = 'pipeline_templates'
+
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    config = Column(JSONB, nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+    creator = relationship('User', foreign_keys=[created_by])
+
+    __table_args__ = (
+        Index('ix_pipeline_templates_name', 'name'),
+        UniqueConstraint('name', name='uq_template_name'),
+        {'extend_existing': True}
+    )

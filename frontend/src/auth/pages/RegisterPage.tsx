@@ -1,6 +1,8 @@
 // auth/pages/RegisterPage.tsx
 import React from "react";
+import { motion } from "framer-motion";
 import { useNavigate, Link, useLocation } from "react-router-dom";
+import { UserPlus } from "lucide-react";
 import { RegisterForm } from "../components/RegisterForm";
 import { useAuth } from "../hooks/useAuth";
 import type { RegisterData } from "../types/auth";
@@ -32,23 +34,54 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full">
-      <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-foreground">
-        Create your account
-      </h2>
-      <p className="mt-2 text-center text-sm text-muted-foreground">
+    <motion.div
+      initial={{ opacity: 0, y: 50 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="w-full max-w-md mx-auto space-y-6 p-4"
+    >
+      <div className="text-center">
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 20
+          }}
+          className="inline-flex items-center justify-center bg-primary/10 p-4 rounded-full mb-4"
+        >
+          <UserPlus className="w-8 h-8 text-primary" />
+        </motion.div>
+
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">
+          Create Your Account
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Join our platform and unlock powerful data capabilities
+        </p>
+      </div>
+
+      <RegisterForm
+        onSubmit={handleRegister}
+        isLoading={isRegistering}
+      />
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="text-center text-sm text-muted-foreground"
+      >
         Already have an account?{" "}
         <Link
           to="/login"
-          className="font-medium text-primary hover:text-primary/90"
+          className="font-medium text-primary hover:text-primary/90 transition-colors"
         >
-          Sign in
+          Sign in to your account
         </Link>
-      </p>
-      <div className="mt-8">
-        <RegisterForm onSubmit={handleRegister} isLoading={isRegistering} />
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

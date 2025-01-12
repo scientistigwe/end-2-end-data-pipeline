@@ -4,6 +4,8 @@ from sqlalchemy import Column, String, DateTime, Boolean, Enum, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
+from .auth import User
+from .events import EventSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +29,15 @@ try:
     )
 
     logger.info("Importing analysis models...")
-    from .analysis import (
-        InsightAnalysis,
-        Pattern,
-        Correlation,
-        Anomaly
+    from .insight_model import (
+        InsightRun,
+        Insight,
+        InsightFeedback,
+        InsightAction,
+        InsightImpact,
+        InsightPattern,
+        InsightCorrelation,
+        InsightGoalMapping
     )
 
     logger.info("Importing data source models...")
@@ -44,25 +50,27 @@ try:
     logger.info("Importing pipeline models...")
     from .pipeline import (
         Pipeline, PipelineStep, PipelineRun,
-        PipelineStepRun, QualityGate
+        PipelineStepRun, QualityGate, PipelineLog, PipelineVersion, PipelineTemplate
     )
 
-    logger.info("Importing decisions and recommendations models...")
-    from .decisions_recommendations import (
-        Decision, DecisionOption, DecisionComment,
-        DecisionHistory, Recommendation, RecommendationFeedback
-    )
+    logger.info("Importing decision models...")
+    from .decision import Decision, DecisionOption, DecisionComment, DecisionHistory
+
+    logger.info("Importing recommendation models...")
+    from .recommendation import Recommendation, RecommendationFeedback
+
 
     logger.info("Importing monitoring models...")
-    from .monitoring import (
-        MonitoringMetric, ResourceUsage, Alert,
-        AlertRule, HealthCheck
-    )
+    from .monitoring import MonitoringMetric, ResourceUsage, Alert, AlertRule, HealthCheck
 
     logger.info("Importing report models...")
-    from .reports import (
-        Report, ReportTemplate, ReportSection,
-        ReportSchedule, ReportExecution
+    from .report_model import (
+        ReportVisualization,
+        ReportValidation,
+        ReportTemplate,
+        ReportSection,
+        ReportSchedule,
+        ReportRun
     )
 
     logger.info("Importing settings models...")
@@ -75,6 +83,20 @@ try:
         Tag, AuditLog, Notification, Comment, File
     )
 
+    logger.info("Importing staging models...")
+    from .staging_model import StagingDecision, StagingEvent, StagingModification, StagedResource
+
+    logger.info("Importing event models...")
+    from .events import EventSubscription, Event, EventProcessor
+
+    logger.info("Importing advanced analytics models...")
+    from .advanced_analytics_model import (
+        AnalyticsModel,
+        AnalyticsRun,
+        AnalyticsResult,
+        AnalyticsFeature,
+        AnalyticsVisualization,
+    )
     logger.info("All models imported successfully")
 
 except Exception as e:
@@ -88,22 +110,31 @@ except Exception as e:
 __all__ = [
     'Base',
     'BaseModel',
+
     # Dataset
     'Dataset',
+
     # Validation
     'ValidationRule',
-    'QualityCheck',  # Moved to validation section
+    'QualityCheck',
     'ValidationResult',
     'RemediationAction',
+
     # Auth
     'User',
     'UserSession',
     'UserActivityLog',
+
     # Analysis
-    'InsightAnalysis',
-    'Pattern',
-    'Correlation',
-    'Anomaly',
+    'InsightRun',
+    'Insight',
+    'InsightFeedback',
+    'InsightAction',
+    'InsightImpact',
+    'InsightPattern',
+    'InsightCorrelation',
+    'InsightGoalMapping',
+
     # Data Sources
     'DataSource',
     'APISourceConfig',
@@ -113,39 +144,69 @@ __all__ = [
     'FileSourceInfo',
     'SourceConnection',
     'SourceSyncHistory',
+
     # Pipeline
     'Pipeline',
     'PipelineStep',
     'PipelineRun',
     'PipelineStepRun',
     'QualityGate',
-    # Decisions & Recommendations
+    'PipelineLog',
+    'PipelineVersion',
+    'PipelineTemplate',
+
+    # Decision
     'Decision',
     'DecisionOption',
     'DecisionComment',
     'DecisionHistory',
+
+    # Recommendation
     'Recommendation',
     'RecommendationFeedback',
+
     # Monitoring
     'MonitoringMetric',
     'ResourceUsage',
     'Alert',
     'AlertRule',
     'HealthCheck',
-    # Reports
-    'Report',
+
+    # Report
+    'ReportVisualization',
+    'ReportValidation',
     'ReportTemplate',
     'ReportSection',
     'ReportSchedule',
-    'ReportExecution',
+    'ReportRun',
+
     # Settings
     'UserSettings',
     'SystemSettings',
     'Integration',
+
     # Utils
     'Tag',
     'AuditLog',
     'Notification',
     'Comment',
-    'File'
+    'File',
+
+    # Staging Model
+    'StagingDecision',
+    'StagingEvent',
+    'StagingModification',
+    'StagedResource',
+
+    # Events
+    'EventSubscription',
+    'Event',
+    'EventProcessor',
+
+    # Advanced Analytics Models
+    'AnalyticsModel',
+    'AnalyticsRun',
+    'AnalyticsResult',
+    'AnalyticsFeature',
+    'AnalyticsVisualization',
 ]

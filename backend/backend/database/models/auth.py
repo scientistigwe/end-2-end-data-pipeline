@@ -7,6 +7,11 @@ from sqlalchemy.orm import relationship, validates
 from .base import BaseModel
 from datetime import datetime, timedelta
 
+from typing import List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .events import EventSubscription
+
 class User(BaseModel):
     """User model for authentication and authorization."""
     __tablename__ = 'users'
@@ -97,10 +102,12 @@ class User(BaseModel):
         foreign_keys='[Notification.user_id]',
         cascade='all, delete-orphan'
     )
+    # Modify the event_subscriptions relationship
     event_subscriptions = relationship(
-        "EventSubscription",
-        back_populates="user",
-        foreign_keys="[EventSubscription.user_id]"
+        'EventSubscription',  # Use string reference
+        back_populates='user',
+        foreign_keys='[EventSubscription.user_id]',
+        cascade='all, delete-orphan'
     )
 
     __table_args__ = (

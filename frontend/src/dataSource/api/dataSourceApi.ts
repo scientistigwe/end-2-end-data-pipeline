@@ -1,4 +1,6 @@
-// src/dataSource/api/dataSourceApi.ts - REFACTORED
+// src/dataSource/api/dataSourceApi.ts
+
+import axios, { AxiosResponse } from 'axios';
 import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { RouteHelper } from '@/common/api/routes';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
@@ -8,28 +10,103 @@ import type {
     ValidationResult,
     PreviewData,
     DataSourceFilters,
-    SourceConnectionResponse
+    SourceConnectionResponse,
+    FileUploadResponse,
+    FileMetadataResponse,
+    FileParseOptions,
+    FileParseResponse
 } from '../types/base';
 
 class DataSourceApi {
-  private client = baseAxiosClient;
+    private client = baseAxiosClient;
 
-  constructor() {
-    this.client.setServiceConfig({
-      service: ServiceType.DATA_SOURCES,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      }
-    });
-  }
+    constructor() {
+        this.client.setServiceConfig({
+            service: ServiceType.DATA_SOURCES,
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+    }
 
-    // Modified to match backend response structure
+    // File Operations with proper typing
+    async uploadFile(
+        file: File,
+        metadata: Record<string, any>,
+        onProgress?: (progress: number) => void
+    ): Promise<ApiResponse<FileUploadResponse>> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('metadata', JSON.stringify(metadata));
+
+        const config: ApiRequestConfig = {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+            onUploadProgress: (progressEvent: ProgressEvent) => {
+                if (onProgress && progressEvent.total) {
+                    const progress = Math.round(
+                        (progressEvent.loaded * 100) / progressEvent.total
+                    );
+                    onProgress(progress);
+                }
+            },
+        };
+
+        try {
+            return await this.client.executePost(
+                RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
+                formData,
+                config
+            );
+        } catch (error) {
+            console.error('File upload error:', error);
+            throw this.handleError(error);
+        }
+    }
+
+    async getFileMetadata(fileId: string): Promise<ApiResponse<FileMetadataResponse>> {
+        try {
+            return await this.client.executeGet(
+                RouteHelper.getNestedRoute(
+                    'DATA_SOURCES',
+                    'FILE',
+                    'METADATA',
+                    { file_id: fileId }
+                )
+            );
+        } catch (error) {
+            console.error('Get file metadata error:', error);
+            throw this.handleError(error);
+        }
+    }
+
+    async parseFile(
+        fileId: string, 
+        parseOptions: FileParseOptions
+    ): Promise<ApiResponse<FileParseResponse>> {
+        try {
+            return await this.client.executePost(
+                RouteHelper.getNestedRoute(
+                    'DATA_SOURCES',
+                    'FILE',
+                    'PARSE',
+                    { file_id: fileId }
+                ),
+                parseOptions
+            );
+        } catch (error) {
+            console.error('File parsing error:', error);
+            throw this.handleError(error);
+        }
+    }
+
+    // List all data sources with filters
     async listDataSources(filters?: DataSourceFilters): Promise<ApiResponse<{
         sources: {
-            api: BaseMetadata[];
-            databases: BaseMetadata[];
             files: BaseMetadata[];
+            databases: BaseMetadata[];
+            api: BaseMetadata[];
             s3: BaseMetadata[];
             stream: BaseMetadata[];
         }
@@ -40,60 +117,48 @@ class DataSourceApi {
         );
     }
 
+    // Basic CRUD operations
     async createDataSource(
-      config: BaseDataSourceConfig
-      ): Promise<ApiResponse<BaseMetadata>> {
-          const endpoint = RouteHelper.getRoute('DATA_SOURCES', 'CREATE');
-          return this.client.executePost(endpoint, config);
-      }
-
-      async deleteDataSource(
-          sourceId: string
-      ): Promise<ApiResponse<void>> {
-          const endpoint = RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: sourceId });
-          return this.client.executeDelete(endpoint);
-  }
-  
-    // File Operations
-    async uploadFile(
-        files: File[], 
-        metadata: Record<string, any>,
-        onProgress?: (progress: number) => void
-    ): Promise<ApiResponse<{ fileId: string; metadata: BaseMetadata }>> {
-        const formData = new FormData();
-        files.forEach(file => formData.append('file', file));
-        formData.append('metadata', JSON.stringify(metadata));
-
+        config: BaseDataSourceConfig
+    ): Promise<ApiResponse<BaseMetadata>> {
         return this.client.executePost(
-            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
-            formData,
-            {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                onUploadProgress: onProgress ? 
-                    (event) => {
-                        if (event.total) {
-                            onProgress((event.loaded / event.total) * 100);
-                        }
-                    } : undefined
-            }
+            RouteHelper.getRoute('DATA_SOURCES', 'CREATE'),
+            config
         );
     }
 
-    async getFileMetadata(fileId: string): Promise<ApiResponse<BaseMetadata>> {
-        return this.client.executeGet(
-            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'METADATA', { file_id: fileId })
+    async deleteDataSource(sourceId: string): Promise<ApiResponse<void>> {
+        return this.client.executeDelete(
+            RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: sourceId })
         );
     }
 
-    async parseFile(
-        fileId: string, 
-        options: Record<string, any>
+    // Validation and Preview
+    async validateDataSource(sourceId: string): Promise<ApiResponse<ValidationResult>> {
+        return this.client.executePost(
+            RouteHelper.getRoute('DATA_SOURCES', 'VALIDATE', { source_id: sourceId })
+        );
+    }
+
+    async previewData(
+        sourceId: string,
+        options?: { limit?: number; offset?: number }
     ): Promise<ApiResponse<PreviewData>> {
-        return this.client.executePost(
-            RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'PARSE', { file_id: fileId }),
-            options
+        return this.client.executeGet(
+            RouteHelper.getRoute('DATA_SOURCES', 'PREVIEW', { source_id: sourceId }),
+            { params: options }
         );
     }
+
+    // Error handling
+    private handleError(error: any): Error {
+        if (axios.isAxiosError(error)) {
+            const message = error.response?.data?.message || error.message;
+            return new Error(`API Error: ${message}`);
+        }
+        return error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+
 
     // Database Operations
     async connectDatabase(
@@ -202,25 +267,6 @@ class DataSourceApi {
         );
     }
 
-    // Common Operations
-    async validateDataSource(
-        sourceId: string
-    ): Promise<ApiResponse<ValidationResult>> {
-        return this.client.executePost(
-            RouteHelper.getRoute('DATA_SOURCES', 'VALIDATE', { source_id: sourceId })
-        );
-    }
-
-    async previewData(
-        sourceId: string,
-        options?: { limit?: number; offset?: number }
-    ): Promise<ApiResponse<PreviewData>> {
-        return this.client.executeGet(
-            RouteHelper.getRoute('DATA_SOURCES', 'PREVIEW', { source_id: sourceId }),
-            { params: options }
-        );
-    }
-
     async disconnectSource(
         connectionId: string
     ): Promise<ApiResponse<void>> {
@@ -230,4 +276,11 @@ class DataSourceApi {
     }
 }
 
+
 export const dataSourceApi = new DataSourceApi();
+
+// Type definitions (should be in a separate types file)
+export interface FileUploadProgressEvent extends ProgressEvent {
+    total: number;
+    loaded: number;
+}

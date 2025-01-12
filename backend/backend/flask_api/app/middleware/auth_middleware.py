@@ -9,9 +9,11 @@ from ..utils.route_registry import APIRoutes, RouteDefinition
 
 logger = logging.getLogger(__name__)
 
+
 def normalize_route(path: str) -> str:
     """Normalize route by removing trailing slashes"""
     return path.rstrip('/')
+
 
 def get_route_from_request(request_path: str, request_method: str) -> Optional[RouteDefinition]:
     """Match request path and method to defined API routes"""
@@ -19,7 +21,7 @@ def get_route_from_request(request_path: str, request_method: str) -> Optional[R
     # Remove /api/v1 prefix if present
     if normalized_path.startswith('/api/v1'):
         normalized_path = normalized_path[7:]
-    
+
     path_parts = normalized_path.split('/')
     logger.debug(f"Matching route: {normalized_path} [{request_method}]")
 
@@ -45,24 +47,24 @@ def get_route_from_request(request_path: str, request_method: str) -> Optional[R
     logger.debug("No matching route found")
     return None
 
+
 @contextmanager
 def get_db_session():
     """Context manager for database session handling"""
     if hasattr(g, 'db'):
         yield g.db
     else:
-        db = current_app.db
-        g.db = db
+        db_session = current_app.db_session
         try:
-            yield db
+            yield db_session
         finally:
-            db.close()
+            db_session.remove()
+
 
 def validate_and_get_user(user_id: str) -> Tuple[bool, Optional[Tuple[Any, int]]]:
-    """Validate user existence and set current user"""
     try:
-        with get_db_session() as db:
-            auth_service = AuthService(db)
+        with get_db_session() as db_session:
+            auth_service = AuthService(db_session)
             user = auth_service.get_user_by_id(user_id)
             if not user:
                 logger.error(f"No user found for id: {user_id}")
@@ -79,8 +81,10 @@ def validate_and_get_user(user_id: str) -> Tuple[bool, Optional[Tuple[Any, int]]
             "message": "Failed to validate user credentials"
         }), 401)
 
+
 def auth_middleware():
     """Authentication middleware using route registry"""
+
     def middleware():
         try:
             # Debug request information
@@ -91,7 +95,7 @@ def auth_middleware():
             # Add detailed cookie logging
             logger.debug("All cookies present: %s", request.cookies.keys())
             logger.debug("JWT Config: %s", {
-                key: value for key, value in current_app.config.items() 
+                key: value for key, value in current_app.config.items()
                 if key.startswith('JWT_')
             })
 
@@ -101,7 +105,7 @@ def auth_middleware():
             if not route_def:
                 logger.debug("Route not found in registry")
                 return None
-                
+
             if not route_def.requires_auth:
                 logger.debug("Route does not require authentication")
                 return None
@@ -145,15 +149,17 @@ def auth_middleware():
 
     return middleware
 
+
 def jwt_required_with_user():
     """Route decorator for JWT authentication with user context"""
+
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
             try:
                 # Debug decorator information
                 logger.debug(f"Protected route accessed: {request.path}")
-                
+
                 route_def = get_route_from_request(request.path, request.method)
 
                 if route_def and not route_def.requires_auth:
@@ -197,4 +203,5 @@ def jwt_required_with_user():
                 }), 401
 
         return decorator
+
     return wrapper

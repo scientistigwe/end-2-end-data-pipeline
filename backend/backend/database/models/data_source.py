@@ -111,20 +111,6 @@ class DataSource(BaseModel):
         'with_polymorphic': '*'
     }
 
-    @classmethod
-    def __declare_last__(cls):
-        """
-        Ensures that polymorphic identities are correctly registered.
-        This method is called after all mappers are configured.
-        """
-        from sqlalchemy.orm import registry
-
-        # Create a mapper registry if not exists
-        mapper_reg = registry()
-
-        # Explicitly register all polymorphic identities
-        mapper_reg.configure_mappers()
-
 
     @validates('config')
     def validate_config(self, key, config):

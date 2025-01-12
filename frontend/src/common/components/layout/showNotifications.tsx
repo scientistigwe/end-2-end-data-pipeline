@@ -1,65 +1,159 @@
 import { toast } from 'react-hot-toast';
-import { CheckCircleIcon, XCircleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import {
+  CheckCircle,
+  XCircle,
+  Info,
+  AlertTriangle
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
 interface NotificationOptions {
   title: string;
   message: string;
-  type?: 'success' | 'error' | 'info';
+  type?: NotificationType;
   duration?: number;
+  position?: 'top-right' | 'top-center' | 'bottom-right' | 'bottom-center';
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
-export const showNotification = (options: NotificationOptions) => {
-  const { title, message, type = 'info', duration = 3000 } = options;
+const typeConfig = {
+  success: {
+    icon: CheckCircle,
+    bgColor: 'bg-green-50',
+    textColor: 'text-green-800',
+    borderColor: 'border-green-200',
+    iconColor: 'text-green-500'
+  },
+  error: {
+    icon: XCircle,
+    bgColor: 'bg-red-50',
+    textColor: 'text-red-800',
+    borderColor: 'border-red-200',
+    iconColor: 'text-red-500'
+  },
+  warning: {
+    icon: AlertTriangle,
+    bgColor: 'bg-yellow-50',
+    textColor: 'text-yellow-800',
+    borderColor: 'border-yellow-200',
+    iconColor: 'text-yellow-500'
+  },
+  info: {
+    icon: Info,
+    bgColor: 'bg-blue-50',
+    textColor: 'text-blue-800',
+    borderColor: 'border-blue-200',
+    iconColor: 'text-blue-500'
+  }
+};
 
-  const toastOptions = {
-    duration,
-    style: {
-      borderRadius: '8px',
-      backgroundColor: getBackgroundColor(type),
-      color: getTextColor(type),
-    },
-  };
+export const showNotification = (options: NotificationOptions) => {
+  const {
+    title,
+    message,
+    type = 'info',
+    duration = 3000,
+    position = 'top-right',
+    action
+  } = options;
+
+  const config = typeConfig[type];
+  const Icon = config.icon;
+
+  // Determine toast position
+  const positionOptions = {
+    'top-right': { position: 'top-right' },
+    'top-center': { position: 'top-center' },
+    'bottom-right': { position: 'bottom-right' },
+    'bottom-center': { position: 'bottom-center' }
+  }[position];
 
   toast.custom(
-    <div className="flex items-center space-x-3 p-4">
-      {getIcon(type)}
-      <div>
-        <p className="font-medium">{title}</p>
-        <p className="text-sm">{message}</p>
+    (t) => (
+      <div
+        className={cn(
+          "max-w-md w-full shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 overflow-hidden",
+          config.bgColor,
+          config.borderColor,
+          config.textColor
+        )}
+      >
+        <div className="p-4 w-full">
+          <div className="flex items-start">
+            {/* Icon */}
+            <div className="flex-shrink-0">
+              <Icon className={cn("h-6 w-6", config.iconColor)} />
+            </div>
+
+            {/* Content */}
+            <div className="ml-3 w-0 flex-1 pt-0.5">
+              <p className="text-sm font-medium">{title}</p>
+              <p className="mt-1 text-sm">{message}</p>
+
+              {/* Optional Action */}
+              {action && (
+                <div className="mt-3 flex space-x-2">
+                  <button
+                    onClick={() => {
+                      action.onClick();
+                      toast.dismiss(t.id);
+                    }}
+                    className={cn(
+                      "bg-white rounded-md text-sm font-medium px-3 py-2 inline-flex",
+                      "hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2",
+                      config.textColor
+                    )}
+                  >
+                    {action.label}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <div className="ml-4 flex-shrink-0 flex">
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className={cn(
+                  "bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500",
+                  "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                )}
+              >
+                <span className="sr-only">Close</span>
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>,
-    toastOptions
+    ),
+    {
+      duration,
+      position: positionOptions.position,
+      // Prevent multiple toasts of the same type
+      id: `${type}-${title}`,
+      // Custom enter/exit animations
+      className: '!p-0 !m-0',
+      enter: 'animate-fade-in-up',
+      exit: 'animate-fade-out-down'
+    }
   );
 };
 
-const getBackgroundColor = (type: NotificationOptions['type']) => {
-  switch (type) {
-    case 'success':
-      return '#10B981';
-    case 'error':
-      return '#EF4444';
-    default:
-      return '#3B82F6';
-  }
-};
+// Convenience methods for each notification type
+export const successNotification = (options: Omit<NotificationOptions, 'type'>) =>
+  showNotification({ ...options, type: 'success' });
 
-const getTextColor = (type: NotificationOptions['type']) => {
-  switch (type) {
-    case 'success':
-    case 'error':
-      return '#FFFFFF';
-    default:
-      return '#1F2937';
-  }
-};
+export const errorNotification = (options: Omit<NotificationOptions, 'type'>) =>
+  showNotification({ ...options, type: 'error' });
 
-const getIcon = (type: NotificationOptions['type']) => {
-  switch (type) {
-    case 'success':
-      return <CheckCircleIcon className="h-6 w-6 text-green-500" />;
-    case 'error':
-      return <XCircleIcon className="h-6 w-6 text-red-500" />;
-    default:
-      return <InformationCircleIcon className="h-6 w-6 text-blue-500" />;
-  }
-};
+export const infoNotification = (options: Omit<NotificationOptions, 'type'>) =>
+  showNotification({ ...options, type: 'info' });
+
+export const warningNotification = (options: Omit<NotificationOptions, 'type'>) =>
+  showNotification({ ...options, type: 'warning' });

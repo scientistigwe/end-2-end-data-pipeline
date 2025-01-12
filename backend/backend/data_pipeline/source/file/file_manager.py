@@ -1,283 +1,399 @@
-# backend\backend\data_pipeline\source\file\file_manager.py
-import logging
-import uuid
-from datetime import datetime
-from typing import Dict, Any, Optional
+from __future__ import annotations
 
-from backend.core.messaging.types import ComponentType
-from backend.core.registry.component_registry import ComponentRegistry
-from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
-from .file_validator import FileValidator
+import asyncio
+import logging
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
+    ComponentType,
+    MessageType,
+    ProcessingMessage,
+    ModuleIdentifier,
+    ProcessingStage,
+    ProcessingStatus
+)
+from backend.core.control.control_point_manager import ControlPointManager
+from backend.core.orchestration.base_manager import BaseManager
 from .file_fetcher import FileFetcher
+from .file_validator import FileValidator, ValidationLevel
+from .file_config import Config
 
 logger = logging.getLogger(__name__)
 
-class FileManager:
-    """Enhanced file management system with consistent messaging integration"""
 
-    def __init__(self, message_broker):
-        """Initialize FileManager with enhanced component registration"""
-        self.message_broker = message_broker
-        self.registry = ComponentRegistry()
-        self.validator = FileValidator()
+@dataclass
+class ProcessingContext:
+    """Context for file processing"""
+    file_id: str
+    pipeline_id: str
+    filename: str
+    status: ProcessingStatus
+    metadata: Dict[str, Any]
+    created_at: datetime = field(default_factory=datetime.now)
+    error: Optional[str] = None
+    processing_history: List[Dict[str, Any]] = field(default_factory=list)
+    control_points: List[str] = field(default_factory=list)
+    stage: Optional[ProcessingStage] = None
 
-        # Initialize with consistent UUID and proper ComponentType
-        component_uuid = self.registry.get_component_uuid("FileManager")
-        self.module_id = ModuleIdentifier(
-            component_name="FileManager",
-            component_type=ComponentType.MODULE,  # Add proper component type
-            method_name="process_file",
-            instance_id=component_uuid
+
+class FileManager(BaseManager):
+    """Enhanced file manager with comprehensive processing capabilities"""
+
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            control_point_manager: ControlPointManager,
+            config: Optional[Config] = None
+    ):
+        """Initialize FileManager"""
+        super().__init__(
+            message_broker=message_broker,
+            component_name="FileManager"
         )
 
-        # Track processing state
-        self.pending_files: Dict[str, Dict[str, Any]] = {}
+        self.control_point_manager = control_point_manager
+        self.config = config or Config()
+        self.validator = FileValidator(config=self.config)
 
-        # Register and subscribe
-        self._initialize_messaging()
-        logger.info(f"FileManager initialized with ID: {self.module_id.get_tag()}")
+        # Processing tracking
+        self.active_processes: Dict[str, ProcessingContext] = {}
+        self.pending_decisions: Dict[str, asyncio.Future] = {}
 
-    def _initialize_messaging(self) -> None:
-        """Set up message broker registration and subscriptions"""
-        try:
-            # Register with message broker
-            self.message_broker.register_component(self.module_id)
+        # Initialize handlers
+        self._setup_message_handlers()
 
-            # Get orchestrator ID with consistent UUID
-            orchestrator_id = ModuleIdentifier(
-                component_name="DataOrchestrator",
-                component_type=ComponentType.ORCHESTRATOR,
-                method_name="manage_pipeline",
-                instance_id=self.registry.get_component_uuid("DataOrchestrator")
+        # Register with control point manager
+        self.module_id = ModuleIdentifier(
+            component_name="file_manager",
+            component_type=ComponentType.MANAGER,
+            method_name="process_file"
+        )
+
+    def _setup_message_handlers(self) -> None:
+        """Set up message handlers"""
+        handlers = {
+            MessageType.FILE_PROCESSING_REQUEST: self._handle_processing_request,
+            MessageType.CONTROL_POINT_DECISION: self._handle_control_decision,
+            MessageType.STATUS_UPDATE: self._handle_status_update,
+            MessageType.ERROR: self._handle_error
+        }
+
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                component=self.module_id,
+                pattern=f"{message_type.value}.#",
+                callback=handler
             )
 
-            # Subscribe to patterns we care about
-            patterns = [
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}",
-                f"{orchestrator_id.get_tag()}.{MessageType.PIPELINE_COMPLETE.value}"
-            ]
+    async def process_file(self, file_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process file through various stages with control points
 
-            for pattern in patterns:
-                self.message_broker.subscribe(
-                    component=self.module_id,
-                    pattern=pattern,
-                    callback=self._handle_orchestrator_response,
-                    timeout=10.0
-                )
-            logger.info("FileManager messaging initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing messaging: {str(e)}")
-            raise
+        Args:
+            file_data: Dictionary containing file information and metadata
 
-    def process_file(self, file: Any) -> Dict[str, Any]:
-        """Main entry point for file processing"""
+        Returns:
+            Dictionary containing processing results
+        """
         try:
-            filename = self._get_filename(file)
-            file_id = str(uuid.uuid4())
+            # Create processing context
+            context = ProcessingContext(
+                file_id=file_data['file_id'],
+                pipeline_id=file_data['pipeline_id'],
+                filename=file_data['metadata']['filename'],
+                status=ProcessingStatus.PENDING,
+                metadata=file_data['metadata']
+            )
 
-            # Store file info immediately
-            self.pending_files[file_id] = {
-                'filename': filename,
-                'status': 'pending',
-                'created_at': datetime.now().isoformat()
-            }
+            self.active_processes[context.file_id] = context
 
-            logger.info(f"Starting processing for file: {filename} (ID: {file_id})")
-
-            # Step 1: Initialize file fetcher
-            file_fetcher = FileFetcher(file)
-
-            # Step 2: Validate file
-            self._validate_file(file_fetcher)
-
-            # Step 3: Process file data
-            processed_data = self._process_file_data(file_fetcher, filename)
-
-            # Step 4: Update pending file status
-            self.pending_files[file_id]['status'] = 'processed'
-            self.pending_files[file_id]['processed_data'] = processed_data
-
-            # Step 5: Send processed data to orchestrator
-            self._send_to_orchestrator(file_id, processed_data)
-
-            return processed_data, file_id
-
-        except Exception as e:
-            logger.error(f"Error processing file: {str(e)}")
-            raise
-
-    def _process_file_data(self, file_fetcher: FileFetcher, filename: str) -> Dict[str, Any]:
-        """Process file data with comprehensive error handling"""
-        try:
-            # Convert to DataFrame
-            data, conversion_message = file_fetcher.convert_to_dataframe()
-            if data is None:
-                raise ValueError(conversion_message)
-
-            # Extract metadata
-            metadata = file_fetcher.extract_metadata()
-            if 'error' in metadata:
-                raise ValueError(metadata['error'])
+            # Process through stages
+            try:
+                await self._process_stages(context, file_data)
+            except asyncio.CancelledError:
+                await self._handle_cancellation(context)
+                raise
+            except Exception as e:
+                await self._handle_error(context, str(e))
+                raise
 
             return {
-                "filename": filename,
-                "status": "success",
-                "metadata": metadata,
-                "data": data.to_dict(orient="records")
+                'status': 'completed',
+                'file_id': context.file_id,
+                'pipeline_id': context.pipeline_id
             }
-        except Exception as e:
-            raise ValueError(str(e))
-
-    def _validate_file(self, file_fetcher: FileFetcher) -> None:
-        """Perform file validations using FileFetcher and FileValidator"""
-        try:
-            # Reset file pointer at the start of validation
-            file_fetcher.file.seek(0)
-
-            # First, validate security (do this first as it reads raw bytes)
-            security_valid, security_message = self.validator.validate_security(file_fetcher.file.read())
-            if not security_valid:
-                raise ValueError(security_message)
-
-            # Reset file pointer after security check
-            file_fetcher.file.seek(0)
-
-            # Get metadata
-            metadata = file_fetcher.extract_metadata()
-            if "error" in metadata:
-                raise ValueError(metadata["error"])
-
-            # Validate format
-            format_valid, format_message = self.validator.validate_file_format(metadata)
-            if not format_valid:
-                raise ValueError(format_message)
-
-            # Validate size
-            size_valid, size_message = self.validator.validate_file_size(metadata)
-            if not size_valid:
-                raise ValueError(size_message)
-
-            # Reset file pointer before loading data
-            file_fetcher.file.seek(0)
-
-            # Get and validate data
-            data, message = file_fetcher.load_file()
-            if data is None:
-                raise ValueError(message)
-
-            # Validate integrity
-            integrity_valid, integrity_message = self.validator.validate_file_integrity(data)
-            if not integrity_valid:
-                raise ValueError(integrity_message)
-
-            logger.info("File validation successful")
 
         except Exception as e:
-            logger.error(f"File validation error: {str(e)}")
-            raise
+            logger.error(f"File processing error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
 
-    def _send_to_orchestrator(self, file_id: str, processed_data: Dict[str, Any]) -> None:
-        """Send processed data to orchestrator"""
-        try:
-            orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+    async def _process_stages(
+            self,
+            context: ProcessingContext,
+            file_data: Dict[str, Any]
+    ) -> None:
+        """Process file through various stages"""
+        stages = [
+            (ProcessingStage.DATA_EXTRACTION, self._extract_data),
+            (ProcessingStage.DATA_VALIDATION, self._validate_data),
+            (ProcessingStage.QUALITY_CHECK, self._check_quality),
+            (ProcessingStage.PROCESSING, self._process_data)
+        ]
+
+        for stage, processor in stages:
+            context.stage = stage
+            await self._update_status(context, f"Starting {stage.value}")
+
+            # Process stage
+            result = await processor(context, file_data)
+
+            # Create control point
+            decision = await self._create_control_point(
+                context=context,
+                stage=stage,
+                data=result,
+                options=['proceed', 'modify', 'reject']
             )
 
-            message = ProcessingMessage(
+            if decision['decision'] == 'reject':
+                await self._handle_rejection(context, decision.get('details', {}))
+                raise ValueError(f"Processing rejected at stage {stage.value}")
+
+            elif decision['decision'] == 'modify':
+                file_data = await self._apply_modifications(
+                    file_data,
+                    decision.get('modifications', {})
+                )
+
+    async def _extract_data(
+            self,
+            context: ProcessingContext,
+            file_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Extract data from file"""
+        try:
+            fetcher = FileFetcher(file_data['file_path'])
+            df, message = await fetcher.convert_to_dataframe()
+
+            if df is None:
+                raise ValueError(f"Data extraction failed: {message}")
+
+            return {
+                'data': df.to_dict(orient='records'),
+                'preview': df.head().to_dict(orient='records'),
+                'columns': list(df.columns),
+                'row_count': len(df)
+            }
+
+        except Exception as e:
+            logger.error(f"Data extraction error: {str(e)}", exc_info=True)
+            raise
+
+    async def _validate_data(
+            self,
+            context: ProcessingContext,
+            file_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate extracted data"""
+        try:
+            validation_results = await self.validator.validate_file_comprehensive(
+                file_data['file_path'],
+                context.metadata,
+                ValidationLevel.STRICT
+            )
+
+            return {
+                'validation_results': validation_results,
+                'data_preview': file_data.get('preview', [])
+            }
+
+        except Exception as e:
+            logger.error(f"Data validation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _check_quality(
+            self,
+            context: ProcessingContext,
+            file_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Perform quality checks on data"""
+        try:
+            quality_metrics = {
+                'completeness': await self._check_completeness(file_data),
+                'consistency': await self._check_consistency(file_data),
+                'validity': await self._check_validity(file_data)
+            }
+
+            return {
+                'quality_metrics': quality_metrics,
+                'data_preview': file_data.get('preview', [])
+            }
+
+        except Exception as e:
+            logger.error(f"Quality check error: {str(e)}", exc_info=True)
+            raise
+
+    async def _process_data(
+            self,
+            context: ProcessingContext,
+            file_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process data after validation"""
+        try:
+            processed_data = await self._apply_processing(file_data)
+
+            return {
+                'processed_data': processed_data,
+                'summary': {
+                    'input_rows': file_data.get('row_count', 0),
+                    'output_rows': len(processed_data),
+                    'processing_time': datetime.now().timestamp() - context.created_at.timestamp()
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Data processing error: {str(e)}", exc_info=True)
+            raise
+
+    async def _create_control_point(
+            self,
+            context: ProcessingContext,
+            stage: ProcessingStage,
+            data: Dict[str, Any],
+            options: List[str]
+    ) -> Dict[str, Any]:
+        """Create control point and wait for decision"""
+        try:
+            control_point_id = await self.control_point_manager.create_control_point(
+                pipeline_id=context.pipeline_id,
+                stage=stage,
+                data={
+                    'file_id': context.file_id,
+                    'stage_data': data,
+                    'metadata': context.metadata
+                },
+                options=options
+            )
+
+            context.control_points.append(control_point_id)
+            context.status = ProcessingStatus.AWAITING_DECISION
+
+            await self._update_status(
+                context,
+                f"Awaiting decision at {stage.value}"
+            )
+
+            # Wait for decision
+            return await self.control_point_manager.wait_for_decision(
+                control_point_id,
+                timeout=self.config.PROCESSING_TIMEOUT
+            )
+
+        except Exception as e:
+            logger.error(f"Control point creation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _update_status(
+            self,
+            context: ProcessingContext,
+            message: str
+    ) -> None:
+        """Update processing status"""
+        try:
+            status_message = ProcessingMessage(
                 source_identifier=self.module_id,
-                target_identifier=orchestrator_id,
-                message_type=MessageType.SOURCE_SUCCESS,
+                target_identifier=ModuleIdentifier("pipeline_manager"),
+                message_type=MessageType.STATUS_UPDATE,
                 content={
-                    'file_id': file_id,
-                    'action': 'process_file_data',
-                    'data': processed_data['data'],
-                    'metadata': processed_data['metadata'],
-                    'source_type': 'file',
-                    'filename': processed_data['filename']
+                    'pipeline_id': context.pipeline_id,
+                    'file_id': context.file_id,
+                    'status': context.status.value,
+                    'stage': context.stage.value if context.stage else None,
+                    'message': message,
+                    'timestamp': datetime.now().isoformat()
                 }
             )
 
-            logger.info(f"Sending data to orchestrator: {orchestrator_id.get_tag()}")
-            self.message_broker.publish(message)
+            await self.message_broker.publish(status_message)
 
         except Exception as e:
-            logger.error(f"Error sending to orchestrator: {str(e)}")
+            logger.error(f"Status update error: {str(e)}", exc_info=True)
+
+    async def _apply_modifications(
+            self,
+            file_data: Dict[str, Any],
+            modifications: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Apply modifications to data"""
+        try:
+            # Implement modification logic based on requirements
+            return file_data
+        except Exception as e:
+            logger.error(f"Modification error: {str(e)}", exc_info=True)
             raise
 
-    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
-        """Handle responses from orchestrator"""
+    async def _handle_cancellation(self, context: ProcessingContext) -> None:
+        """Handle processing cancellation"""
         try:
-            file_id = message.content.get('file_id')
-            if not file_id or file_id not in self.pending_files:
-                logger.warning(f"Received response for unknown file ID: {file_id}")
-                return
+            context.status = ProcessingStatus.CANCELLED
+            await self._update_status(context, "Processing cancelled")
+            await self._cleanup_process(context.file_id)
+        except Exception as e:
+            logger.error(f"Cancellation handling error: {str(e)}", exc_info=True)
 
-            file_data = self.pending_files[file_id]
+    async def _handle_error(
+            self,
+            context: ProcessingContext,
+            error: str
+    ) -> None:
+        """Handle processing error"""
+        try:
+            context.status = ProcessingStatus.ERROR
+            context.error = error
+            await self._update_status(context, f"Error: {error}")
+        except Exception as e:
+            logger.error(f"Error handling error: {str(e)}", exc_info=True)
 
-            if message.message_type == MessageType.SOURCE_SUCCESS:
-                logger.info(f"File {file_data['filename']} processed successfully")
-                self._cleanup_pending_file(file_id)
-            elif message.message_type == MessageType.SOURCE_ERROR:
-                logger.error(f"Error processing file {file_data['filename']}")
-                self._handle_orchestrator_error(file_id, message.content.get('error'))
-            elif message.message_type == MessageType.PIPELINE_COMPLETE:
-                logger.info(f"Pipeline completed for file {file_data['filename']}")
-                self._cleanup_pending_file(file_id)
+    async def _cleanup_process(self, file_id: str) -> None:
+        """Clean up process resources"""
+        try:
+            if file_id in self.active_processes:
+                context = self.active_processes[file_id]
+
+                # Clean up control points
+                for control_point_id in context.control_points:
+                    try:
+                        await self.control_point_manager.cleanup_control_point(
+                            control_point_id
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Control point cleanup error: {str(e)}",
+                            exc_info=True
+                        )
+
+                # Remove from active processes
+                del self.active_processes[file_id]
 
         except Exception as e:
-            logger.error(f"Error handling orchestrator response: {str(e)}")
+            logger.error(f"Process cleanup error: {str(e)}", exc_info=True)
 
-    def _handle_orchestrator_error(self, file_id: str, error_message: str) -> None:
-        """Handle orchestrator-reported errors"""
+    async def cleanup(self) -> None:
+        """Clean up manager resources"""
         try:
-            if file_id in self.pending_files:
-                file_data = self.pending_files[file_id]
-                logger.error(f"Processing failed for file {file_data['filename']}: {error_message}")
+            # Clean up all active processes
+            for file_id in list(self.active_processes.keys()):
+                await self._cleanup_process(file_id)
 
-                # Update file status to error
-                file_data['status'] = 'error'
-                file_data['error_message'] = error_message
-                file_data['error_timestamp'] = datetime.now().isoformat()
+            # Clean up message handlers
+            await super().cleanup()
 
-                # Perform cleanup
-                self._cleanup_pending_file(file_id)
-            else:
-                logger.warning(f"Received error for unknown file ID: {file_id}")
         except Exception as e:
-            logger.error(f"Error handling orchestrator error: {str(e)}")
-
-    def get_file_metadata(self, file_obj: Any) -> Dict[str, Any]:
-        """Public method to generate file metadata"""
-        try:
-            file_fetcher = FileFetcher(file_obj)
-            metadata = file_fetcher.extract_metadata()
-            logger.info(f'Metadata: {metadata}')
-            return {'status': 'success', 'metadata': metadata}
-        except Exception as e:
-            logger.error(f"Metadata generation error: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-
-    def _get_filename(self, file: Any) -> str:
-        """Extract filename from various file object types"""
-        if hasattr(file, 'filename'):
-            return file.filename
-        elif hasattr(file, 'name'):
-            return file.name
-        elif isinstance(file, str):
-            return file.split('/')[-1]
-        else:
-            return 'unknown'
-
-    def _cleanup_pending_file(self, file_id: str) -> None:
-        """Clean up processed file data"""
-        if file_id in self.pending_files:
-            del self.pending_files[file_id]
-            logger.info(f"Cleaned up pending file: {file_id}")
-
-
-
-
-
+            logger.error(f"Manager cleanup error: {str(e)}", exc_info=True)

@@ -36,18 +36,19 @@ from backend.data_pipeline.quality_analysis.data_issue_analyser import (
     text_standardization
 )
 
-from backend.data_pipeline.quality_analysis.data_issue_resolver import (
-    basic_data_validation,
-    address_location,
-    code_classification,
-    date_time_processing,
-    domain_specific_validation,
-    duplication_management,
-    identifier_processing,
-    numeric_currency_processing,
-    reference_data_management,
-    text_standardization
-)
+from backend.data_pipeline.quality_analysis import data_issue_detector
+from backend.data_pipeline.quality_analysis import data_issue_analyser
+from backend.data_pipeline.quality_analysis import data_issue_resolver
+    # basic_data_validation,
+    # address_location,
+    # code_classification,
+    # date_time_processing,
+    # domain_specific_validation,
+    # duplication_management,
+    # identifier_processing,
+    # numeric_currency_processing,
+    # reference_data_management,
+    # text_standardization
 
 logger = logging.getLogger(__name__)
 
@@ -132,26 +133,46 @@ class DataQualityProcessor:
         # Detector modules
         self.detectors = {
             'basic_validation': {
-                'missing_value': basic_data_validation.detect_missing_value,
-                'data_type': basic_data_validation.detect_data_type_mismatch,
-                'empty_string': basic_data_validation.detect_empty_string,
-                'required_field': basic_data_validation.detect_required_field
+                'missing_value': data_issue_detector.basic_data_validation.detect_missing_value,
+                'data_type': data_issue_detector.basic_data_validation.detect_data_type_mismatch,
+                'empty_string': data_issue_detector.basic_data_validation.detect_default_placeholder_value,
             },
-            'datetime_processing': {
-                'date_format': date_time_processing.detect_date_format,
-                'timezone': date_time_processing.detect_timezone_error,
-                'sequence': date_time_processing.detect_sequence_invalid
-            },
+            # 'datetime_processing': {
+            #     'date_format': data_issue_detector.date_time_processing.detect_date_format,
+            #     'timezone': data_issue_detector.date_time_processing.detect_timezone_error,
+            #     'sequence': data_issue_detector.date_time_processing.detect_sequence_invalid
+            # },
             # ... initialize other detector categories
         }
 
         # Initialize analyzers and resolvers similarly
         self.analyzers = {
-            # Similar structure for analyzer modules
+            'basic_validation': {
+                'missing_value': data_issue_analyser.basic_data_validation.analyse_missing_value,
+                'data_type': data_issue_analyser.basic_data_validation.analyse_data_type_mismatch,
+                'empty_string': data_issue_analyser.basic_data_validation.analyse_empty_string,
+                'required_field': data_issue_analyser.basic_data_validation.analyse_required_field
+            },
+            # 'datetime_processing': {
+            #     'date_format': data_issue_analyser.date_time_processing.analyse_date_format,
+            #     'timezone': data_issue_analyser.date_time_processing.analyse_timezone_error,
+            #     'sequence': data_issue_analyser.date_time_processing.analyse_sequence_invalid
+            # },
+
         }
 
         self.resolvers = {
-            # Similar structure for resolver modules
+            'basic_validation': {
+                'missing_value': data_issue_resolver.basic_data_validation.resolved_missing_value,
+                'data_type': data_issue_resolver.basic_data_validation.resolved_data_type_mismatch,
+                'empty_string': data_issue_resolver.basic_data_validation.resolved_empty_string,
+                # 'required_field': data_issue_resolver.basic_data_validation.resolved_required_field
+            },
+            # 'datetime_processing': {
+            #     'date_format': data_issue_resolver.date_time_processing.resolve_date_format,
+            #     'timezone': data_issue_resolver.date_time_processing.resolve_timezone_error,
+            #     'sequence': data_issue_resolver.date_time_processing.resolve_sequence_invalid
+            # },
         }
 
     def start_quality_process(self, pipeline_id: str, data: Any,

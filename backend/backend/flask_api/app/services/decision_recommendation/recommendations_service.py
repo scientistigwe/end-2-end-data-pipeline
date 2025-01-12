@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from uuid import UUID
 from sqlalchemy.orm import Session
-from .....database.models.decisions_recommendations import (
+from .....database.models.recommendation import (
     Recommendation,
     RecommendationFeedback
 )

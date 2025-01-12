@@ -5,7 +5,9 @@ from io import BytesIO, StringIO
 from .file_config import Config
 from pandas.errors import EmptyDataError, ParserError
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
+
+from backend.core.messaging.broker import MessageBroker
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,9 +20,9 @@ class FileFetcher:
         'xlsx': pd.read_excel,
         'parquet': pd.read_parquet
     }
-
-    def __init__(self, file):
+    def __init__(self, file, message_broker: Optional[MessageBroker] = None):
         self.file = file
+        self.message_broker = message_broker
         self.file_format = self._infer_file_format().lower()
         self.file_size_mb = len(file.read()) / (1024 * 1024)
         self.file.seek(0)  # Reset file pointer after reading
@@ -167,3 +169,20 @@ class FileFetcher:
             return buffer, "File converted to Parquet"
         except Exception as e:
             return None, f"Parquet conversion error: {str(e)}"
+
+    async def notify_conversion_status(self, status: str, details: Dict[str, Any]) -> None:
+        """Notify about file conversion status"""
+        if self.message_broker:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    source_identifier=ModuleIdentifier("file_fetcher"),
+                    target_identifier=ModuleIdentifier("file_manager"),
+                    message_type=MessageType.SOURCE_STATUS,
+                    content={
+                        'status': status,
+                        'details': details,
+                        'file_format': self.file_format,
+                        'timestamp': datetime.now().isoformat()
+                    }
+                )
+            )

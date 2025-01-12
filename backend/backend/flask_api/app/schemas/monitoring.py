@@ -1,4 +1,4 @@
-# schemas/monitoring.py
+# schemas/resource.py
 from marshmallow import Schema, fields, validate
 from .base import BaseRequestSchema, BaseResponseSchema
 

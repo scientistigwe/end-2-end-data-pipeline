@@ -24,6 +24,7 @@ class MessageType(Enum):
     QUALITY_UPDATE = "quality.update"
     QUALITY_COMPLETE = "quality.complete"
     QUALITY_ERROR = "quality.error"
+    QUALITY_METRICS_UPDATE = "quality.metrics.update"
 
     # Insight Operations
     INSIGHT_START = "insight.start"
@@ -66,6 +67,45 @@ class MessageType(Enum):
     PIPELINE_COMPLETE = "pipeline.complete"
     PIPELINE_ERROR = "pipeline.error"
 
+    # Control Point Operations
+    CONTROL_POINT_REACHED = "control.point.reached"
+    CONTROL_POINT_DECISION = "control.point.decision"
+    CONTROL_POINT_APPROVED = "control.point.approved"
+    CONTROL_POINT_REJECTED = "control.point.rejected"
+    CONTROL_POINT_MODIFY = "control.point.modify"
+
+    # User Decision Operations
+    USER_DECISION_REQUIRED = "user.decision.required"
+    USER_DECISION_SUBMITTED = "user.decision.submitted"
+    USER_DECISION_TIMEOUT = "user.decision.timeout"
+
+    # Status Update Operations
+    STATUS_UPDATE = "status.update"
+    STAGE_COMPLETE = "stage.complete"
+    STAGE_FAILED = "stage.failed"
+
+
+class ProcessingStage(Enum):
+    """Pipeline processing stages"""
+    INITIAL_VALIDATION = "initial_validation"
+    DATA_EXTRACTION = "data_extraction"
+    QUALITY_CHECK = "quality_check"
+    ANALYSIS_PREP = "analysis_prep"
+    ANALYSIS_EXECUTION = "analysis_execution"
+    RESULTS_VALIDATION = "results_validation"
+    FINAL_APPROVAL = "final_approval"
+
+
+@dataclass
+class ControlPoint:
+    """Represents a control point in the pipeline"""
+    stage: ProcessingStage
+    pipeline_id: str
+    data: Dict[str, Any]
+    options: List[str]
+    timeout_seconds: int = 3600  # 1 hour default
+    requires_approval: bool = True
+    created_at: datetime = field(default_factory=datetime.now)
 
 class ProcessingStatus(Enum):
     # General Statuses

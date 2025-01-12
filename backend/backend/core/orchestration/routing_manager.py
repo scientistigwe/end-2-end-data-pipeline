@@ -6,7 +6,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.base.base_manager import BaseManager
+from backend.core.orchestration.base_manager import BaseManager
 from backend.core.messaging.broker import MessageBroker
 from backend.core.messaging.types import MessageType, ProcessingMessage, ProcessingStatus
 

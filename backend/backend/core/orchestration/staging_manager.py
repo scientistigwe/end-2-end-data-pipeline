@@ -1,298 +1,469 @@
 # backend/core/staging/staging_manager.py
 
 import logging
-from typing import Dict, Any, Optional, List
+import asyncio
+import pandas as pd  # Added for preview functionality
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-from enum import Enum
-import uuid
 
-from backend.core.orchestration.base_manager import BaseManager
 from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType, ProcessingMessage, ProcessingStatus
-from backend.core.channel_handlers.staging_handler import StagingChannelHandler
+from backend.core.messaging.types import (
+    MessageType, ProcessingMessage, ProcessingStatus,
+    ProcessingStage, ControlPoint, ModuleIdentifier
+)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class StagingMetadata:
-    """Enhanced metadata for staged data"""
+class StagedData:
+    """Enhanced staged data tracking"""
     pipeline_id: str
-    data_type: str
-    file_format: str
-    source_type: str
-    stage_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    size_bytes: int = 0
-    row_count: Optional[int] = None
-    columns: Optional[List[str]] = None
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-    retention_period: timedelta = field(default_factory=lambda: timedelta(days=7))
-    processing_stage: str = "initial"
-
-
-@dataclass
-class QualityCheckResult:
-    """Data quality check results"""
-    passed: bool
-    score: float
-    message: str
-
-
-@dataclass
-class StagingState:
-    """Tracks staging operation state"""
-    pipeline_id: str
-    operation: 'StagingOperation'
+    stage_id: str
+    data: Any
+    metadata: Dict[str, Any]
     status: ProcessingStatus
     created_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    processing_history: List[Dict[str, Any]] = field(default_factory=list)
+    control_points: List[str] = field(default_factory=list)
 
 
-class StagingOperation(Enum):
-    """Types of staging operations"""
-    STORE = "store"
-    RETRIEVE = "retrieve"
-    UPDATE = "update"
-    DELETE = "delete"
+class StagingManager:
+    """Enhanced staging manager with control point integration"""
 
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            control_point_manager: Optional[Any] = None,
+            component_name: str = "staging_manager"
+    ):
+        # Core components
+        self.message_broker = message_broker
+        self.control_point_manager = control_point_manager
 
-class StagingManager(BaseManager):
-    """
-    Unified manager for data staging operations and storage.
-    Combines messaging and data storage capabilities.
-    """
+        # Create module identifier
+        self.module_id = ModuleIdentifier(
+            component_name=component_name,
+            component_type="manager",
+            method_name="staging_handler",
+            instance_id=str(datetime.now().timestamp())
+        )
 
-    def __init__(self, message_broker: MessageBroker):
-        super().__init__(message_broker, "StagingManager")
-        self.staging_handler = StagingChannelHandler(message_broker)
-        self.active_operations: Dict[str, StagingState] = {}
-        self.staging_area: Dict[str, Dict[str, Any]] = {}
-        self.metrics = {
-            'total_staged_data': 0,
-            'quality_check_failures': 0,
-            'data_quality_avg_score': 1.0
-        }
+        # Staged data management
+        self.staged_data: Dict[str, StagedData] = {}
 
-    def initiate_staging(self, message: ProcessingMessage) -> None:
-        """Entry point for staging operations"""
+        # Async setup tracking
+        self._setup_complete = False
+        self._setup_handlers_task = None
+
+    def start_message_handlers(self) -> None:
+        """
+        Synchronous method to initiate async message handler setup
+
+        This method can be safely called in synchronous contexts
+        """
+        # If already set up, do nothing
+        if self._setup_complete:
+            return
+
+        # Create a new event loop if no running loop exists
         try:
-            pipeline_id = message.content['pipeline_id']
-            operation = StagingOperation(message.content['operation'])
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._async_setup_message_handlers())
+        except Exception as e:
+            logger.error(f"Error starting message handlers: {str(e)}")
 
-            # Track operation state
-            state = StagingState(
-                pipeline_id=pipeline_id,
-                operation=operation,
-                status=ProcessingStatus.PENDING
+    async def _async_setup_message_handlers(self) -> None:
+        """
+        Async method to set up message handlers
+        """
+        try:
+            # Register the component
+            await self.message_broker.register_component(
+                component=self.module_id,
+                default_callback=self._handle_generic_message
             )
-            self.active_operations[pipeline_id] = state
 
-            # Route to staging handler
-            self.staging_handler.handle_staging_request(
-                pipeline_id,
-                operation,
-                message.content
-            )
+            # Subscribe to relevant message patterns
+            message_patterns = [
+                "*.stage.*",  # Wildcard for staging related messages
+                f"{self.module_id.get_tag()}.#"  # Exact component messages
+            ]
+
+            for pattern in message_patterns:
+                await self.message_broker.subscribe(
+                    component=self.module_id,
+                    pattern=pattern,
+                    callback=self._route_message
+                )
+
+            logger.info("Staging Manager message handlers setup complete")
+            self._setup_complete = True
 
         except Exception as e:
-            self.logger.error(f"Failed to initiate staging: {str(e)}")
-            self.handle_error(e, {"message": message.content})
-            raise
+            logger.error(f"Error setting up message handlers: {str(e)}")
+            self._setup_complete = False
 
-    def store_data(self, pipeline_id: str, data: Any, metadata: Dict[str, Any]) -> str:
-        """Store data in staging area"""
+    async def _handle_decision_timeout(self, message: ProcessingMessage) -> None:
+        """
+        Handle decision timeout for a staged data point
+
+        Args:
+            message (ProcessingMessage): Timeout message
+        """
         try:
-            staging_metadata = StagingMetadata(
-                pipeline_id=pipeline_id,
-                data_type=metadata.get('data_type', 'unknown'),
-                file_format=metadata.get('format', 'unknown'),
-                source_type=metadata.get('source_type', 'unknown'),
-                size_bytes=len(str(data)),
-                row_count=metadata.get('row_count'),
-                columns=metadata.get('columns'),
-                processing_stage=metadata.get('stage', 'initial')
-            )
+            # Extract stage ID from message
+            stage_id = message.content.get('stage_id')
 
-            staging_id = staging_metadata.stage_id
-            self.staging_area[staging_id] = {
-                "data": data,
-                "metadata": staging_metadata
+            if not stage_id:
+                logger.warning("Received decision timeout without stage ID")
+                return
+
+            # Find the staged data
+            staged = self.staged_data.get(stage_id)
+
+            if not staged:
+                logger.warning(f"No staged data found for stage ID: {stage_id}")
+                return
+
+            # Update status to failed
+            staged.status = ProcessingStatus.FAILED
+
+            # Notify about the timeout
+            error_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier("pipeline_manager"),
+                message_type=MessageType.STAGE_ERROR,
+                content={
+                    'pipeline_id': staged.pipeline_id,
+                    'stage_id': stage_id,
+                    'error': 'Staging decision timed out',
+                    'timestamp': datetime.now().isoformat()
+                }
+            )
+            await self.message_broker.publish(error_message)
+
+        except Exception as e:
+            logger.error(f"Error handling staging decision timeout: {str(e)}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Get current status of the Staging Manager
+
+        Returns:
+            Dict[str, Any]: Status information
+        """
+        return {
+            'active_staged_data': len(self.staged_data),
+            'message_handlers_setup': self._setup_complete
+        }
+
+    async def cleanup(self) -> None:
+        """
+        Comprehensive cleanup of staged data resources
+        """
+        try:
+            # Clear all staged data
+            self.staged_data.clear()
+
+            logger.info("Staging Manager cleaned up successfully")
+
+        except Exception as e:
+            logger.error(f"Error during Staging Manager cleanup: {str(e)}")
+
+    async def _route_message(self, message: ProcessingMessage) -> None:
+        """
+        Route messages to appropriate handlers based on message type
+
+        Args:
+            message (ProcessingMessage): Incoming message to route
+        """
+        try:
+            handler_map = {
+                MessageType.STAGE_STORE: self._handle_stage_store,
+                MessageType.STAGE_RETRIEVE: self._handle_stage_retrieve,
+                MessageType.STAGE_UPDATE: self._handle_stage_update,
+                MessageType.CONTROL_POINT_DECISION: self._handle_control_point_decision,
+                MessageType.USER_DECISION_TIMEOUT: self._handle_decision_timeout
             }
 
-            self.metrics['total_staged_data'] += 1
-            self.logger.info(f"Data stored with staging ID: {staging_id}")
-
-            # Create and track store operation
-            state = StagingState(
-                pipeline_id=pipeline_id,
-                operation=StagingOperation.STORE,
-                status=ProcessingStatus.COMPLETED
-            )
-            self.active_operations[pipeline_id] = state
-
-            return staging_id
-
-        except Exception as e:
-            self.logger.error(f"Failed to store data: {str(e)}")
-            self.handle_error(e, {"pipeline_id": pipeline_id})
-            raise
-
-    def retrieve_data(self, staging_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve staged data"""
-        if staging_id not in self.staging_area:
-            self.logger.warning(f"No data found for staging ID: {staging_id}")
-            return None
-
-        staged_item = self.staging_area[staging_id]
-        staged_item['metadata'].updated_at = datetime.now()
-        return staged_item
-
-    def update_data(self, staging_id: str, data: Any,
-                    metadata_updates: Optional[Dict[str, Any]] = None) -> bool:
-        """Update staged data"""
-        try:
-            if staging_id not in self.staging_area:
-                return False
-
-            staged_item = self.staging_area[staging_id]
-            staged_item['data'] = data
-
-            if metadata_updates:
-                for key, value in metadata_updates.items():
-                    if hasattr(staged_item['metadata'], key):
-                        setattr(staged_item['metadata'], key, value)
-
-            staged_item['metadata'].updated_at = datetime.now()
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to update staged data: {str(e)}")
-            return False
-
-    def delete_data(self, staging_id: str) -> bool:
-        """Delete staged data"""
-        try:
-            if staging_id in self.staging_area:
-                pipeline_id = self.staging_area[staging_id]['metadata'].pipeline_id
-                del self.staging_area[staging_id]
-                self.metrics['total_staged_data'] -= 1
-
-                # Track delete operation
-                state = StagingState(
-                    pipeline_id=pipeline_id,
-                    operation=StagingOperation.DELETE,
-                    status=ProcessingStatus.COMPLETED
-                )
-                self.active_operations[pipeline_id] = state
-                return True
-            return False
-        except Exception as e:
-            self.logger.error(f"Failed to delete staged data: {str(e)}")
-            return False
-
-    def handle_staging_result(self, message: ProcessingMessage) -> None:
-        """Handle staging operation result"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            result = message.content['result']
-            state = self.active_operations.get(pipeline_id)
-
-            if not state:
-                raise ValueError(f"No active staging operation for pipeline: {pipeline_id}")
-
-            # Update state
-            state.status = ProcessingStatus.COMPLETED
-            state.completed_at = datetime.now()
-
-            # Route result
-            if result['status'] == 'success':
-                self.staging_handler.notify_staging_complete(pipeline_id, result)
+            handler = handler_map.get(message.message_type)
+            if handler:
+                await handler(message)
             else:
-                self.staging_handler.notify_staging_error(pipeline_id, result)
-
-            # Cleanup completed operation
-            self._cleanup_operation(pipeline_id)
+                await self._handle_generic_message(message)
 
         except Exception as e:
-            self.logger.error(f"Failed to handle staging result: {str(e)}")
-            self.handle_error(e, {"message": message.content})
-            raise
+            logger.error(f"Error routing message: {str(e)}")
 
-    def handle_staging_error(self, message: ProcessingMessage) -> None:
-        """Handle staging operation errors"""
+    async def _handle_generic_message(self, message: ProcessingMessage) -> None:
+        """
+        Default handler for unrecognized messages
+
+        Args:
+            message (ProcessingMessage): Unhandled message
+        """
+        logger.warning(f"Received unhandled message type: {message.message_type}")
+
+    async def stage_data(
+            self,
+            pipeline_id: str,
+            key: str,
+            data: Any,
+            metadata: Optional[Dict[str, Any]] = None,
+            requires_approval: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Stage data with optional control point integration
+
+        Args:
+            pipeline_id (str): Unique pipeline identifier
+            key (str): Unique key for the staged data
+            data (Any): Data to be staged
+            metadata (Optional[Dict[str, Any]], optional): Additional metadata
+            requires_approval (bool, optional): Whether data needs approval
+
+        Returns:
+            Dict[str, Any]: Staging result
+        """
         try:
-            pipeline_id = message.content['pipeline_id']
-            error = message.content['error']
+            stage_id = f"{pipeline_id}_{key}_{datetime.now().timestamp()}"
 
-            state = self.active_operations.get(pipeline_id)
-            if state:
-                state.status = ProcessingStatus.ERROR
-                state.completed_at = datetime.now()
-
-            # Route error notification
-            self.staging_handler.notify_staging_error(
-                pipeline_id,
-                {'error': error, 'operation': state.operation if state else 'unknown'}
+            # Create staged data entry
+            staged = StagedData(
+                pipeline_id=pipeline_id,
+                stage_id=stage_id,
+                data=data,
+                metadata=metadata or {},
+                status=ProcessingStatus.PENDING,
+                expires_at=datetime.now() + timedelta(days=7)
             )
 
-            # Cleanup failed operation
-            self._cleanup_operation(pipeline_id)
+            # Store staged data
+            self.staged_data[stage_id] = staged
+
+            if requires_approval and self.control_point_manager:
+                # Create control point for data staging
+                control_point_id = await self.control_point_manager.create_control_point(
+                    pipeline_id=pipeline_id,
+                    stage=ProcessingStage.DATA_EXTRACTION,
+                    data={
+                        'stage_id': stage_id,
+                        'metadata': metadata or {},
+                        'preview': self._generate_preview(data)
+                    },
+                    options=['approve', 'reject', 'modify']
+                )
+
+                staged.control_points.append(control_point_id)
+                staged.status = ProcessingStatus.AWAITING_DECISION
+            else:
+                staged.status = ProcessingStatus.COMPLETED
+
+            # Notify about staged data
+            await self._update_status(pipeline_id, stage_id, staged.status)
+
+            return {
+                'stage_id': stage_id,
+                'status': staged.status.value,
+                'requires_approval': requires_approval
+            }
 
         except Exception as e:
-            self.logger.error(f"Failed to handle staging error: {str(e)}")
-            self.handle_error(e, {"message": message.content})
+            logger.error(f"Error staging data: {str(e)}")
+            await self._handle_staging_error(pipeline_id, str(e))
             raise
 
-    def get_pipeline_data(self, pipeline_id: str) -> List[Dict[str, Any]]:
-        """Get all staged data for a pipeline"""
-        return [
-            {'staging_id': sid, **item}
-            for sid, item in self.staging_area.items()
-            if item['metadata'].pipeline_id == pipeline_id
-        ]
+    async def _handle_stage_store(self, message: ProcessingMessage) -> None:
+        """Handle stage store request"""
+        try:
+            pipeline_id = message.content['pipeline_id']
+            key = message.content.get('key', 'default')
+            data = message.content['data']
+            metadata = message.content.get('metadata', {})
+            requires_approval = message.content.get('requires_approval', True)
 
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get staging metrics"""
-        return {
-            **self.metrics,
-            'active_staging_count': len(self.staging_area),
-            'active_operations_count': len(self.active_operations)
-        }
+            result = await self.stage_data(
+                pipeline_id=pipeline_id,
+                key=key,
+                data=data,
+                metadata=metadata,
+                requires_approval=requires_approval
+            )
 
-    def get_staging_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
-        """Get current staging operation status"""
-        state = self.active_operations.get(pipeline_id)
-        if not state:
-            return None
+            # Send response
+            response_message = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=message.source_identifier,
+                message_type=MessageType.STAGE_SUCCESS,
+                content=result
+            )
+            await self.message_broker.publish(response_message)
 
-        return {
-            'pipeline_id': pipeline_id,
-            'operation': state.operation.value,
-            'status': state.status.value,
-            'created_at': state.created_at.isoformat(),
-            'completed_at': state.completed_at.isoformat() if state.completed_at else None
-        }
+        except Exception as e:
+            await self._handle_staging_error(pipeline_id, str(e))
+
+    def _generate_preview(self, data: Any) -> Dict[str, Any]:
+        """Generate data preview with support for various data types"""
+        try:
+            if isinstance(data, (pd.DataFrame, pd.Series)):
+                return {
+                    'head': data.head(5).to_dict(),
+                    'info': {
+                        'shape': data.shape,
+                        'columns': list(data.columns) if hasattr(data, 'columns') else None,
+                        'dtypes': data.dtypes.to_dict() if hasattr(data, 'dtypes') else None
+                    }
+                }
+            elif isinstance(data, dict):
+                return {
+                    'sample': dict(list(data.items())[:5]),
+                    'total_keys': len(data)
+                }
+            elif isinstance(data, list):
+                return {
+                    'sample': data[:5],
+                    'total_items': len(data)
+                }
+            else:
+                return {
+                    'type': str(type(data)),
+                    'preview': str(data)[:100]
+                }
+        except Exception as e:
+            logger.error(f"Error generating preview: {str(e)}")
+            return {'error': 'Could not generate preview'}
+
+    async def _update_status(
+            self,
+            pipeline_id: str,
+            stage_id: str,
+            status: ProcessingStatus
+    ) -> None:
+        """Update staging status via message broker"""
+        message = ProcessingMessage(
+            source_identifier=self.module_id,
+            target_identifier=ModuleIdentifier("pipeline_manager"),
+            message_type=MessageType.STATUS_UPDATE,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage_id': stage_id,
+                'status': status.value,
+                'timestamp': datetime.now().isoformat()
+            }
+        )
+        await self.message_broker.publish(message)
+
+    async def _handle_staging_error(
+            self,
+            pipeline_id: str,
+            error_message: str
+    ) -> None:
+        """Handle and notify about staging errors"""
+        error_message = ProcessingMessage(
+            source_identifier=self.module_id,
+            target_identifier=ModuleIdentifier("pipeline_manager"),
+            message_type=MessageType.STAGE_ERROR,
+            content={
+                'pipeline_id': pipeline_id,
+                'error': error_message,
+                'timestamp': datetime.now().isoformat()
+            }
+        )
+        await self.message_broker.publish(error_message)
 
     def cleanup_expired(self) -> None:
-        """Clean up expired data"""
+        """Clean up expired staged data"""
         current_time = datetime.now()
-        expired_ids = [
-            sid for sid, item in self.staging_area.items()
-            if (current_time - item['metadata'].created_at) > item['metadata'].retention_period
+        expired_stages = [
+            stage_id for stage_id, staged in self.staged_data.items()
+            if staged.expires_at and staged.expires_at <= current_time
         ]
 
-        for sid in expired_ids:
-            self.delete_data(sid)
+        for stage_id in expired_stages:
+            self._cleanup_staged_data(stage_id)
 
-    def _cleanup_operation(self, pipeline_id: str) -> None:
-        """Clean up completed/failed operation"""
-        if pipeline_id in self.active_operations:
-            del self.active_operations[pipeline_id]
+    def _cleanup_staged_data(self, stage_id: str) -> None:
+        """Clean up staged data"""
+        if stage_id in self.staged_data:
+            del self.staged_data[stage_id]
 
-    def __del__(self):
-        """Cleanup manager resources"""
-        self.active_operations.clear()
-        self.staging_area.clear()
-        super().__del__()
+    async def _handle_control_point_decision(self, message: ProcessingMessage) -> None:
+        """Handle control point decision"""
+        pipeline_id = message.content['pipeline_id']
+        stage_id = message.content['stage_id']
+        decision = message.content['decision']
+
+        staged = self.staged_data.get(stage_id)
+        if not staged:
+            logger.error(f"No staged data found for {stage_id}")
+            return
+
+        try:
+            if decision == 'approve':
+                staged.status = ProcessingStatus.COMPLETED
+
+                # Notify pipeline manager
+                self.send_response(
+                    target_id=f"pipeline_manager_{pipeline_id}",
+                    message_type=MessageType.STAGE_SUCCESS,
+                    content={
+                        'stage_id': stage_id,
+                        'pipeline_id': pipeline_id,
+                        'status': 'approved'
+                    }
+                )
+
+            elif decision == 'reject':
+                staged.status = ProcessingStatus.FAILED
+                await self._handle_rejection(staged, message.content.get('reason'))
+
+            elif decision == 'modify':
+                modifications = message.content.get('modifications', {})
+                await self._apply_modifications(staged, modifications)
+
+            # Update status
+            self._update_status(pipeline_id, stage_id, staged.status)
+
+        except Exception as e:
+            self._handle_staging_error(pipeline_id, str(e))
+
+    async def _apply_modifications(self, staged: StagedData, modifications: Dict[str, Any]) -> None:
+        """Apply modifications to staged data"""
+        try:
+            # Record modification in history
+            staged.processing_history.append({
+                'action': 'modify',
+                'timestamp': datetime.now().isoformat(),
+                'modifications': modifications
+            })
+
+            # Apply modifications
+            modified_data = await self._modify_data(staged.data, modifications)
+
+            # Update staged data
+            staged.data = modified_data
+            staged.status = ProcessingStatus.COMPLETED
+
+            # Create new control point for verification
+            control_point_id = await self.control_point_manager.create_control_point(
+                pipeline_id=staged.pipeline_id,
+                stage=ProcessingStage.DATA_EXTRACTION,
+                data={
+                    'stage_id': staged.stage_id,
+                    'preview': self._generate_preview(modified_data),
+                    'modifications_applied': modifications
+                },
+                options=['approve', 'reject', 'modify']
+            )
+
+            staged.control_points.append(control_point_id)
+
+        except Exception as e:
+            logger.error(f"Error applying modifications: {str(e)}")
+            staged.status = ProcessingStatus.FAILED
+            raise
+

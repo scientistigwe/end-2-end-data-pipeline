@@ -1,234 +1,232 @@
-# backend/core/channel_handlers/decision_handler.py
-
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
+from uuid import UUID
 
 from backend.core.channel_handlers.base_channel_handler import BaseChannelHandler
+from backend.core.channel_handlers.core_process_handler import CoreProcessHandler
 from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType, ProcessingMessage
-
-# Import the decision module manager
-from backend.data_pipeline.decision.decision_processor import DecisionProcessor
+from backend.core.messaging.types import (
+    MessageType,
+    ProcessingMessage,
+    ProcessingStatus,
+    ProcessingStage,
+    ModuleIdentifier,
+    ComponentType
+)
+from backend.data_pipeline.decision.decision_processor import (
+    DecisionProcessor,
+    DecisionPhase
+)
 
 logger = logging.getLogger(__name__)
 
 
-class DecisionPhase(Enum):
-    """Phases in decision process"""
-    RECOMMENDATION = "recommendation"
-    USER_DECISION = "user_decision"
-    DECISION_PROCESSING = "decision_processing"
-
-
-@dataclass
-class DecisionContext:
-    """Context for decision processing"""
-    pipeline_id: str
-    phase: DecisionPhase
-    pipeline_stage: str  # The stage requiring decision (extraction/quality/insight etc)
-    recommendations: Optional[List[Dict[str, Any]]] = None
-    decision_options: Optional[List[Dict[str, Any]]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-    status: str = "pending"
-
-
 class DecisionChannelHandler(BaseChannelHandler):
     """
-    Handles communication between orchestrator and decision module manager
+    Handles communication and routing for decision-related messages
+
+    Responsibilities:
+    - Route decision-related messages
+    - Coordinate with decision processor
+    - Interface with decision manager
     """
 
-    def __init__(self, message_broker: MessageBroker):
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            process_handler: Optional[CoreProcessHandler] = None,
+            decision_processor: Optional[DecisionProcessor] = None
+    ):
+        """Initialize decision channel handler"""
         super().__init__(message_broker, "decision_handler")
 
-        # Initialize decision module manager
-        self.decision_manager = DecisionModuleManager(message_broker)
+        # Initialize dependencies
+        self.process_handler = process_handler or CoreProcessHandler(message_broker)
+        self.decision_processor = decision_processor or DecisionProcessor(message_broker)
 
-        # Track active decision processes
-        self.active_decisions: Dict[str, DecisionContext] = {}
-
-        # Register handlers
+        # Register message handlers
         self._register_handlers()
 
     def _register_handlers(self) -> None:
-        """Register message handlers"""
+        """Register message handlers for decision processing"""
         self.register_callback(
-            MessageType.DECISION_REQUIRED,
-            self._handle_decision_request
+            MessageType.DECISION_START,
+            self._handle_decision_start
         )
         self.register_callback(
-            MessageType.RECOMMENDATION_READY,
-            self._handle_recommendation_ready
+            MessageType.DECISION_COMPLETE,
+            self._handle_decision_complete
         )
         self.register_callback(
-            MessageType.USER_DECISION_MADE,
-            self._handle_user_decision
+            MessageType.DECISION_UPDATE,
+            self._handle_decision_update
         )
         self.register_callback(
             MessageType.DECISION_ERROR,
             self._handle_decision_error
         )
 
-    def initiate_decision_process(self, pipeline_id: str, pipeline_stage: str,
-                                  context_data: Dict[str, Any]) -> None:
-        """Entry point for decision process"""
+    def _handle_decision_start(self, message: ProcessingMessage) -> None:
+        """Handle decision process start request"""
         try:
-            # Create decision context
-            decision_context = DecisionContext(
+            pipeline_id = message.content.get('pipeline_id')
+            data = message.content.get('data', {})
+            context = message.content.get('context', {})
+
+            # Create response message to decision manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="decision_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_decision_start"
+                ),
+                message_type=MessageType.DECISION_STATUS_UPDATE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'status': 'started',
+                    'phase': DecisionPhase.RECOMMENDATION.value
+                }
+            )
+
+            # Execute process via process handler
+            self.process_handler.execute_process(
+                self._run_decision_process,
                 pipeline_id=pipeline_id,
-                phase=DecisionPhase.RECOMMENDATION,
-                pipeline_stage=pipeline_stage,
-                metadata=context_data
+                stage=ProcessingStage.DECISION_MAKING,
+                message_type=MessageType.DECISION_START,
+                data=data,
+                context=context
             )
 
-            self.active_decisions[pipeline_id] = decision_context
-
-            # Start recommendation generation
-            self.decision_manager.generate_recommendations(
-                pipeline_id,
-                pipeline_stage,
-                context_data
-            )
+            # Publish response to manager
+            self.message_broker.publish(response)
 
         except Exception as e:
-            self.logger.error(f"Failed to initiate decision process: {str(e)}")
-            self._handle_process_error(pipeline_id, str(e))
+            logger.error(f"Failed to start decision process: {e}")
+            self._handle_decision_error(
+                ProcessingMessage(
+                    source_identifier=self.module_id,
+                    target_identifier=ModuleIdentifier(
+                        component_name="decision_manager",
+                        component_type=ComponentType.MANAGER
+                    ),
+                    message_type=MessageType.DECISION_ERROR,
+                    content={
+                        'error': str(e),
+                        'pipeline_id': message.content.get('pipeline_id')
+                    }
+                )
+            )
 
-    def _handle_decision_request(self, message: ProcessingMessage) -> None:
-        """Handle new decision request"""
-        pipeline_id = message.content['pipeline_id']
-        pipeline_stage = message.content['stage']
-        context = message.content.get('context', {})
+    async def _run_decision_process(self, data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Core decision process execution logic"""
+        try:
+            # Run recommendation phase
+            recommendations = await self.decision_processor.generate_recommendations(
+                context.get('decision_id'),
+                data,
+                context
+            )
 
-        self.initiate_decision_process(
-            pipeline_id,
-            pipeline_stage,
-            context
-        )
+            # Run user decision phase 
+            decision_options = await self.decision_processor.prepare_decision_options(
+                context.get('decision_id'),
+                recommendations
+            )
 
-    def _handle_recommendation_ready(self, message: ProcessingMessage) -> None:
-        """Handle completed recommendations"""
-        pipeline_id = message.content['pipeline_id']
-        recommendations = message.content.get('recommendations', [])
-        decision_options = message.content.get('decision_options', [])
+            # Run decision processing phase
+            decision_results = await self.decision_processor.process_decision(
+                context.get('decision_id'),
+                decision_options
+            )
 
-        context = self.active_decisions.get(pipeline_id)
-        if context:
-            # Update context
-            context.recommendations = recommendations
-            context.decision_options = decision_options
-            context.phase = DecisionPhase.USER_DECISION
+            return {
+                'recommendations': recommendations,
+                'decision_options': decision_options,
+                'decision_results': decision_results,
+                'pipeline_id': context.get('pipeline_id')
+            }
 
-            # Forward to orchestrator for user interaction
-            self.send_response(
-                target_id=f"pipeline_manager_{pipeline_id}",
-                message_type=MessageType.REQUEST_USER_DECISION,
+        except Exception as e:
+            logger.error(f"Decision process failed: {e}")
+            raise
+
+    def _handle_decision_complete(self, message: ProcessingMessage) -> None:
+        """Handle decision process completion"""
+        try:
+            # Create completion response for manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="decision_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_decision_complete"
+                ),
+                message_type=MessageType.DECISION_COMPLETE,
                 content={
-                    'pipeline_id': pipeline_id,
-                    'stage': context.pipeline_stage,
-                    'recommendations': recommendations,
-                    'decision_options': decision_options,
-                    'metadata': context.metadata
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'results': message.content.get('results', {}),
+                    'status': 'completed'
                 }
             )
 
-    def _handle_user_decision(self, message: ProcessingMessage) -> None:
-        """Handle user's decision"""
-        pipeline_id = message.content['pipeline_id']
-        decision = message.content.get('decision')
+            # Publish completion to manager
+            self.message_broker.publish(response)
 
-        context = self.active_decisions.get(pipeline_id)
-        if context:
-            context.phase = DecisionPhase.DECISION_PROCESSING
+        except Exception as e:
+            logger.error(f"Error handling decision completion: {e}")
 
-            # Process user decision
-            self.decision_manager.process_user_decision(
-                pipeline_id,
-                context.pipeline_stage,
-                decision,
-                {
-                    'recommendations': context.recommendations,
-                    'original_options': context.decision_options,
-                    'metadata': context.metadata
+    def _handle_decision_update(self, message: ProcessingMessage) -> None:
+        """Handle decision process updates"""
+        try:
+            # Forward update to decision manager
+            response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="decision_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_decision_update"
+                ),
+                message_type=MessageType.DECISION_STATUS_UPDATE,
+                content={
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'status': message.content.get('status'),
+                    'progress': message.content.get('progress')
                 }
             )
+
+            # Publish update to manager
+            self.message_broker.publish(response)
+
+        except Exception as e:
+            logger.error(f"Error handling decision update: {e}")
 
     def _handle_decision_error(self, message: ProcessingMessage) -> None:
-        """Handle decision processing errors"""
-        pipeline_id = message.content['pipeline_id']
-        error = message.content.get('error')
-
-        self._handle_process_error(pipeline_id, error)
-
-    def _handle_process_error(self, pipeline_id: str, error: str) -> None:
-        """Handle process errors"""
-        context = self.active_decisions.get(pipeline_id)
-        if context:
-            # Notify orchestrator
-            self.send_response(
-                target_id=f"pipeline_manager_{pipeline_id}",
+        """Handle decision process errors"""
+        try:
+            # Forward error to decision manager
+            error_response = ProcessingMessage(
+                source_identifier=self.module_id,
+                target_identifier=ModuleIdentifier(
+                    component_name="decision_manager",
+                    component_type=ComponentType.MANAGER,
+                    method_name="handle_decision_error"
+                ),
                 message_type=MessageType.DECISION_ERROR,
                 content={
-                    'pipeline_id': pipeline_id,
-                    'stage': context.pipeline_stage,
-                    'phase': context.phase.value,
-                    'error': error
+                    'pipeline_id': message.content.get('pipeline_id'),
+                    'error': message.content.get('error')
                 }
             )
 
-            # Cleanup
-            self._cleanup_decision_process(pipeline_id)
+            # Publish error to manager
+            self.message_broker.publish(error_response)
 
-    def handle_decision_timeout(self, pipeline_id: str) -> None:
-        """Handle decision timeout"""
-        context = self.active_decisions.get(pipeline_id)
-        if context:
-            # Get default decision if available
-            default_decision = self.decision_manager.get_default_decision(
-                pipeline_id,
-                context.pipeline_stage
-            )
+        except Exception as e:
+            logger.error(f"Error handling decision error: {e}")
 
-            if default_decision:
-                # Apply default decision
-                self._handle_user_decision(ProcessingMessage(
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'decision': default_decision
-                    }
-                ))
-            else:
-                # Handle as error if no default available
-                self._handle_process_error(
-                    pipeline_id,
-                    "Decision timeout with no default action"
-                )
-
-    def get_decision_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
-        """Get current decision process status"""
-        context = self.active_decisions.get(pipeline_id)
-        if not context:
-            return None
-
-        return {
-            'pipeline_id': pipeline_id,
-            'stage': context.pipeline_stage,
-            'phase': context.phase.value,
-            'status': context.status,
-            'has_recommendations': bool(context.recommendations),
-            'has_options': bool(context.decision_options),
-            'created_at': context.created_at.isoformat()
-        }
-
-    def _cleanup_decision_process(self, pipeline_id: str) -> None:
-        """Clean up decision process resources"""
-        if pipeline_id in self.active_decisions:
-            del self.active_decisions[pipeline_id]
-
-    def __del__(self):
-        """Cleanup handler resources"""
-        self.active_decisions.clear()
-        super().__del__()
+    def get_process_status(self, decision_id: str) -> Optional[Dict[str, Any]]:
+        """Get current process status"""
+        return self.process_handler.get_process_status(decision_id)

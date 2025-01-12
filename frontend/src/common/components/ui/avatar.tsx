@@ -1,7 +1,6 @@
-// src/common/components/ui/avatar.tsx
-import * as React from 'react';
-import * as AvatarPrimitive from '@radix-ui/react-avatar';
-import { cn } from '@/common/utils/cn';
+import * as React from "react";
+import * as AvatarPrimitive from "@radix-ui/react-avatar";
+import { cn } from "@/common/utils/cn";
 
 interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
   src?: string;
@@ -23,12 +22,10 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
       >
         <AvatarPrimitive.Image
           src={src}
-          alt={alt || ''}
+          alt={alt || ""}
           className="aspect-square h-full w-full"
         />
-        <AvatarPrimitive.Fallback
-          className="flex h-full w-full items-center justify-center rounded-full bg-muted"
-        >
+        <AvatarPrimitive.Fallback className="flex h-full w-full items-center justify-center rounded-full bg-muted">
           {fallback || alt?.[0]?.toUpperCase()}
         </AvatarPrimitive.Fallback>
       </AvatarPrimitive.Root>
@@ -36,6 +33,10 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
   }
 );
 
-Avatar.displayName = 'Avatar';
+Avatar.displayName = "Avatar";
 
-export { Avatar };
+// Export AvatarFallback explicitly
+const AvatarFallback = AvatarPrimitive.Fallback;
+const AvatarImage = AvatarPrimitive.Image;
+
+export { Avatar, AvatarFallback, AvatarImage };

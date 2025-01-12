@@ -1,240 +1,345 @@
-# api_manager.py
-import logging
-import uuid
-from datetime import datetime
-from typing import Dict, Any, Optional
+from __future__ import annotations
 
-from backend.core.messaging.types import ComponentType
-from backend.core.registry.component_registry import ComponentRegistry
-from backend.core.messaging.types import ProcessingMessage, MessageType, ModuleIdentifier
+import logging
+import asyncio
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from backend.core.messaging.broker import MessageBroker
+from backend.core.messaging.types import (
+    ComponentType,
+    MessageType,
+    ProcessingMessage,
+    ModuleIdentifier,
+    ProcessingStage,
+    ProcessingStatus
+)
+from backend.core.control.control_point_manager import ControlPointManager
+from backend.core.orchestration.base_manager import BaseManager
+from backend.core.monitoring.process import ProcessMonitor
+from backend.core.utils.process_manager import ProcessManager, with_process_handling
 from .api_validator import APIValidator
 from .api_fetcher import APIFetcher
+from .api_config import Config
 
 logger = logging.getLogger(__name__)
 
 
-class APIManager:
-    """Enhanced API management system with messaging integration"""
+@dataclass
+class APIContext:
+    """Context for API request processing"""
+    request_id: str
+    pipeline_id: str
+    status: ProcessingStatus
+    metadata: Dict[str, Any]
+    created_at: datetime = field(default_factory=datetime.now)
+    error: Optional[str] = None
+    processing_history: List[Dict[str, Any]] = field(default_factory=list)
+    control_points: List[str] = field(default_factory=list)
+    stage: Optional[ProcessingStage] = None
 
-    def __init__(self, message_broker):
-        """Initialize APIManager with component registration"""
-        self.message_broker = message_broker
-        self.registry = ComponentRegistry()
-        self.validator = APIValidator()
 
-        # Initialize with consistent UUID and proper ComponentType
-        component_uuid = self.registry.get_component_uuid("APIManager")
-        self.module_id = ModuleIdentifier(
-            component_name="APIManager",
-            component_type=ComponentType.MODULE,  # Add proper component type
-            method_name="process_api",
-            instance_id=component_uuid
+class APIManager(BaseManager):
+    """Enhanced API manager with control point integration"""
+
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            control_point_manager: ControlPointManager,
+            config: Optional[Config] = None
+    ):
+        """Initialize APIManager with required components"""
+        super().__init__(
+            message_broker=message_broker,
+            component_name="APIManager"
         )
 
-        # Track processing state
-        self.pending_requests: Dict[str, Dict[str, Any]] = {}
+        self.control_point_manager = control_point_manager
+        self.config = config or Config()
+        self.validator = APIValidator(config=self.config)
 
-        # Register and subscribe
-        self._initialize_messaging()
-        logger.info(f"APIManager initialized with ID: {self.module_id.get_tag()}")
+        # Initialize monitoring
+        self.process_monitor = ProcessMonitor(
+            metrics_collector=self.metrics_collector,
+            source_type="api",
+            source_id=str(uuid4())
+        )
 
-    def _initialize_messaging(self) -> None:
-        """Set up message broker registration and subscriptions"""
-        try:
-            # Register with message broker
-            self.message_broker.register_component(self.module_id)
+        # Initialize process handler
+        self.process_handler = ProcessManager(config=self.config.PROCESSING)
 
-            # Get orchestrator ID
-            orchestrator_id = ModuleIdentifier(
-                component_name="DataOrchestrator",
-                component_type=ComponentType.ORCHESTRATOR,
-                method_name="manage_pipeline",
-                instance_id=self.registry.get_component_uuid("DataOrchestrator")
+        # Request tracking
+        self.active_requests: Dict[str, APIContext] = {}
+
+        # Register message handlers
+        self._setup_message_handlers()
+
+    def _setup_message_handlers(self) -> None:
+        """Set up message handlers"""
+        handlers = {
+            MessageType.API_REQUEST: self._handle_api_request,
+            MessageType.CONTROL_POINT_DECISION: self._handle_control_decision,
+            MessageType.STATUS_UPDATE: self._handle_status_update,
+            MessageType.ERROR: self._handle_error
+        }
+
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                component=self.module_id,
+                pattern=f"{message_type.value}.#",
+                callback=handler
             )
 
-            # Subscribe to relevant patterns based on source type
-            patterns = []
+    @with_process_handling
+    async def process_api_request(
+            self,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process API request with control points
 
-            # For APIManager
-            patterns = [
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_SUCCESS.value}",
-                f"{orchestrator_id.get_tag()}.{MessageType.SOURCE_ERROR.value}"
-            ]
+        Args:
+            request_data: API request configuration
 
-            for pattern in patterns:
-                self.message_broker.subscribe(
-                    component=self.module_id,
-                    pattern=pattern,
-                    callback=self._handle_orchestrator_response,
-                    timeout=10.0
-                )
-            logger.info(f"{self.__class__.__name__} messaging initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing messaging: {str(e)}")
-            raise
-
-    def process_api_request(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Main entry point for API data processing"""
+        Returns:
+            Dictionary containing processing results
+        """
         try:
-            request_id = str(uuid.uuid4())
-            endpoint = config.get('endpoint')
+            # Create request context
+            context = APIContext(
+                request_id=str(uuid4()),
+                pipeline_id=str(uuid4()),
+                status=ProcessingStatus.PENDING,
+                metadata=request_data.get('metadata', {})
+            )
 
-            # Store request info immediately
-            self.pending_requests[request_id] = {
-                'endpoint': endpoint,
-                'status': 'pending',
-                'created_at': datetime.now().isoformat()
+            self.active_requests[context.request_id] = context
+
+            # Process through stages
+            try:
+                result = await self._process_stages(context, request_data)
+                return {
+                    'status': 'success',
+                    'request_id': context.request_id,
+                    'pipeline_id': context.pipeline_id,
+                    'data': result
+                }
+            except asyncio.CancelledError:
+                await self._handle_cancellation(context)
+                raise
+            except Exception as e:
+                await self._handle_error(context, str(e))
+                raise
+
+        except Exception as e:
+            logger.error(f"API request processing error: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'error': str(e)
             }
 
-            logger.info(f"Starting API request processing: {endpoint} (ID: {request_id})")
+    async def _process_stages(
+            self,
+            context: APIContext,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process request through various stages with control points"""
+        stages = [
+            (ProcessingStage.INITIAL_VALIDATION, self._validate_request),
+            (ProcessingStage.CONNECTION_CHECK, self._check_connection),
+            (ProcessingStage.DATA_EXTRACTION, self._fetch_data),
+            (ProcessingStage.DATA_VALIDATION, self._validate_response),
+            (ProcessingStage.PROCESSING, self._process_response)
+        ]
 
-            # Step 1: Initialize API fetcher
-            api_fetcher = APIFetcher(config)
+        stage_results = {}
 
-            # Step 2: Validate endpoint and credentials
-            self._validate_api_config(api_fetcher, config)
+        for stage, processor in stages:
+            context.stage = stage
+            await self._update_status(context, f"Starting {stage.value}")
 
-            # Step 3: Process API data
-            processed_data = self._process_api_data(api_fetcher, endpoint)
+            # Process stage
+            result = await processor(context, request_data)
 
-            # Step 4: Update pending request status
-            self.pending_requests[request_id]['status'] = 'processed'
-            self.pending_requests[request_id]['processed_data'] = processed_data
+            # Create control point
+            decision = await self._create_control_point(
+                context=context,
+                stage=stage,
+                data=result,
+                options=['proceed', 'modify', 'reject']
+            )
 
-            # Step 5: Send processed data to orchestrator
-            self._send_to_orchestrator(request_id, processed_data)
+            if decision['decision'] == 'reject':
+                await self._handle_rejection(context, decision.get('details', {}))
+                raise ValueError(f"Processing rejected at stage {stage.value}")
 
-            return processed_data
-
-        except Exception as e:
-            logger.error(f"Error processing API request: {str(e)}")
-            raise
-
-    def _validate_api_config(self, api_fetcher: APIFetcher, config: Dict[str, Any]) -> None:
-        """Validate API configuration and credentials"""
-        try:
-            # Validate endpoint
-            endpoint_valid, endpoint_msg = self.validator.validate_endpoint(config['endpoint'])
-            if not endpoint_valid:
-                raise ValueError(endpoint_msg)
-
-            # Validate credentials if present
-            if 'credentials' in config:
-                creds_valid, creds_msg = self.validator.validate_credentials(
-                    config['credentials'],
-                    config['endpoint']
+            elif decision['decision'] == 'modify':
+                request_data = await self._apply_modifications(
+                    request_data,
+                    decision.get('modifications', {})
                 )
-                if not creds_valid:
-                    raise ValueError(creds_msg)
 
-            logger.info("API configuration validation successful")
+            stage_results[stage.value] = result
 
-        except Exception as e:
-            logger.error(f"API validation error: {str(e)}")
-            raise
+        return stage_results
 
-    def _process_api_data(self, api_fetcher: APIFetcher, endpoint: str) -> Dict[str, Any]:
-        """Process API data with error handling"""
+    async def _validate_request(
+            self,
+            context: APIContext,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate API request configuration"""
         try:
-            # Fetch data from API
-            response = api_fetcher.fetch_data(endpoint)
-
-            # Validate response format
-            format_valid, format_msg = self.validator.validate_response_format(response)
-            if not format_valid:
-                raise ValueError(format_msg)
-
-            # Check rate limits
-            rate_limits = self.validator.validate_rate_limits(response)
+            validation_results = await self.validator.validate_request_comprehensive(
+                request_data,
+                context.metadata
+            )
 
             return {
-                "endpoint": endpoint,
-                "status": "success",
-                "data": response['data'],
-                "metadata": {
-                    "rate_limits": rate_limits,
-                    "headers": response['headers'],
-                    "timestamp": datetime.now().isoformat()
+                'validation_results': validation_results,
+                'request_preview': {
+                    k: v for k, v in request_data.items()
+                    if k not in ['credentials', 'auth']
                 }
             }
-        except Exception as e:
-            raise ValueError(str(e))
 
-    def _send_to_orchestrator(self, request_id: str, processed_data: Dict[str, Any]) -> None:
-        """Send processed data to orchestrator"""
+        except Exception as e:
+            logger.error(f"Request validation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _check_connection(
+            self,
+            context: APIContext,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Check API connection and credentials"""
         try:
-            orchestrator_id = ModuleIdentifier(
-                "DataOrchestrator",
-                "manage_pipeline",
-                self.registry.get_component_uuid("DataOrchestrator")
+            api_fetcher = APIFetcher(request_data)
+            connection_check = await api_fetcher.check_connection()
+
+            return {
+                'connection_status': connection_check.get('status'),
+                'diagnostics': connection_check.get('diagnostics', {}),
+                'rate_limits': connection_check.get('rate_limits', {})
+            }
+
+        except Exception as e:
+            logger.error(f"Connection check error: {str(e)}", exc_info=True)
+            raise
+
+    async def _fetch_data(
+            self,
+            context: APIContext,
+            request_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Fetch data from API"""
+        try:
+            api_fetcher = APIFetcher(request_data)
+            response = await api_fetcher.fetch_data(
+                endpoint=request_data['endpoint'],
+                method=request_data.get('method', 'GET'),
+                params=request_data.get('params')
             )
 
-            message = ProcessingMessage(
+            return {
+                'response_data': response.get('data'),
+                'status_code': response.get('status_code'),
+                'headers': response.get('headers', {})
+            }
+
+        except Exception as e:
+            logger.error(f"Data fetch error: {str(e)}", exc_info=True)
+            raise
+
+    async def _validate_response(
+            self,
+            context: APIContext,
+            response_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate API response"""
+        try:
+            validation_results = await self.validator.validate_response_comprehensive(
+                response_data,
+                context.metadata
+            )
+
+            return {
+                'validation_results': validation_results,
+                'data_preview': response_data.get('response_data', {})
+            }
+
+        except Exception as e:
+            logger.error(f"Response validation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _create_control_point(
+            self,
+            context: APIContext,
+            stage: ProcessingStage,
+            data: Dict[str, Any],
+            options: List[str]
+    ) -> Dict[str, Any]:
+        """Create control point and wait for decision"""
+        try:
+            control_point_id = await self.control_point_manager.create_control_point(
+                pipeline_id=context.pipeline_id,
+                stage=stage,
+                data={
+                    'request_id': context.request_id,
+                    'stage_data': data,
+                    'metadata': context.metadata
+                },
+                options=options
+            )
+
+            context.control_points.append(control_point_id)
+            context.status = ProcessingStatus.AWAITING_DECISION
+
+            await self._update_status(
+                context,
+                f"Awaiting decision at {stage.value}"
+            )
+
+            return await self.control_point_manager.wait_for_decision(
+                control_point_id,
+                timeout=self.config.PROCESSING_TIMEOUT
+            )
+
+        except Exception as e:
+            logger.error(f"Control point creation error: {str(e)}", exc_info=True)
+            raise
+
+    async def _update_status(
+            self,
+            context: APIContext,
+            message: str
+    ) -> None:
+        """Update processing status"""
+        try:
+            status_message = ProcessingMessage(
                 source_identifier=self.module_id,
-                target_identifier=orchestrator_id,
-                message_type=MessageType.SOURCE_SUCCESS,
+                target_identifier=ModuleIdentifier("pipeline_manager"),
+                message_type=MessageType.STATUS_UPDATE,
                 content={
-                    'request_id': request_id,
-                    'action': 'process_api_data',
-                    'data': processed_data['data'],
-                    'metadata': processed_data['metadata'],
-                    'source_type': 'api',
-                    'endpoint': processed_data['endpoint']
+                    'pipeline_id': context.pipeline_id,
+                    'request_id': context.request_id,
+                    'status': context.status.value,
+                    'stage': context.stage.value if context.stage else None,
+                    'message': message,
+                    'timestamp': datetime.now().isoformat()
                 }
             )
 
-            logger.info(f"Sending data to orchestrator: {orchestrator_id.get_tag()}")
-            self.message_broker.publish(message)
+            await self.message_broker.publish(status_message)
+
+            # Record metrics
+            await self.process_monitor.record_status_update(
+                status=context.status.value,
+                stage=context.stage.value if context.stage else None,
+                request_id=context.request_id
+            )
 
         except Exception as e:
-            logger.error(f"Error sending to orchestrator: {str(e)}")
-            raise
-
-    def _handle_orchestrator_error(self, request_id: str, error_message: str) -> None:
-        """Handle orchestrator-reported errors"""
-        try:
-            if request_id in self.pending_requests:
-                request_data = self.pending_requests[request_id]
-                logger.error(f"Processing failed for API request to {request_data['endpoint']}: {error_message}")
-
-                # Update request status
-                request_data['status'] = 'error'
-                request_data['error_message'] = error_message
-                request_data['error_timestamp'] = datetime.now().isoformat()
-
-                # Cleanup
-                self._cleanup_pending_request(request_id)
-            else:
-                logger.warning(f"Received error for unknown request ID: {request_id}")
-        except Exception as e:
-            logger.error(f"Error handling orchestrator error: {str(e)}")
-
-    def _handle_orchestrator_response(self, message: ProcessingMessage) -> None:
-        """Handle responses from orchestrator"""
-        try:
-            request_id = message.content.get('request_id')
-            if not request_id or request_id not in self.pending_requests:
-                logger.warning(f"Received response for unknown request ID: {request_id}")
-                return
-
-            request_data = self.pending_requests[request_id]
-
-            if message.message_type == MessageType.SOURCE_SUCCESS:
-                logger.info(f"API request {request_id} processed successfully")
-                self._cleanup_pending_request(request_id)
-            elif message.message_type == MessageType.SOURCE_ERROR:
-                logger.error(f"Error processing API request {request_id}")
-                self._handle_orchestrator_error(request_id, message.content.get('error'))
-            elif message.message_type == MessageType.SOURCE_VALIDATE:
-                logger.info(f"Validation in progress for request {request_id}")
-                request_data['status'] = 'validating'
-
-        except Exception as e:
-            logger.error(f"Error handling orchestrator response: {str(e)}")
-
-    def _cleanup_pending_request(self, request_id: str) -> None:
-        """Clean up processed request data"""
-        if request_id in self.pending_requests:
-            del self.pending_requests[request_id]
-            logger.info(f"Cleaned up pending request: {request_id}")
-
+            logger.error(f"Status update error: {str(e)}", exc_info=True)

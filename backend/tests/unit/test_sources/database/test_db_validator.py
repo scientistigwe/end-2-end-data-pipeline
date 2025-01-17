@@ -14,7 +14,7 @@ def connector_mock():
     connector.config.get_connection_params.return_value = {
         'host': 'localhost',
         'port': 5432,
-        'database': 'test_db',
+        'db': 'test_db',
         'username': 'test_user'
     }
     return connector
@@ -50,7 +50,7 @@ def test_validate_db_type_unsupported(db_validator, connector_mock):
     mock_db_type.name = "UNSUPPORTED_DB"
     connector_mock.config.db_type = mock_db_type
 
-    with pytest.raises(DatabaseError, match="Unsupported database type: UNSUPPORTED_DB"):
+    with pytest.raises(DatabaseError, match="Unsupported db type: UNSUPPORTED_DB"):
         db_validator._validate_db_type(None)
 
 def test_validate_postgresql_params_success(db_validator, connector_mock):
@@ -61,7 +61,7 @@ def test_validate_postgresql_params_success(db_validator, connector_mock):
 def test_validate_connection_params_missing_params(db_validator, connector_mock):
     connector_mock.config.get_connection_params.return_value = {
         'host': 'localhost',
-        'database': 'test_db',
+        'db': 'test_db',
         'username': 'test_user'
     }
 

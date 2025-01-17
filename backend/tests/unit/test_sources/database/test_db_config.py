@@ -10,7 +10,7 @@ def test_database_config():
         'db_type': 'postgresql',
         'host': 'localhost',
         'port': 5432,
-        'database': 'test_db',
+        'db': 'test_db',
         'username': 'test_user',
         'password': 'test_password'
     })
@@ -28,7 +28,7 @@ def test_database_config_from_yaml():
 db_type: postgresql
 host: localhost
 port: 5432
-database: test_db
+db: test_db
 username: test_user
 password: test_password
     '''
@@ -37,7 +37,7 @@ password: test_password
     mock_file = StringIO(mock_content)
 
     # Patch the open function to return our mock file object
-    with patch('backend.data_pipeline.source.database.db_config.open', return_value=mock_file):
+    with patch('backend.data_pipeline.source.db.db_config.open', return_value=mock_file):
         config = DatabaseConfig.from_yaml(Path('path/to/config.yaml'))
 
     # Add assertions based on the mock YAML content
@@ -53,7 +53,7 @@ def test_encrypt_decrypt():
         'db_type': 'postgresql',
         'host': 'localhost',
         'port': 5432,
-        'database': 'test_db',
+        'db': 'test_db',
         'username': 'test_user',
         'password': 'test_password'
     })

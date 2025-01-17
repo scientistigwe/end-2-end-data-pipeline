@@ -2,17 +2,16 @@
 import React, { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Mail,
-  ArrowLeft
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Mail, ArrowLeft } from "lucide-react";
 import { Button } from "@/common/components/ui/button";
 import { Input } from "@/common/components/ui/inputs/input";
-import { Alert, AlertTitle, AlertDescription } from "@/common/components/ui/alert";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "@/common/components/ui/alert";
 import { useAuth } from "../hooks/useAuth";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 
 export const ForgotPasswordForm: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -133,13 +132,13 @@ export const ForgotPasswordForm: React.FC = () => {
             className="block text-sm font-medium text-foreground flex justify-between items-center"
           >
             Email Address
-            {touched && email && (
-              isValidEmail(email) ? (
+            {touched &&
+              email &&
+              (isValidEmail(email) ? (
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-red-500" />
-              )
-            )}
+              ))}
           </label>
           <div className="relative">
             <Input

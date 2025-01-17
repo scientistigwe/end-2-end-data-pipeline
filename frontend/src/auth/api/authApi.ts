@@ -24,6 +24,9 @@ class AuthApi {
   private client = baseAxiosClient;
 
   constructor() {
+    // Log the full base URL 
+    console.log('Full Base URL:', this.client.getAxiosInstance().defaults.baseURL);
+    
     this.client.setServiceConfig({
       service: ServiceType.AUTH,
       headers: {
@@ -35,19 +38,38 @@ class AuthApi {
 
   async login(credentials: LoginCredentials): Promise<LoginResponseData> {
     try {
+      // Log the exact route being used
+      const loginRoute = this.client.createRoute('AUTH', 'LOGIN');
+      console.log('Login Route:', loginRoute);
+      console.log('Full Login URL:', `${this.client.getAxiosInstance().defaults.baseURL}${loginRoute}`);
+      console.log('Login Credentials:', credentials);
+
       const response = await this.client.executePost<LoginApiResponse>(
-        this.client.createRoute('AUTH', 'LOGIN'),
+        loginRoute,
         credentials,
-        { withCredentials: true }
+        { 
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
       );
+      
+      console.log('Login Response:', response);
       
       window.dispatchEvent(new Event('auth:login'));
       return response.data;
     } catch (error) {
-      console.error('Login API error:', error);
+      console.error('Detailed Login Error:', {
+        error,
+        response: (error as any).response,
+        message: (error as any).message
+      });
       throw this.handleAuthError(error);
     }
   }
+
 
   async getProfile(): Promise<User> {
     try {

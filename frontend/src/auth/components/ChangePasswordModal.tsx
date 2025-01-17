@@ -24,7 +24,7 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 
 export const ChangePasswordModal: React.FC = () => {
   const MODAL_ID = "change-password";

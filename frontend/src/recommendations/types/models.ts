@@ -1,4 +1,4 @@
-// src/recommendations/types/models.ts
+// src/recommendations/types/types.ts
 import type { ImpactLevel } from '@/common';
 import type { RecommendationType, RecommendationStatus } from './base';
 

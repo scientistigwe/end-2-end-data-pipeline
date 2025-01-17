@@ -1,163 +1,170 @@
 sequenceDiagram
-    participant UI as Frontend (React)
-    participant Auth as Auth Module
-    participant DSM as DataSource Manager
-    participant CPM as Control Point Manager
-    participant MB as Message Broker
-    participant PM as Pipeline Manager
-    participant QH as Quality Handler
-    participant QP as Quality Processor
-    participant DH as Decision Handler
-    participant AM as Analytics Module
-    participant IM as Insight Module
-    participant MM as Monitoring Module
-    participant DB as Database
-    participant Logger as Audit Logger
-    participant FS as FileService
-    participant FM as FileManager
-    participant Pipe as Pipeline
+    %% Core System Components
+    participant UI as Frontend
+    participant Auth as AuthHandler
+    participant Sub as SubscriptionMgr
+    participant DSM as DataSourceManager
+    participant SA as StagingArea
+    participant CPM as ControlPointManager
+    participant MB as MessageBroker
+    participant Monitor as PrometheusMonitor
 
-    Note over UI, DSM: Frontend Layer
-    Note over CPM: System Boundary
-    Note over MB, Logger: Backend Layer
+    %% Data Quality Components
+    participant DQM as DataQualityManager
+    participant DQH as DataQualityHandler
+    participant DQP as DataQualityProcessor
 
-    Note over UI, Auth: Stage 0: Authentication
+    %% Insight Components
+    participant IAM as InsightAnalysisManager
+    participant IAH as InsightAnalysisHandler
+    participant IAP as InsightAnalysisProcessor
+
+    %% Advanced Analytics Components
+    participant AAM as AdvancedAnalyticsManager
+    participant AAH as AdvancedAnalyticsHandler
+    participant AAP as AdvancedAnalyticsProcessor
+
+    %% Monitoring Components
+    participant MM as MonitoringManager
+    participant MH as MonitoringHandler
+    participant MP as MonitoringProcessor
+
+    %% Decision Components
+    participant DM as DecisionManager
+    participant DH as DecisionHandler
+    participant DP as DecisionProcessor
+
+    %% Recommendation Components
+    participant RM as RecommendationManager
+    participant RH as RecommendationHandler
+    participant RP as RecommendationProcessor
+
+    %% Report Components
+    participant RPM as ReportManager
+    participant RPH as ReportHandler
+    participant RPP as ReportProcessor
+
+    %% 1. Initial Authentication & Setup
+    Note over UI, Auth: 1. Authentication & Setup
     UI->>Auth: Login Request
     Auth->>Auth: Validate Credentials
-    Auth-->>UI: JWT Token
-    Logger->>Logger: Log Auth Success
+    Auth-->>UI: Return JWT Token
+    UI->>Sub: Check Subscription
+    Sub->>Sub: Validate Usage Limits
+    Sub-->>UI: Confirm Access Level
 
-    Note over UI, DSM: Stage 1: Data Source Setup
-    UI->>DSM: Initialize Data Source
-    DSM->>DSM: Validate Configuration
+    %% 2. Data Source Management & Staging
+    Note over UI, SA: 2. Data Reception & Staging
+    UI->>DSM: Upload Data
+    DSM->>Sub: Verify Limits
+    Sub-->>DSM: Confirm Allowed
+    DSM->>SA: Store Data
+    SA-->>DSM: Return Reference
+    DSM->>CPM: Send Metadata
+    Monitor->>Monitor: Log Upload
 
-    alt API Source Setup
-        DSM->>DSM: API Validation
-        DSM->>DSM: Connection Test
-    else Database Setup
-        DSM->>DSM: DB Connection Test
-        DSM->>DSM: Schema Validation
-    else File Upload
-        DSM->>DSM: File Validation
-        DSM->>DSM: Content Check
-    end
+    %% 3. Control Point Management
+    Note over CPM, MB: 3. Process Initialization
+    CPM->>CPM: Analyze Context
+    CPM->>CPM: Plan Process Flow
+    CPM->>MB: Initialize Flow
+    Monitor->>Monitor: Log Flow Start
 
-    %% Integrating Second Diagram's Initial Upload Flow
-    UI->>FS: Upload File Request
-    activate FS
-    FS->>CPM: Create Initial Control Point
-    CPM-->>FS: Control Point ID
-    FS-->>UI: Upload Accepted (Async)
+    %% 4. Quality Analysis Phase
+    Note over MB, DQP: 4. Quality Analysis
+    MB->>DQM: Quality Request
+    DQM->>DQH: Route Request
+    DQH->>DQP: Process Request
+    DQP->>SA: Fetch Data
+    DQP->>DQP: Analyze Quality
+    DQP-->>SA: Store Results
+    DQP-->>DQH: Return Results
+    DQH-->>DQM: Process Results
+    DQM-->>CPM: Quality Complete
+    Monitor->>Monitor: Log Quality Phase
 
-    DSM->>CPM: Source Ready Event
-    CPM->>CPM: Create Control Point
-    CPM->>MB: Publish Source Event
-    MB->>PM: Route to Pipeline Manager
-    PM->>MB: Acknowledge Setup
-    MB->>CPM: Route Response
-    CPM->>DSM: Forward Response
-    DSM-->>UI: Show Status
+    %% 5. Basic Insight Analysis
+    Note over MB, IAP: 5. Insight Analysis
+    MB->>IAM: Insight Request
+    IAM->>IAH: Route Request
+    IAH->>IAP: Process Request
+    IAP->>SA: Fetch Data
+    IAP->>IAP: Generate Insights
+    IAP-->>SA: Store Insights
+    IAP-->>IAH: Return Results
+    IAH-->>IAM: Process Results
+    IAM-->>CPM: Insights Complete
+    Monitor->>Monitor: Log Insight Phase
 
-    Note over PM, QH: Stage 2: Pipeline Processing
-    PM->>MB: Publish Pipeline Start
-    MB->>MM: Route to Monitoring
-    MB->>QH: Route to Quality Handler
-    QH->>QP: Process Quality
-    QP->>MB: Publish Quality Results
-    MB->>CPM: Route Quality Results
-    CPM->>CPM: Create Quality Control Point
-    CPM->>DSM: Request Decision
-    DSM-->>UI: Show Quality Review UI
+    %% 6. Advanced Analytics (If Needed)
+    Note over MB, AAP: 6. Advanced Analytics
+    MB->>AAM: Analytics Request
+    AAM->>AAH: Route Request
+    AAH->>AAP: Process Request
+    AAP->>SA: Fetch Data
+    AAP->>AAP: Execute Analysis
+    AAP-->>SA: Store Results
+    AAP-->>AAH: Return Results
+    AAH-->>AAM: Process Results
+    AAM-->>CPM: Analytics Complete
+    Monitor->>Monitor: Log Analytics Phase
 
-    %% Integrating Second Diagram's Processing Flow
-    FS->>FM: Process File Request
-    activate FM
-    FM->>CPM: Create Processing Control Point
-    CPM-->>FM: Control Point ID
-    FM->>Pipe: Start Processing
+    %% 7. Monitoring Analysis
+    Note over MB, MP: 7. Monitoring
+    MB->>MM: Monitor Request
+    MM->>MH: Route Request
+    MH->>MP: Process Request
+    MP->>SA: Fetch Metrics
+    MP->>MP: Analyze Metrics
+    MP-->>SA: Store Analysis
+    MP-->>MH: Return Results
+    MH-->>MM: Process Results
+    MM-->>CPM: Monitoring Complete
+    Monitor->>Monitor: Log Monitoring Phase
 
-    alt Quality Issues Found
-        UI->>DSM: Select Resolution
-        DSM->>CPM: Forward Resolution
-        CPM->>MB: Publish Resolution
-        MB->>QP: Process Resolution
-        QP->>MB: Publish Results
-        MB->>CPM: Route Results
-        CPM->>DSM: Forward Results
-        DSM-->>UI: Show Results
-    else No Issues
-        UI->>DSM: Approve Quality
-        DSM->>CPM: Forward Approval
-        CPM->>MB: Publish Approval
-    end
+    %% 8. Decision Processing
+    Note over MB, DP: 8. Decision Processing
+    MB->>DM: Decision Request
+    DM->>DH: Route Request
+    DH->>DP: Process Request
+    DP->>SA: Fetch Analysis
+    DP->>DP: Process Decisions
+    DP-->>SA: Store Decisions
+    DP-->>DH: Return Results
+    DH-->>DM: Process Results
+    DM-->>CPM: Decisions Complete
+    Monitor->>Monitor: Log Decision Phase
 
-    Note over PM, AM: Stage 3: Analysis
-    CPM->>MB: Request Analysis
-    MB->>AM: Route to Analytics
-    AM->>AM: Execute Analysis
-    AM->>MB: Publish Results
-    MB->>CPM: Route Results
-    CPM->>CPM: Create Analysis Point
-    CPM->>DSM: Request Review
-    DSM-->>UI: Show Analysis UI
+    %% 9. Recommendation Generation
+    Note over MB, RP: 9. Recommendations
+    MB->>RM: Recommendation Request
+    RM->>RH: Route Request
+    RH->>RP: Process Request
+    RP->>SA: Fetch Decisions
+    RP->>RP: Generate Recommendations
+    RP-->>SA: Store Recommendations
+    RP-->>RH: Return Results
+    RH-->>RM: Process Results
+    RM-->>CPM: Recommendations Complete
+    Monitor->>Monitor: Log Recommendation Phase
 
-    alt Needs Modification
-        UI->>DSM: Submit Changes
-        DSM->>CPM: Forward Changes
-        CPM->>MB: Publish Changes
-        MB->>AM: Process Changes
-        AM->>MB: New Results
-        MB->>CPM: Route Results
-        CPM->>DSM: Forward Results
-        DSM-->>UI: Show Updates
-    else Accept Analysis
-        UI->>DSM: Approve Analysis
-        DSM->>CPM: Forward Approval
-        CPM->>MB: Publish Approval
-    end
+    %% 10. Report Generation
+    Note over MB, RPP: 10. Report Generation
+    MB->>RPM: Report Request
+    RPM->>RPH: Route Request
+    RPH->>RPP: Process Request
+    RPP->>SA: Fetch All Results
+    RPP->>RPP: Generate Report
+    RPP-->>SA: Store Report
+    RPP-->>RPH: Return Report
+    RPH-->>RPM: Process Report
+    RPM-->>CPM: Report Complete
+    Monitor->>Monitor: Log Report Phase
 
-    %% Integrating Second Diagram's Response Flow - Success Path
-    Pipe-->>FM: Processing Result
-    FM->>CPM: Update Control Point
-    CPM-->>FM: Decision Required
-    FM-->>FS: Stage Complete
-    FS-->>UI: Status Update
-    deactivate FM
-
-    %% Final Response
-    Pipe-->>FM: Final Result
-    FM-->>FS: Processing Complete
-    FS-->>UI: Final Response
-    deactivate FS
-
-    %% Error Path
-    Note over FM,CPM: Error Handling
-    FM->>CPM: Error Control Point
-    CPM-->>FS: Error Notification
-    FS-->>UI: Error Response
-
-    Note over PM, IM: Stage 4: Insights
-    CPM->>MB: Request Insights
-    MB->>IM: Generate Insights
-    IM->>MB: Publish Insights
-    MB->>CPM: Route Insights
-    CPM->>DSM: Forward Insights
-    DSM-->>UI: Show Insights
-
-    Note over MM, Logger: Continuous Monitoring
-    MM->>MB: Publish Health Updates
-    MB->>CPM: Route Health Status
-    CPM->>DSM: Forward Updates
-    DSM-->>UI: Show Updates
-    Logger->>Logger: Audit Trail
-
-    Note over CPM, MB: Error Handling
-    alt Error Occurs
-        CPM->>CPM: Create Error Point
-        CPM->>MB: Publish Error
-        MB->>PM: Handle Error
-        PM->>MB: Error Response
-        MB->>CPM: Route Response
-        CPM->>DSM: Forward Error
-        DSM-->>UI: Show Error
-    end
+    %% Process Completion
+    Note over CPM, UI: 11. Process Completion
+    CPM->>UI: Return Final Results
+    CPM->>Monitor: Log Completion
+    Monitor->>Monitor: Update Metrics
+    Sub->>Sub: Update Usage Stats
+    SA->>SA: Archive Data

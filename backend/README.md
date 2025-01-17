@@ -1,264 +1,189 @@
-# End-to-End Data Pipeline System
-
-A comprehensive data processing system with user-controlled decision points and real-time monitoring.
-
-## System Overview
-
-This system provides an end-to-end solution for data processing with user control at critical decision points, ensuring transparency and control throughout the pipeline process.
-
-## Stage Separation
-
-### Stage 0: Authentication
-- Secure user authentication using JWT tokens
-- Role-based access control
-- Session management and security logging
-- Files: `/auth` directory, JWT management, security middleware
-
-### Stage 1: Data Source Setup
-- Multiple source type support:
-  * API Integration
-  * Database Connections
-  * File Processing
-  * S3 Storage
-  * Real-time Streams
-- Automated validation for each source type
-- Configuration management and health checks
-- Files: `/dataSource` directory, source-specific handlers
-
-### Stage 2: Pipeline Initialization
-- Pipeline configuration and setup
-- Resource allocation
-- Monitoring initialization
-- Initial status reporting
-- Files: `/core/orchestration/pipeline_manager.py`
-
-### Stage 3: Quality Analysis
-- Automated quality detection
-- Issue analysis and categorization
-- Resolution suggestions
-- User decision points for quality management
-- Files: `/core/channel_handlers/quality_handler.py`, quality processors
-
-### Stage 4: Analytics Processing
-- Data processing workflows
-- Statistical analysis
-- Pattern recognition
-- Customizable analysis parameters
-- Files: `/data_pipeline/analytics`
-
-### Stage 5: Insight Generation
-- Pattern detection
-- Business insight extraction
-- Goal-oriented analysis
-- Customizable parameters
-- Files: `/data_pipeline/insight_analysis`
-
-### Stage 6: Recommendations
-- Consolidated analysis
-- Action item generation
-- Priority-based recommendations
-- User selection interface
-- Files: `/decisions` directory
-
-### Stage 7: Completion
-- Results storage
-- Final report generation
-- Pipeline cleanup
-- Status updates
-- Files: `/database` directory, reporting modules
-
-## User Decision Points
-
-### 1. Data Source Validation
-- Review source configuration
-- Validate connection settings
-- Approve data schema
-- Decision: Proceed or Reconfigure
-
-### 2. Quality Analysis Review
-- Review quality findings
-- Select resolution strategies
-- Validate fixes
-- Decision: Apply Fixes or Accept Current State
-
-### 3. Analytics Review
-- Review analysis results
-- Adjust parameters if needed
-- Validate outcomes
-- Decision: Accept or Modify Analysis
-
-### 4. Insight Review
-- Review generated insights
-- Align with business goals
-- Adjust parameters
-- Decision: Accept or Refine Insights
-
-### 5. Final Action Selection
-- Review recommendations
-- Select implementation actions
-- Set priorities
-- Decision: Final Action Plan
-
-## System Components Integration
-
-### Monitoring System
-- Real-time performance tracking
-- Resource utilization monitoring
-- Pipeline status updates
-- Alert generation
-- Files: `/monitoring` directory
-
-### Logging System
-- Comprehensive event logging
-- Audit trail maintenance
-- Error tracking
-- Performance metrics
-- Files: `/core/metrics`, logging services
-
-### Database Integration
-- Result persistence
-- Configuration storage
-- Audit history
-- Performance metrics
-- Files: `/database` directory
-
-### UI Integration
-- React-based frontend
-- Real-time updates
-- Interactive decision points
-- Dashboard displays
-- Files: `/frontend/src` directory
-
-## Control Flow Features
-
-### Error Handling
-- Comprehensive error catching
-- User-friendly error messages
-- Recovery procedures
-- Error logging and tracking
-
-### Alternative Flows
-- Multiple processing paths
-- Conditional execution
-- Fallback mechanisms
-- Recovery options
-
-### Validation Steps
-- Input validation
-- Process validation
-- Output validation
-- Configuration validation
-
-### Real-time Updates
-- Status notifications
-- Progress tracking
-- Performance metrics
-- User alerts
-
-## Key Improvements
-
-### Error Handling Enhancement
-- Detailed error tracking
-- Custom error types
-- Recovery procedures
-- User notification system
-
-### Monitoring Integration
-- Performance metrics
-- Resource tracking
-- Status updates
-- Alert system
-
-### Validation Framework
-- Input validation
-- Process validation
-- Output validation
-- Configuration checks
-
-### Data Persistence
-- Result storage
-- Configuration persistence
-- Audit trail
-- Performance metrics
-
-### User Interaction
-- Decision points
-- Status updates
-- Configuration options
-- Result review interfaces
-
-## Getting Started
-
-### Prerequisites
-- Python 3.10+
-- Node.js 16+
-- PostgreSQL 12+
-- Redis for caching
-
-### Installation
-1. Clone the repository
-2. Install backend dependencies: `pip install -r requirements.txt`
-3. Install frontend dependencies: `npm install`
-4. Configure environment variables
-5. Initialize database: `python manage.py init_db`
-6. Start the services: `python manage.py runserver` and `npm start`
-
-## Contributing
-
-Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.
-enhancement areas:
-can i do it after refactoring and finetuingint he files
-
-Optimization Recommendations:
-
-1. Implement Asynchronous Processing
-
-   * Use background workers
-
-   * Implement job queues
-
-   * Parallel processing for large files
-
-2. Caching Mechanisms
-
-   * Cache file metadata
-
-   * Implement recommendation result caching
-
-   * Use distributed caching for scalability
-
-3. Performance Monitoring
-
-   * Add detailed performance metrics
-
-   * Implement circuit breakers
-
-   * Monitor component response times
-
-4. Adaptive Recommendation Generation
-
-   * Implement lightweight recommendation generation
-
-   * Use probabilistic models for faster inference
-
-   * Lazy loading of complex recommendation logic
-
-5. Memory Management
-
-   * Implement streaming file processing
-
-   * Use memory-mapped files for large datasets
-
-   * Implement intelligent garbage collection
-
-Potential Improvements:
-
-1. Add rate limiting for file uploads
-
-2. Implement more granular logging
-
-3. Create more sophisticated error recovery mechanisms
-
-4. Design circuit breakers for external service dependencies
-
-The architecture shows a mature, thoughtful approach to complex data processing. The key is continuous performance tuning and monitoring.
+analyst_pa/
+├── backend/
+│   ├── core/
+│   │   ├── authentication/
+│   │   │   ├── jwt_handler.py
+│   │   │   ├── security.py
+│   │   │   └── permissions.py
+│   │   │
+│   │   ├── control/
+│   │   │   ├── cpm.py
+│   │   │   └── state_manager.py
+│   │   │
+│   │   ├── messaging/
+│   │   │   ├── broker.py
+│   │   │   ├── event_types.py
+│   │   │   └── publishers.py
+│   │   │
+│   │   ├── staging/
+│   │   │   ├── staging_manager.py
+│   │   │   ├── storage_manager.py
+│   │   │   └── cleanup_manager.py
+│   │   │
+│   │   ├── handlers/
+│   │   │   ├── base/
+│   │   │   │   ├── base_handler.py
+│   │   │   │   └── handler_types.py
+│   │   │   │
+│   │   │   ├── channel/
+│   │   │   │   ├── quality_handler.py
+│   │   │   │   ├── insight_handler.py
+│   │   │   │   ├── analytics_handler.py
+│   │   │   │   ├── monitoring_handler.py
+│   │   │   │   ├── decision_handler.py
+│   │   │   │   ├── recommendation_handler.py
+│   │   │   │   └── report_handler.py
+│   │   │   │
+│   │   │   └── process/
+│   │   │       ├── core_process_handler.py
+│   │   │       └── error_handler.py
+│   │   │
+│   │   ├── managers/
+│   │   │   ├── base/
+│   │   │   │   ├── base_manager.py
+│   │   │   │   └── manager_types.py
+│   │   │   │
+│   │   │   ├── quality_manager.py
+│   │   │   ├── insight_manager.py
+│   │   │   ├── analytics_manager.py
+│   │   │   ├── monitoring_manager.py
+│   │   │   ├── decision_manager.py
+│   │   │   ├── recommendation_manager.py
+│   │   │   └── report_manager.py
+│   │   │
+│   │   └── registry/
+│   │       ├── component_registry.py
+│   │       └── route_registry.py
+│   │
+│   ├── data_processing/
+│   │   ├── quality/
+│   │   │   ├── processor/
+│   │   │   │   └── quality_processor.py
+│   │   │   ├── analyzers/
+│   │   │   │   ├── date_analyzer.py
+│   │   │   │   ├── numeric_analyzer.py
+│   │   │   │   └── text_analyzer.py
+│   │   │   ├── detectors/
+│   │   │   │   ├── anomaly_detector.py
+│   │   │   │   └── pattern_detector.py
+│   │   │   └── resolvers/
+│   │   │       ├── auto_resolver.py
+│   │   │       └── manual_resolver.py
+│   │   │
+│   │   ├── insights/
+│   │   │   ├── processor/
+│   │   │   │   └── insight_processor.py
+│   │   │   ├── generators/
+│   │   │   │   ├── pattern_insights.py
+│   │   │   │   └── trend_insights.py
+│   │   │   └── validators/
+│   │   │       ├── business_validator.py
+│   │   │       └── data_validator.py
+│   │   │
+│   │   ├── advanced_analytics/
+│   │   │   ├── processor/
+│   │   │   │   └── analytics_processor.py
+│   │   │   ├── modules/
+│   │   │   │   ├── data_preparation/
+│   │   │   │   ├── feature_engineering/
+│   │   │   │   ├── model_training/
+│   │   │   │   ├── model_evaluation/
+│   │   │   │   └── visualization/
+│   │   │   └── models/
+│   │   │       └── analysis_models.py
+│   │   │
+│   │   ├── monitoring/
+│   │   │   ├── processor/
+│   │   │   │   └── monitoring_processor.py
+│   │   │   ├── collectors/
+│   │   │   │   ├── metric_collector.py
+│   │   │   │   └── log_collector.py
+│   │   │   └── analyzers/
+│   │   │       ├── performance_analyzer.py
+│   │   │       └── resource_analyzer.py
+│   │   │
+│   │   ├── decisions/
+│   │   │   ├── processor/
+│   │   │   │   └── decision_processor.py
+│   │   │   ├── engines/
+│   │   │   │   ├── decision_engine.py
+│   │   │   │   └── optimization_engine.py
+│   │   │   └── validators/
+│   │   │       ├── impact_analyzer.py
+│   │   │       └── constraint_validator.py
+│   │   │
+│   │   ├── recommendations/
+│   │   │   ├── processor/
+│   │   │   │   └── recommendation_processor.py
+│   │   │   ├── generators/
+│   │   │   │   ├── recommendation_generator.py
+│   │   │   │   └── prioritization_engine.py
+│   │   │   └── validators/
+│   │   │       ├── relevance_validator.py
+│   │   │       └── impact_validator.py
+│   │   │
+│   │   └── reports/
+│   │       ├── processor/
+│   │       │   └── report_processor.py
+│   │       ├── generators/
+│   │       │   ├── report_generator.py
+│   │       │   └── template_engine.py
+│   │       └── formatters/
+│   │           ├── pdf_formatter.py
+│   │           └── html_formatter.py
+│   │
+│   ├── infrastructure/
+│   │   ├── docker/
+│   │   │   ├── Dockerfile
+│   │   │   └── docker-compose.yml
+│   │   ├── celery/
+│   │   │   ├── tasks.py
+│   │   │   └── config.py
+│   │   └── prometheus/
+│   │       ├── config.yml
+│   │       └── alerts.yml
+│   │
+│   ├── source_handlers/
+│   │   ├── api/
+│   │   │   ├── api_handler.py
+│   │   │   └── api_validator.py
+│   │   ├── file/
+│   │   │   ├── file_handler.py
+│   │   │   └── file_validator.py
+│   │   └── database/
+│   │       ├── db_handler.py
+│   │       └── db_validator.py
+│   │
+│   └── utils/
+│       ├── encryption.py
+│       ├── validators.py
+│       └── formatters.py
+│
+├── frontend/
+│   └── [Frontend structure remains the same]
+│
+└── tests/
+    ├── unit/
+    │   ├── core/
+    │   │   ├── managers/
+    │   │   ├── handlers/
+    │   │   └── processors/
+    │   └── processing/
+    │       ├── quality/
+    │       ├── insights/
+    │       ├── analytics/
+    │       ├── monitoring/
+    │       ├── decisions/
+    │       └── recommendations/
+    │
+    ├── integration/
+    │   └── workflows/
+    │       ├── quality_flow/
+    │       ├── insight_flow/
+    │       ├── analytics_flow/
+    │       ├── monitoring_flow/
+    │       ├── decision_flow/
+    │       └── recommendation_flow/
+    │
+    └── e2e/
+        └── features/

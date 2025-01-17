@@ -1,34 +1,30 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Settings, 
-  Trash2, 
-  RefreshCw, 
-  Database, 
-  FileText, 
-  Cloud, 
-  Network, 
+import {
+  Settings,
+  Trash2,
+  RefreshCw,
+  Database,
+  FileText,
+  Cloud,
+  Network,
   Radio,
   ChevronRight,
-  MoreHorizontal
+  MoreHorizontal,
 } from "lucide-react";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader 
-} from "@/common/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Button } from "@/common/components/ui/button";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/common/components/ui/dropdown-menu";
 import { Dialog, DialogTrigger } from "@/common/components/ui/dialog";
 import { ValidationDisplay } from "./validation";
 import { formatBytes } from "@/dataSource/utils";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 import type {
   BaseMetadata,
   DataSourceStatus,
@@ -72,11 +68,11 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
-    setExpandedSourceId(prev => prev === id ? null : id);
+    setExpandedSourceId((prev) => (prev === id ? null : id));
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
@@ -91,10 +87,8 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            <Card 
-              className="overflow-hidden hover:shadow-lg transition-shadow"
-            >
-              <CardHeader 
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+              <CardHeader
                 onClick={() => onSelect(source.id)}
                 className="cursor-pointer p-4 hover:bg-accent/5 transition-colors group"
               >
@@ -103,9 +97,7 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                     {TYPE_ICONS[source.type]}
                     <div>
                       <div className="flex items-center space-x-2">
-                        <h3 className="text-lg font-medium">
-                          {source.name}
-                        </h3>
+                        <h3 className="text-lg font-medium">{source.name}</h3>
                         <Badge className={STATUS_STYLES[source.status]}>
                           {source.status}
                         </Badge>
@@ -122,8 +114,8 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                     {/* Dropdown Menu for Actions */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -131,21 +123,21 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onSelect={() => onSync(source.id)}
                           className="cursor-pointer"
                         >
                           <RefreshCw className="mr-2 h-4 w-4" />
                           Sync
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onSelect={() => onEdit(source.id)}
                           className="cursor-pointer"
                         >
                           <Settings className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onSelect={() => onDelete(source.id)}
                           className="text-destructive cursor-pointer focus:bg-destructive/10"
                         >
@@ -166,8 +158,8 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                       className="text-muted-foreground hover:text-foreground"
                     >
                       <motion.div
-                        animate={{ 
-                          rotate: expandedSourceId === source.id ? 90 : 0 
+                        animate={{
+                          rotate: expandedSourceId === source.id ? 90 : 0,
                         }}
                       >
                         <ChevronRight className="h-5 w-5" />
@@ -182,15 +174,15 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                 {expandedSourceId === source.id && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
-                    animate={{ 
-                      opacity: 1, 
-                      height: 'auto',
-                      transition: { duration: 0.3 }
+                    animate={{
+                      opacity: 1,
+                      height: "auto",
+                      transition: { duration: 0.3 },
                     }}
-                    exit={{ 
-                      opacity: 0, 
+                    exit={{
+                      opacity: 0,
                       height: 0,
-                      transition: { duration: 0.2 }
+                      transition: { duration: 0.2 },
                     }}
                     className="border-t"
                   >

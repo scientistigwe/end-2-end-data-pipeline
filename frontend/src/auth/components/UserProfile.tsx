@@ -8,16 +8,25 @@ import {
   Key,
   AlertCircle,
   CheckCircle2,
-  Camera
+  Camera,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { Button } from "@/common/components/ui/button";
 import { Input } from "@/common/components//ui/inputs/input";
 import { Alert } from "@/common/components/ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "@/common/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/common/components/ui/dialog";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/common/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/common/components/ui/dialog";
 import type { User } from "@/common";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 
 interface UserProfileProps {
   onChangePassword: () => void;
@@ -38,11 +47,14 @@ export const UserProfile: React.FC<UserProfileProps> = ({
   const [isImageUploadDialogOpen, setIsImageUploadDialogOpen] = useState(false);
 
   // Validation rules
-  const validationRules = useMemo(() => ({
-    firstName: (value: string) => value.trim().length >= 2,
-    lastName: (value: string) => value.trim().length >= 2,
-    email: (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-  }), []);
+  const validationRules = useMemo(
+    () => ({
+      firstName: (value: string) => value.trim().length >= 2,
+      lastName: (value: string) => value.trim().length >= 2,
+      email: (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    }),
+    []
+  );
 
   // Check if a field is valid
   const isFieldValid = (name: string, value: string) => {
@@ -50,7 +62,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({
   };
 
   // Handle profile image upload
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (file) {
       try {
@@ -68,7 +82,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({
     setIsLoading(true);
 
     // Validate all fields before submission
-    const isValid = Object.keys(validationRules).every(key =>
+    const isValid = Object.keys(validationRules).every((key) =>
       isFieldValid(key, formData[key] || "")
     );
 
@@ -138,7 +152,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({
               alt={`${user?.firstName} ${user?.lastName}'s profile`}
             />
             <AvatarFallback className="text-3xl">
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
+              {user?.firstName?.[0]}
+              {user?.lastName?.[0]}
             </AvatarFallback>
           </Avatar>
 
@@ -171,13 +186,12 @@ export const UserProfile: React.FC<UserProfileProps> = ({
               className="block text-sm font-medium text-foreground flex justify-between items-center"
             >
               First Name
-              {formData.firstName && (
-                isFieldValid('firstName', formData.firstName) ? (
+              {formData.firstName &&
+                (isFieldValid("firstName", formData.firstName) ? (
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
                 ) : (
                   <AlertCircle className="w-5 h-5 text-red-500" />
-                )
-              )}
+                ))}
             </label>
             <Input
               id="firstName"
@@ -188,19 +202,20 @@ export const UserProfile: React.FC<UserProfileProps> = ({
               disabled={!isEditing || isLoading}
               className={cn(
                 "w-full",
-                isEditing && formData.firstName &&
-                !isFieldValid('firstName', formData.firstName)
+                isEditing &&
+                  formData.firstName &&
+                  !isFieldValid("firstName", formData.firstName)
                   ? "border-red-500 focus:ring-red-500"
                   : "focus:border-blue-500 focus:ring-blue-500"
               )}
             />
-            {isEditing && formData.firstName &&
-              !isFieldValid('firstName', formData.firstName) && (
+            {isEditing &&
+              formData.firstName &&
+              !isFieldValid("firstName", formData.firstName) && (
                 <p className="text-xs text-red-600 mt-1">
                   First name must be at least 2 characters
                 </p>
-              )
-            }
+              )}
           </div>
 
           {/* Last Name */}
@@ -210,13 +225,12 @@ export const UserProfile: React.FC<UserProfileProps> = ({
               className="block text-sm font-medium text-foreground flex justify-between items-center"
             >
               Last Name
-              {formData.lastName && (
-                isFieldValid('lastName', formData.lastName) ? (
+              {formData.lastName &&
+                (isFieldValid("lastName", formData.lastName) ? (
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
                 ) : (
                   <AlertCircle className="w-5 h-5 text-red-500" />
-                )
-              )}
+                ))}
             </label>
             <Input
               id="lastName"
@@ -227,19 +241,20 @@ export const UserProfile: React.FC<UserProfileProps> = ({
               disabled={!isEditing || isLoading}
               className={cn(
                 "w-full",
-                isEditing && formData.lastName &&
-                !isFieldValid('lastName', formData.lastName)
+                isEditing &&
+                  formData.lastName &&
+                  !isFieldValid("lastName", formData.lastName)
                   ? "border-red-500 focus:ring-red-500"
                   : "focus:border-blue-500 focus:ring-blue-500"
               )}
             />
-            {isEditing && formData.lastName &&
-              !isFieldValid('lastName', formData.lastName) && (
+            {isEditing &&
+              formData.lastName &&
+              !isFieldValid("lastName", formData.lastName) && (
                 <p className="text-xs text-red-600 mt-1">
                   Last name must be at least 2 characters
                 </p>
-              )
-            }
+              )}
           </div>
         </div>
 
@@ -250,13 +265,12 @@ export const UserProfile: React.FC<UserProfileProps> = ({
             className="block text-sm font-medium text-foreground flex justify-between items-center"
           >
             Email
-            {formData.email && (
-              isFieldValid('email', formData.email) ? (
+            {formData.email &&
+              (isFieldValid("email", formData.email) ? (
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-red-500" />
-              )
-            )}
+              ))}
           </label>
           <Input
             id="email"
@@ -267,19 +281,20 @@ export const UserProfile: React.FC<UserProfileProps> = ({
             disabled={!isEditing || isLoading}
             className={cn(
               "w-full",
-              isEditing && formData.email &&
-              !isFieldValid('email', formData.email)
+              isEditing &&
+                formData.email &&
+                !isFieldValid("email", formData.email)
                 ? "border-red-500 focus:ring-red-500"
                 : "focus:border-blue-500 focus:ring-blue-500"
             )}
           />
-          {isEditing && formData.email &&
-            !isFieldValid('email', formData.email) && (
+          {isEditing &&
+            formData.email &&
+            !isFieldValid("email", formData.email) && (
               <p className="text-xs text-red-600 mt-1">
                 Please enter a valid email address
               </p>
-            )
-          }
+            )}
         </div>
 
         {/* Action Buttons */}

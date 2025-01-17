@@ -9,7 +9,7 @@ import {
   PopoverTrigger 
 } from "@/common/components/ui/popover";
 import { Button } from "@/common/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 
 // Notification type mapping
 const getNotificationIcon = (type: string) => {

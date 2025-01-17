@@ -12,12 +12,12 @@ from backend.data_pipeline.source.database.db_types import DatabaseType
 
 @pytest.fixture(scope="module")
 def db_config():
-    """Create a mock database configuration"""
+    """Create a mock db configuration"""
     config = MagicMock(spec=DatabaseConfig)
     config.get_connection_params.return_value = {
         'host': 'localhost',
         'port': 5432,
-        'database': 'test_db',
+        'db': 'test_db',
         'username': 'test_user',
         'password': 'test_password'
     }
@@ -25,7 +25,7 @@ def db_config():
 
 @pytest.fixture(scope="module")
 def db_connector(db_config):
-    """Create a mock database connector"""
+    """Create a mock db connector"""
     connector = MagicMock(spec=DatabaseConnector)
     connector.config = db_config
     connector.connect.return_value = None  # Simulate a successful connection
@@ -54,7 +54,7 @@ def validator(db_connector, data_security_manager):
 
 @pytest.fixture(scope="module")
 def mock_db_data():
-    """Create mock database data"""
+    """Create mock db data"""
     return [
         DBData(
             id=1,
@@ -97,10 +97,10 @@ def test_full_workflow(db_data_manager, mock_db_data, mock_dataframe, monkeypatc
 
 
 
-# Test the database type validation
+# Test the db type validation
 @patch.object(DatabaseValidator, '_validate_db_type')  # Mock the _validate_db_type method of the Validator class
 def test_db_type_validation(mock_validate_db_type, validator):
-    """Test database type validation"""
+    """Test db type validation"""
     # Call the method you're testing, passing DatabaseType.POSTGRESQL
     DatabaseValidator._validate_db_type(DatabaseType.POSTGRESQL)
 

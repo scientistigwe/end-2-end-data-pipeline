@@ -1,4 +1,4 @@
-// src/pipeline/types/models.ts
+// src/pipeline/types/types.ts
 import type { LogLevel, PipelineStatus } from './base';
 import type { PipelineConfig } from './config';
 import type { MetricData, PipelineStats } from './metrics';

@@ -5,7 +5,7 @@ import type {
   ReportMetadata,
   ScheduleConfig,
   ReportType
-} from '../types/models';
+} from '../types/types';
 import { REPORT_CONSTANTS } from '../constants';
 import { QualityAnalyzer } from './analyzers/qualityAnalyzer';
 import { PerformanceAnalyzer } from './analyzers/performanceAnalyzer';

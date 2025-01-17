@@ -1,4 +1,4 @@
-  // src/report/utils/validators.ts
+  // src/report/utils/validation.ts
   import { ReportConfig, ScheduleConfig } from '../types/models';
   
   export function validateTimeRange(start: Date, end: Date): boolean {

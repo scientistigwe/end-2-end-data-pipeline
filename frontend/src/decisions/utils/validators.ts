@@ -1,4 +1,4 @@
-// src/decisions/utils/validators.ts
+// src/decisions/utils/validation.ts
 import { DECISION_CONFIG } from '../constants';
 import type { Decision, DecisionOption } from '../types/base';
 

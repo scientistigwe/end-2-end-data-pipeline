@@ -1,4 +1,4 @@
-// src/settings/types/models.ts
+// src/settings/types/types.ts
 import type { 
   AppearanceSettings,
   NotificationSettings,

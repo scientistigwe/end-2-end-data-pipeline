@@ -1,4 +1,4 @@
-// src/decisions/types/models.ts
+// src/decisions/types/types.ts
 import type { BaseDecision, DecisionOption, DecisionUrgency, DecisionVote } from './base';
 
 export interface Decision extends BaseDecision {

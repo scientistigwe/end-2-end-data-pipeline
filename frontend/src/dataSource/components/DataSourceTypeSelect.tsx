@@ -10,25 +10,21 @@ import {
   Network,
   Radio,
   ChevronRight,
-  MoreHorizontal
+  MoreHorizontal,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader
-} from "@/common/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/common/components/ui/card";
 import { Badge } from "@/common/components/ui/badge";
 import { Button } from "@/common/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/common/components/ui/dropdown-menu";
 import { Dialog, DialogTrigger } from "@/common/components/ui/dialog";
 import { ValidationDisplay } from "./validation";
 import { formatBytes } from "@/dataSource/utils";
-import { cn } from "@/lib/utils";
+import { cn } from "@/common/utils";
 import type {
   BaseMetadata,
   DataSourceStatus,
@@ -72,7 +68,7 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
-    setExpandedSourceId(prev => prev === id ? null : id);
+    setExpandedSourceId((prev) => (prev === id ? null : id));
   };
 
   return (
@@ -91,9 +87,7 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            <Card
-              className="overflow-hidden hover:shadow-lg transition-shadow"
-            >
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow">
               <CardHeader
                 onClick={() => onSelect(source.id)}
                 className="cursor-pointer p-4 hover:bg-accent/5 transition-colors group"
@@ -103,9 +97,7 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                     {TYPE_ICONS[source.type]}
                     <div>
                       <div className="flex items-center space-x-2">
-                        <h3 className="text-lg font-medium">
-                          {source.name}
-                        </h3>
+                        <h3 className="text-lg font-medium">{source.name}</h3>
                         <Badge className={STATUS_STYLES[source.status]}>
                           {source.status}
                         </Badge>
@@ -167,7 +159,7 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                     >
                       <motion.div
                         animate={{
-                          rotate: expandedSourceId === source.id ? 90 : 0
+                          rotate: expandedSourceId === source.id ? 90 : 0,
                         }}
                       >
                         <ChevronRight className="h-5 w-5" />
@@ -184,13 +176,13 @@ export const DataSourceList: React.FC<DataSourceListProps> = ({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{
                       opacity: 1,
-                      height: 'auto',
-                      transition: { duration: 0.3 }
+                      height: "auto",
+                      transition: { duration: 0.3 },
                     }}
                     exit={{
                       opacity: 0,
                       height: 0,
-                      transition: { duration: 0.2 }
+                      transition: { duration: 0.2 },
                     }}
                     className="border-t"
                   >

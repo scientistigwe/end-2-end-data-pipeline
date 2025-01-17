@@ -29,7 +29,7 @@ class MockConnection:
 
 @pytest.fixture
 def mock_config():
-    """Fixture to mock the database config"""
+    """Fixture to mock the db config"""
     config = mock.MagicMock()
     config.db_type = DatabaseType.POSTGRESQL
     config.host = "localhost"
@@ -40,7 +40,7 @@ def mock_config():
     config.get_connection_params = mock.MagicMock(return_value={
         'host': 'localhost',
         'port': 5432,
-        'database': 'test_db',
+        'db': 'test_db',
         'user': 'test_user',
         'password': 'test_password'
     })
@@ -134,7 +134,7 @@ def test_load_data_call(db_manager, mock_db_data):
 
 
 def test_connection_error(mock_config):
-    """Test database connection error handling"""
+    """Test db connection error handling"""
     connector = DatabaseConnector(mock_config)
 
     # Mock _create_connection to raise an exception

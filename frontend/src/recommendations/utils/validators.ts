@@ -1,4 +1,4 @@
-// src/recommendations/utils/validators.ts
+// src/recommendations/utils/validation.ts
 import type { Recommendation } from '../types/events';
 
 export const validateRecommendation = (

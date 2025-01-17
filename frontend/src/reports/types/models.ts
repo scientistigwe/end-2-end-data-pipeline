@@ -1,4 +1,4 @@
-// src/report/types/models.ts
+// src/report/types/types.ts
 import type { ReportConfig } from './config';
 import type { ReportStatus, MetricStatus } from './base';
 

@@ -15,6 +15,7 @@ class InsightType(Enum):
     CLUSTER = "cluster"         # Natural groupings
     FORECAST = "forecast"       # Future predictions
     COMPARATIVE = "comparative"  # Comparative analysis
+    BUSINESS_GOAL = "business_goal"
 
 class InsightCategory(Enum):
     """Categories of insights"""

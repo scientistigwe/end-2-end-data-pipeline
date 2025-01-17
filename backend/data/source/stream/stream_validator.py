@@ -1,255 +1,279 @@
-from typing import Tuple, Dict, Any, Optional, List
+# backend/source_handlers/stream/stream_validator.py
+
 import logging
-from dataclasses import dataclass
-from confluent_kafka import Consumer, Producer, KafkaError
-import pika
-from enum import Enum, auto
 import socket
-import json
+from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
+
+import pika
+from confluent_kafka import Consumer, Producer
 
 logger = logging.getLogger(__name__)
 
+
 class StreamType(Enum):
+    """Enumeration of supported stream types"""
     KAFKA = auto()
     RABBITMQ = auto()
 
+
 @dataclass
-class ValidationResult:
-    is_valid: bool
-    message: str
-    details: Optional[Dict[str, Any]] = None
+class StreamValidationConfig:
+    """Configuration for stream source validation"""
 
-class StreamValidator:
-    """Enhanced stream validation utilities with comprehensive checks"""
+    # Stream type configurations
+    supported_stream_types: set[StreamType] = field(default_factory=lambda: {
+        StreamType.KAFKA, StreamType.RABBITMQ
+    })
 
-    DEFAULT_TIMEOUT = 5000  # 5 seconds
-    
-    @staticmethod
-    def validate_stream_config(config: Dict[str, Any]) -> ValidationResult:
+    # Connection settings
+    connection_timeout: int = 5  # seconds
+    default_ports: Dict[StreamType, int] = field(default_factory=lambda: {
+        StreamType.KAFKA: 9092,
+        StreamType.RABBITMQ: 5672
+    })
+
+    # Validation constraints
+    min_host_length: int = 1
+    max_host_length: int = 255
+
+    # Security and sensitive information
+    blocked_patterns: list[str] = field(default_factory=lambda: [
+        r'password', r'secret', r'key', r'token', r'credential'
+    ])
+
+    # Required fields per stream type
+    required_fields: Dict[StreamType, list[str]] = field(default_factory=lambda: {
+        StreamType.KAFKA: ['bootstrap_servers', 'group_id'],
+        StreamType.RABBITMQ: ['host']
+    })
+
+
+class StreamSourceValidator:
+    """Enhanced stream source validator with integrated config"""
+
+    def __init__(self, config: Optional[StreamValidationConfig] = None):
+        self.config = config or StreamValidationConfig()
+
+    async def validate_source(
+            self,
+            source_data: Dict[str, Any],
+            metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
-        Validate stream configuration with detailed checks
-        
+        Comprehensive validation of stream source configuration
+
         Args:
-            config: Dictionary containing stream configuration
-            
+            source_data: Stream source configuration
+            metadata: Additional metadata for validation
+
         Returns:
-            ValidationResult object containing validation status and details
+            Validation result with issues and warnings
         """
         try:
-            # Validate basic structure
-            if not isinstance(config, dict):
-                return ValidationResult(False, "Configuration must be a dictionary")
+            issues = []
+            warnings = []
 
             # Validate stream type
-            stream_type = config.get('stream_type', '').upper()
-            try:
-                stream_type_enum = StreamType[stream_type]
-            except KeyError:
-                return ValidationResult(
-                    False,
-                    f"Invalid stream type: {stream_type}. Must be one of: {', '.join(t.name for t in StreamType)}"
+            stream_type_validation = await self._validate_stream_type(
+                source_data.get('stream_type', '')
+            )
+            issues.extend(stream_type_validation.get('issues', []))
+            warnings.extend(stream_type_validation.get('warnings', []))
+
+            # If stream type is invalid, return early
+            if issues:
+                return self._build_result(
+                    passed=False,
+                    issues=issues,
+                    warnings=warnings
                 )
 
-            # Validate required fields based on stream type
-            validation_result = StreamValidator._validate_required_fields(config, stream_type_enum)
-            if not validation_result.is_valid:
-                return validation_result
+            # Parse stream type
+            stream_type = StreamType[source_data['stream_type'].upper()]
 
-            # Validate field types and formats
-            return StreamValidator._validate_field_types(config, stream_type_enum)
+            # Validate required fields
+            required_fields_validation = await self._validate_required_fields(
+                source_data, stream_type
+            )
+            issues.extend(required_fields_validation.get('issues', []))
+            warnings.extend(required_fields_validation.get('warnings', []))
+
+            # Validate connection details based on stream type
+            if stream_type == StreamType.KAFKA:
+                connection_validation = await self._validate_kafka_connection(source_data)
+            elif stream_type == StreamType.RABBITMQ:
+                connection_validation = await self._validate_rabbitmq_connection(source_data)
+            else:
+                connection_validation = {
+                    'issues': ["Unsupported stream type"],
+                    'warnings': []
+                }
+
+            issues.extend(connection_validation.get('issues', []))
+            warnings.extend(connection_validation.get('warnings', []))
+
+            return self._build_result(
+                passed=len(issues) == 0,
+                issues=issues,
+                warnings=warnings
+            )
 
         except Exception as e:
-            logger.exception("Configuration validation error")
-            return ValidationResult(False, f"Configuration validation error: {str(e)}")
+            logger.error(f"Stream source validation error: {str(e)}")
+            return self._build_result(
+                passed=False,
+                issues=[str(e)],
+                warnings=[]
+            )
 
-    @staticmethod
-    def validate_kafka_connection(config: Dict[str, Any]) -> ValidationResult:
-        """
-        Validate Kafka connection with comprehensive checks using confluent-kafka
-        
-        Args:
-            config: Kafka configuration dictionary
-            
-        Returns:
-            ValidationResult object containing validation status and details
-        """
+    async def _validate_stream_type(self, stream_type: str) -> Dict[str, Any]:
+        """Validate stream type"""
+        issues = []
+        warnings = []
+
+        # Check for empty stream type
+        if not stream_type:
+            issues.append("Stream type is required")
+            return {'issues': issues, 'warnings': warnings}
+
+        # Normalize stream type
+        stream_type = stream_type.upper()
+
         try:
-            # Validate bootstrap servers format
+            parsed_stream_type = StreamType[stream_type]
+
+            # Check if stream type is supported
+            if parsed_stream_type not in self.config.supported_stream_types:
+                issues.append(f"Unsupported stream type: {stream_type}")
+                issues.append(f"Supported types: {', '.join(t.name for t in self.config.supported_stream_types)}")
+
+        except KeyError:
+            issues.append(f"Invalid stream type: {stream_type}")
+
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
+
+    async def _validate_required_fields(
+            self,
+            source_data: Dict[str, Any],
+            stream_type: StreamType
+    ) -> Dict[str, Any]:
+        """Validate required fields for specific stream type"""
+        issues = []
+        warnings = []
+
+        # Get required fields for this stream type
+        required_fields = self.config.required_fields.get(stream_type, [])
+
+        # Check for missing required fields
+        missing_fields = [
+            field for field in required_fields
+            if field not in source_data or not source_data[field]
+        ]
+
+        if missing_fields:
+            issues.append(f"Missing required fields: {', '.join(missing_fields)}")
+
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
+
+    async def _validate_kafka_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate Kafka connection details"""
+        issues = []
+        warnings = []
+
+        try:
+            # Validate bootstrap servers
             servers = config['bootstrap_servers']
             if isinstance(servers, str):
                 servers = [s.strip() for s in servers.split(',')]
 
             # Check each server's connectivity
-            unreachable_servers = []
-            for server in servers:
-                host, port = server.split(':')
-                try:
-                    with socket.create_connection((host, int(port)), timeout=5):
-                        pass
-                except (socket.timeout, socket.error):
-                    unreachable_servers.append(server)
-
-            if unreachable_servers:
-                return ValidationResult(
-                    False,
-                    "Some Kafka servers are unreachable",
-                    {'unreachable_servers': unreachable_servers}
-                )
-
-            # Configure Kafka client
-            kafka_config = {
-                'bootstrap.servers': ','.join(servers),
-                'group.id': config.get('group_id', 'test_group'),
-                'socket.timeout.ms': str(StreamValidator.DEFAULT_TIMEOUT),
-                'session.timeout.ms': '6000',
-                'auto.offset.reset': 'earliest'
-            }
-
-            # Test producer connection
-            producer = Producer({
-                'bootstrap.servers': ','.join(servers),
-                'socket.timeout.ms': str(StreamValidator.DEFAULT_TIMEOUT)
-            })
-            producer.flush(timeout=5)
-
-            # Test consumer connection
-            consumer = Consumer(kafka_config)
-            consumer.close()
-
-            return ValidationResult(True, "Kafka connection successful")
-
-        except Exception as e:
-            logger.exception("Kafka connection validation error")
-            return ValidationResult(
-                False,
-                f"Kafka connection error: {str(e)}",
-                {'error_type': type(e).__name__}
-            )
-
-    @staticmethod
-    def validate_rabbitmq_connection(config: Dict[str, Any]) -> ValidationResult:
-        """
-        Validate RabbitMQ connection with comprehensive checks
-        
-        Args:
-            config: RabbitMQ configuration dictionary
-            
-        Returns:
-            ValidationResult object containing validation status and details
-        """
-        try:
-            # Validate host connectivity first
-            host = config['host']
-            port = config.get('port', 5672)
-            
-            try:
-                with socket.create_connection((host, port), timeout=5):
-                    pass
-            except (socket.timeout, socket.error) as e:
-                return ValidationResult(
-                    False,
-                    f"Cannot connect to RabbitMQ server at {host}:{port}",
-                    {'error': str(e)}
-                )
-
-            # Test full connection with credentials
-            credentials = pika.PlainCredentials(
-                config.get('username', 'guest'),
-                config.get('password', 'guest')
-            )
-            
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(
-                    host=host,
-                    port=port,
-                    virtual_host=config.get('virtual_host', '/'),
-                    credentials=credentials,
-                    connection_attempts=3,
-                    retry_delay=2
-                )
-            )
-            
-            # Test channel creation
-            channel = connection.channel()
-            connection.close()
-
-            return ValidationResult(True, "RabbitMQ connection successful")
-
-        except Exception as e:
-            logger.exception("RabbitMQ connection validation error")
-            return ValidationResult(
-                False,
-                f"RabbitMQ connection error: {str(e)}",
-                {'error_type': type(e).__name__}
-            )
-
-    @staticmethod
-    def _validate_required_fields(config: Dict[str, Any], stream_type: StreamType) -> ValidationResult:
-        """Validate required fields based on stream type"""
-        required_fields = {
-            StreamType.KAFKA: ['bootstrap_servers', 'group_id'],
-            StreamType.RABBITMQ: ['host']
-        }
-
-        missing_fields = [
-            field for field in required_fields[stream_type]
-            if field not in config
-        ]
-
-        if missing_fields:
-            return ValidationResult(
-                False,
-                f"Missing required fields: {', '.join(missing_fields)}",
-                {'missing_fields': missing_fields}
-            )
-
-        return ValidationResult(True, "All required fields present")
-
-    @staticmethod
-    def _validate_field_types(config: Dict[str, Any], stream_type: StreamType) -> ValidationResult:
-        """Validate field types and formats"""
-        if stream_type == StreamType.KAFKA:
-            # Validate bootstrap_servers format
-            servers = config['bootstrap_servers']
-            if isinstance(servers, str):
-                servers = [s.strip() for s in servers.split(',')]
-            
             for server in servers:
                 try:
                     host, port = server.split(':')
-                    if not (0 < int(port) <= 65535):
-                        return ValidationResult(
-                            False,
-                            f"Invalid port number in server address: {server}"
-                        )
+
+                    # Validate port
+                    port = int(port)
+                    if not (0 < port <= 65535):
+                        issues.append(f"Invalid port in server {server}")
+
+                    # Check connectivity
+                    with socket.create_connection((host, port), timeout=self.config.connection_timeout):
+                        pass
+
                 except ValueError:
-                    return ValidationResult(
-                        False,
-                        f"Invalid server address format: {server}. Expected format: host:port"
-                    )
+                    issues.append(f"Invalid server format: {server}")
+                except (socket.timeout, socket.error):
+                    warnings.append(f"Unreachable server: {server}")
 
-        return ValidationResult(True, "Field types and formats are valid")
+        except KeyError:
+            issues.append("Bootstrap servers not specified")
+        except Exception as e:
+            issues.append(f"Kafka connection validation error: {str(e)}")
 
-    def validate_all(self, config: Dict[str, Any]) -> ValidationResult:
-        """
-        Perform all validations for the given configuration
-        
-        Args:
-            config: Stream configuration dictionary
-            
-        Returns:
-            ValidationResult object containing validation status and details
-        """
-        # First validate configuration
-        config_validation = self.validate_stream_config(config)
-        if not config_validation.is_valid:
-            return config_validation
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
 
-        # Then validate connection based on stream type
-        stream_type = StreamType[config['stream_type'].upper()]
-        if stream_type == StreamType.KAFKA:
-            return self.validate_kafka_connection(config)
-        elif stream_type == StreamType.RABBITMQ:
-            return self.validate_rabbitmq_connection(config)
+    async def _validate_rabbitmq_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate RabbitMQ connection details"""
+        issues = []
+        warnings = []
 
-        return ValidationResult(False, f"Unsupported stream type: {stream_type}")
+        try:
+            # Validate host
+            host = config.get('host')
+            if not host:
+                issues.append("Host is required")
+                return {'issues': issues, 'warnings': warnings}
+
+            # Get port (use default if not specified)
+            port = config.get('port', self.config.default_ports[StreamType.RABBITMQ])
+
+            # Validate host connectivity
+            try:
+                with socket.create_connection((host, port), timeout=self.config.connection_timeout):
+                    pass
+            except (socket.timeout, socket.error):
+                issues.append(f"Cannot connect to RabbitMQ server at {host}:{port}")
+
+            # Optionally validate credentials
+            username = config.get('username', 'guest')
+            password = config.get('password', 'guest')
+
+            # Check for sensitive information in credentials
+            for cred_type, cred_value in [('username', username), ('password', password)]:
+                if any(re.search(pattern, str(cred_value), re.IGNORECASE)
+                       for pattern in self.config.blocked_patterns):
+                    warnings.append(f"Potential sensitive information in {cred_type}")
+
+        except Exception as e:
+            issues.append(f"RabbitMQ connection validation error: {str(e)}")
+
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
+
+    def _build_result(
+            self,
+            passed: bool,
+            issues: list[str],
+            warnings: list[str]
+    ) -> Dict[str, Any]:
+        """Build structured validation result"""
+        return {
+            'passed': passed,
+            'issues': issues,
+            'warnings': warnings,
+            'validation_time': datetime.utcnow().isoformat()
+        }

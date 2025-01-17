@@ -4,11 +4,11 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from uuid import UUID
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType
-from backend.core.orchestration.pipeline_manager import PipelineManager
-from backend.db.repository.pipeline_repository import PipelineRepository
-from backend.core.messaging.types import ModuleIdentifier, ComponentType, ProcessingMessage
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import MessageType
+from core.managers.pipeline_manager import PipelineManager
+from db.repository.pipeline_repository import PipelineRepository
+from core.messaging.event_types import ModuleIdentifier, ComponentType, ProcessingMessage
 
 import asyncio
 

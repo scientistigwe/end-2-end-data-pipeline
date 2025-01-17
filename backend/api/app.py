@@ -1,38 +1,33 @@
-# backend/backend/api/app.py
+# backend/app.py
 
-from flask import Flask, request
+from flask import Flask
 from flask_cors import CORS
 import logging
 import asyncio
-from typing import Dict, Any
 from pathlib import Path
 
 # Import configurations
-from backend.docs.analyst_pa.backend.config import get_config
+from backend.config import get_config, init_db, cleanup_db
 
 # Import middleware
-from .middleware.auth_middleware import auth_middleware
-from .middleware.logging import RequestLoggingMiddleware
-from .middleware.error_handler import register_error_handlers
+from backend.api.app.middleware.auth_middleware import auth_middleware
+from backend.api.app.middleware.logging import RequestLoggingMiddleware
+from backend.api.app.middleware.error_handler import register_error_handlers
 
 # Import core components
-from backend.core.messaging.broker import EnhancedMessageBroker
-from backend.core.orchestration.pipeline_manager import PipelineManager
-from backend.core.control.control_point_manager import ControlPointManager
-from backend.core.orchestration.staging_manager import StagingManager
-
-# Import route registry and response builder
-from .utils.response_builder import ResponseBuilder
-
-# Import services
-from backend.data_pipeline.source.file.file_service import FileService
-from backend.data_pipeline.source.database.db_service import DBService
-from backend.data_pipeline.source.api.api_service import APIService
-from backend.data_pipeline.source.cloud.s3_service import S3Service
-from backend.data_pipeline.source.stream.stream_service import StreamService
+from backend.core.messaging.broker import MessageBroker
+from backend.core.control.cpm import ControlPointManager
+from backend.core.staging.staging_manager import StagingManager
 
 # Import db repository
-from backend.db.repository.pipeline_repository import PipelineRepository
+from backend.db.repository.staging_repository import StagingRepository
+
+# Import services
+from backend.data.source.file.file_service import FileService
+from backend.data.source.database import DBService
+from backend.data.source.api import APIService
+from backend.data.source.cloud.cloud_service import S3Service
+from backend.data.source.stream.stream_service import StreamService
 
 logger = logging.getLogger(__name__)
 
@@ -43,32 +38,95 @@ class DataSourceTypes:
     S3 = 's3'
     STREAM = 'stream'
 
-class ApplicationFactory:
-    """Factory class for creating and configuring Flask application instances."""
 
+class ApplicationFactory:
     def __init__(self):
         self.app: Flask = None
-        self.services: Dict[str, Any] = {}
-        self.components: Dict[str, Any] = {}
-        self.response_builder = ResponseBuilder()
         self.async_loop = None
+        self._init_async_loop()
+
+    def _init_async_loop(self):
+        """Initialize async loop for async operations"""
+        try:
+            self.async_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.async_loop)
+        except Exception as e:
+            logger.error(f"Failed to initialize async loop: {str(e)}")
+            raise
 
     def _configure_paths(self) -> None:
-        """Ensure required application paths exist."""
+        """Configure application paths"""
         try:
-            required_folders = [
+            paths = [
                 self.app.config['UPLOAD_FOLDER'],
                 self.app.config['LOG_FOLDER'],
-                self.app.config['TEMP_FOLDER'],
                 self.app.config['STAGING_FOLDER']
             ]
-
-            for folder in required_folders:
-                Path(folder).mkdir(parents=True, exist_ok=True)
-
-            logger.info("Application paths configured")
+            for path in paths:
+                Path(path).mkdir(parents=True, exist_ok=True)
+            logger.info("Application paths configured successfully")
         except Exception as e:
-            logger.error(f"Path configuration error: {str(e)}")
+            logger.error(f"Path configuration failed: {str(e)}")
+            raise
+
+    async def _init_core_components(self) -> None:
+        """Initialize core application components"""
+        try:
+            # Initialize database
+            engine, session = init_db(self.app)
+            self.app.db_engine = engine
+            self.app.db_session = session
+
+            # Initialize repositories
+            staging_repo = StagingRepository(session)
+            self.app.staging_repository = staging_repo
+
+            # Initialize message broker
+            message_broker = MessageBroker()
+            self.app.message_broker = message_broker
+
+            # Initialize CPM with dependencies
+            cpm = ControlPointManager(
+                message_broker=message_broker,
+                staging_repository=staging_repo
+            )
+            self.app.cpm = cpm
+
+            # Initialize staging manager
+            staging_manager = StagingManager(
+                message_broker=message_broker,
+                staging_repository=staging_repo,
+                control_point_manager=cpm
+            )
+            self.app.staging_manager = staging_manager
+
+            # Start async components
+            await asyncio.gather(
+                cpm.initialize(),
+                staging_manager.initialize()
+            )
+
+            logger.info("Core components initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Core component initialization failed: {str(e)}")
+            raise
+
+    async def _cleanup_components(self) -> None:
+        """Cleanup application components"""
+        try:
+            if hasattr(self.app, 'staging_manager'):
+                await self.app.staging_manager.cleanup()
+            if hasattr(self.app, 'cpm'):
+                await self.app.cpm.cleanup()
+            if hasattr(self.app, 'message_broker'):
+                await self.app.message_broker.cleanup()
+            if hasattr(self.app, 'db_engine'):
+                cleanup_db(self.app.db_engine)
+
+            logger.info("Components cleaned up successfully")
+        except Exception as e:
+            logger.error(f"Component cleanup failed: {str(e)}")
             raise
 
     def _initialize_cors(self) -> None:
@@ -99,65 +157,6 @@ class ApplicationFactory:
         except Exception as e:
             logger.error(f"CORS initialization error: {str(e)}")
         raise
-
-
-    def _initialize_core_components(self) -> None:
-        """Initialize core application components."""
-        try:
-            # Create event loop for async operations
-            self.async_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.async_loop)
-
-            # Enhanced Message Broker
-            message_broker = EnhancedMessageBroker(
-                max_workers=self.app.config.get('PIPELINE_MAX_WORKERS', 4)
-            )
-            self.components['message_broker'] = message_broker
-
-            # Initialize db repository
-            from sqlalchemy import create_engine
-            from sqlalchemy.orm import sessionmaker, scoped_session
-            engine = create_engine(self.app.config['SQLALCHEMY_DATABASE_URI'])
-            session_factory = sessionmaker(bind=engine)
-            db_session = scoped_session(session_factory)
-            self.components['db_session'] = db_session
-
-            # Pipeline Repository
-            pipeline_repository = PipelineRepository(db_session)
-            self.components['pipeline_repository'] = pipeline_repository
-
-            # Control Point Manager
-            control_point_manager = ControlPointManager(
-                message_broker=message_broker
-            )
-            self.components['control_point_manager'] = control_point_manager
-
-            # Staging Manager
-            staging_manager = StagingManager(
-                message_broker=message_broker,
-                control_point_manager=control_point_manager
-            )
-            self.components['staging_manager'] = staging_manager
-
-            # Pipeline Manager
-            pipeline_manager = PipelineManager(
-                message_broker=message_broker,
-                repository=pipeline_repository,
-                control_point_manager=control_point_manager,
-                staging_manager=staging_manager
-            )
-            self.components['pipeline_manager'] = pipeline_manager
-
-            # Asynchronously start message handlers
-            self.async_loop.run_until_complete(asyncio.gather(
-                control_point_manager.start_message_handlers(),
-                staging_manager.start_message_handlers()
-            ))
-
-            logger.info("Core components initialized")
-        except Exception as e:
-            logger.error(f"Core component initialization error: {str(e)}")
-            raise
 
 
     def _initialize_services(self) -> None:

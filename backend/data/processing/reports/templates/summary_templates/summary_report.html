@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{# backend/data_pipeline/reporting/templates/summary_report.html #}
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+    .pipeline-overview {
+        text-align: center;
+        padding: 2rem 0;
+    }
+
+    .timeline {
+        position: relative;
+        margin: 2rem 0;
+        padding: 20px 0;
+    }
+
+    .timeline-line {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--primary-color);
+    }
+
+    .timeline-item {
+        position: relative;
+        margin-bottom: 2rem;
+        width: 50%;
+        padding: 0 2rem;
+    }
+
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: -10px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        border: 4px solid white;
+    }
+
+    .timeline-item:nth-child(even) {
+        margin-left: 50%;
+    }
+
+    .timeline-item:nth-child(even)::before {
+        right: auto;
+        left: -10px;
+    }
+
+    .stage-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .key-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+
+    .decision-point {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid var(--primary-color);
+    }
+
+    .decision-status {
+        float: right;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+
+    .decision-impact {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .stage-summary {
+        margin: 2rem 0;
+    }
+
+    .recommendation-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid transparent;
+    }
+
+    .recommendation-card.high-priority {
+        border-left-color: var(--error-color);
+    }
+
+    .recommendation-card.medium-priority {
+        border-left-color: var(--warning-color);
+    }
+
+    .recommendation-card.low-priority {
+        border-left-color: var(--primary-color);
+    }
+
+    .implementation-plan {
+        margin: 2rem 0;
+    }
+
+    .phase-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .resource-requirements {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section overview">
+    <h2 class="section-title">Pipeline Summary</h2>
+    
+    <div class="key-metrics">
+        <div class="metric-card">
+            <div class="metric-title">Total Duration</div>
+            <div class="metric-value">{{ report.total_duration | format_duration }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Stages Completed</div>
+            <div class="metric-value">{{ report.stages_completed | length }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Key Decisions</div>
+            <div class="metric-value">{{ report.key_decisions | length }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Pipeline Timeline</h2>
+    <div class="timeline">
+        <div class="timeline-line"></div>
+        {% for stage in report.stages_completed %}
+        <div class="timeline-item">
+            <div class="stage-card">
+                <h3>{{ stage.name }}</h3>
+                <div class="stage-duration">Duration: {{ stage.duration | format_duration }}</div>
+                {% if stage.key_metrics %}
+                <div class="stage-metrics">
+                    {% for metric in stage.key_metrics %}
+                    <div class="metric-item">
+                        <span class="metric-name">{{ metric.name }}:</span>
+                        <span class="metric-value">{{ metric.value | format_number }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Key Decisions</h2>
+    {% for decision in report.key_decisions %}
+    <div class="decision-point">
+        <div class="decision-status status-{{ decision.status }}">
+            {{ decision.status | title }}
+        </div>
+        <h3>{{ decision.title }}</h3>
+        <p>{{ decision.description }}</p>
+        
+        {% if decision.options %}
+        <div class="decision-options">
+            <strong>Options Considered:</strong>
+            <ul>
+                {% for option in decision.options %}
+                <li>
+                    {{ option.description }}
+                    {% if option.selected %}
+                    <span class="selected-option">(Selected)</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="decision-impact">
+            <strong>Impact:</strong>
+            <ul>
+                {% for impact in decision.impact %}
+                <li>{{ impact }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="section">
+    <h2 class="section-title">Stage Summaries</h2>
+
+    {% if report.quality_summary %}
+    <div class="stage-summary">
+        <h3>Quality Analysis Summary</h3>
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-title">Quality Score</div>
+                <div class="metric-value">{{ report.quality_summary.quality_score | format_percentage }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Issues Resolved</div>
+                <div class="metric-value">{{ report.quality_summary.issues_resolved }}/{{ report.quality_summary.total_issues }}</div>
+            </div>
+        </div>
+        {% if report.quality_summary.key_improvements %}
+        <div class="improvements">
+            <h4>Key Improvements</h4>
+            <ul>
+                {% for improvement in report.quality_summary.key_improvements %}
+                <li>{{ improvement }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if report.insight_summary %}
+    <div class="stage-summary">
+        <h3>Insight Analysis Summary</h3>
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-title">Goal Alignment</div>
+                <div class="metric-value">{{ report.insight_summary.goal_alignment | format_percentage }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Key Insights</div>
+                <div class="metric-value">{{ report.insight_summary.total_insights }}</div>
+            </div>
+        </div>
+        {% if report.insight_summary.key_findings %}
+        <div class="key-findings">
+            <h4>Key Findings</h4>
+            <ul>
+                {% for finding in report.insight_summary.key_findings %}
+                <li>{{ finding }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if report.analytics_summary %}
+    <div class="stage-summary">
+        <h3>Analytics Summary</h3>
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-title">Model Performance</div>
+                <div class="metric-value">{{ report.analytics_summary.model_performance.primary_metric | format_number }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">Predictions Generated</div>
+                <div class="metric-value">{{ report.analytics_summary.total_predictions }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2 class="section-title">Implementation Plan</h2>
+    
+    <div class="implementation-plan">
+        {% for phase in report.implementation_plan %}
+        <div class="phase-card">
+            <h3>{{ phase.title }}</h3>
+            <p>{{ phase.description }}</p>
+            <div class="timeframe">Timeframe: {{ phase.timeframe }}</div>
+            
+            <div class="recommendations">
+                <h4>Recommendations</h4>
+                {% for rec in phase.recommendations %}
+                <div class="recommendation-card {{ rec.priority }}-priority">
+                    <h5>{{ rec.title }}</h5>
+                    <p>{{ rec.description }}</p>
+                    {% if rec.action_items %}
+                    <div class="action-items">
+                        <strong>Action Items:</strong>
+                        <ul>
+                            {% for action in rec.action_items %}
+                            <li>{{ action }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="resource-requirements">
+                {% for resource in phase.resources %}
+                <div class="metric-card">
+                    <div class="metric-title">{{ resource.type }}</div>
+                    <div class="metric-value">{{ resource.amount }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize timeline animations
+    const timelineItems = document.querySelectorAll('.timeline-item');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate');
+            }
+        });
+    });
+
+    timelineItems.forEach(item => observer.observe(item));
+
+    // Initialize charts if any
+    const charts = document.querySelectorAll('.chart');
+    charts.forEach(chart => {
+        const config = JSON.parse(chart.dataset.config);
+        // Chart initialization logic
+    });
+});
+</script>
+{% endblock %}</title>
+</head>
+<body>
+
+</body>
+</html>

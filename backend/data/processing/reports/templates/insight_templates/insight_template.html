@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{# backend/data_pipeline/reporting/templates/insight_report.html #}
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+    .goal-alignment {
+        text-align: center;
+        padding: 2rem 0;
+    }
+
+    .alignment-score {
+        font-size: 3rem;
+        font-weight: bold;
+        color: var(--primary-color);
+    }
+
+    .alignment-label {
+        font-size: 1.2rem;
+        color: var(--secondary-color);
+    }
+
+    .business-goals {
+        margin: 2rem 0;
+    }
+
+    .goal-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid var(--primary-color);
+    }
+
+    .goal-status {
+        float: right;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+
+    .status-achieved {
+        background-color: #e6f4ea;
+        color: var(--success-color);
+    }
+
+    .status-partial {
+        background-color: #fef7e0;
+        color: var(--warning-color);
+    }
+
+    .status-pending {
+        background-color: #e8eaed;
+        color: var(--secondary-color);
+    }
+
+    .insight-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .insight-category {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+        background-color: #e8eaed;
+    }
+
+    .insight-confidence {
+        float: right;
+        font-size: 0.875rem;
+        color: var(--secondary-color);
+    }
+
+    .insight-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+
+    .analytics-recommendation {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid #e0e0e0;
+    }
+
+    .opportunity-value {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        margin-left: 1rem;
+    }
+
+    .value-high {
+        background-color: #e6f4ea;
+        color: var(--success-color);
+    }
+
+    .value-medium {
+        background-color: #fef7e0;
+        color: var(--warning-color);
+    }
+
+    .value-low {
+        background-color: #e8eaed;
+        color: var(--secondary-color);
+    }
+
+    .data-visualization {
+        margin: 2rem 0;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section overview">
+    <h2 class="section-title">Insight Overview</h2>
+    
+    <div class="goal-alignment">
+        <div class="alignment-score">
+            {{ report.goal_alignment_score | format_percentage }}
+        </div>
+        <div class="alignment-label">Business Goal Alignment</div>
+    </div>
+
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-title">Total Insights</div>
+            <div class="metric-value">{{ report.insights_found }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Goals Addressed</div>
+            <div class="metric-value">{{ report.goals_addressed }}/{{ report.business_goals | length }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Analytics Opportunities</div>
+            <div class="metric-value">{{ report.analytics_recommendations | length }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Business Goals Analysis</h2>
+    <div class="business-goals">
+        {% for goal in report.business_goals %}
+        <div class="goal-card">
+            <div class="goal-status status-{{ goal.status }}">
+                {{ goal.status | title }}
+            </div>
+            <h3>{{ goal.title }}</h3>
+            <p>{{ goal.description }}</p>
+            {% if goal.metrics %}
+            <div class="goal-metrics">
+                <strong>Key Metrics:</strong>
+                <ul>
+                    {% for metric in goal.metrics %}
+                    <li>{{ metric.name }}: {{ metric.value | format_number }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Key Insights</h2>
+    {% for insight in report.insights %}
+    <div class="insight-card">
+        <span class="insight-category">{{ insight.category }}</span>
+        <span class="insight-confidence">
+            Confidence: {{ insight.confidence | format_percentage }}
+        </span>
+        <h3>{{ insight.title }}</h3>
+        <p>{{ insight.description }}</p>
+        
+        {% if insight.metrics %}
+        <div class="insight-metrics">
+            {% for metric in insight.metrics %}
+            <div class="metric-card">
+                <div class="metric-title">{{ metric.name }}</div>
+                <div class="metric-value">{{ metric.value | format_number }}</div>
+                {% if metric.change %}
+                <div class="metric-change {{ 'positive' if metric.change > 0 else 'negative' }}">
+                    {{ metric.change | format_percentage }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if insight.supporting_data %}
+        <div class="data-visualization">
+            <h4>Supporting Data</h4>
+            <!-- Visualization would be rendered here based on data type -->
+            {% if insight.supporting_data.type == 'chart' %}
+                <div class="chart" data-config="{{ insight.supporting_data.config | tojson }}"></div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if insight.related_goals %}
+        <div class="related-goals">
+            <strong>Related Business Goals:</strong>
+            <ul>
+                {% for goal in insight.related_goals %}
+                <li>{{ goal }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if insight.recommendations %}
+        <div class="recommendations">
+            <strong>Recommendations:</strong>
+            <ul>
+                {% for rec in insight.recommendations %}
+                <li>{{ rec }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<div class="section">
+    <h2 class="section-title">Analytics Opportunities</h2>
+    {% for rec in report.analytics_recommendations %}
+    <div class="analytics-recommendation">
+        <h3>
+            {{ rec.title }}
+            <span class="opportunity-value value-{{ rec.value }}">
+                {{ rec.value | title }} Value
+            </span>
+        </h3>
+        <p>{{ rec.description }}</p>
+        
+        {% if rec.expected_impact %}
+        <div class="expected-impact">
+            <strong>Expected Impact:</strong>
+            <ul>
+                {% for impact in rec.expected_impact %}
+                <li>{{ impact }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if rec.required_data %}
+        <div class="required-data">
+            <strong>Required Data:</strong>
+            <ul>
+                {% for data in rec.required_data %}
+                <li>{{ data }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="implementation-details">
+            <span class="complexity">Complexity: {{ rec.complexity | title }}</span>
+            <span class="effort">Estimated Effort: {{ rec.estimated_effort }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if report.additional_visualizations %}
+<div class="section">
+    <h2 class="section-title">Additional Insights</h2>
+    {% for viz in report.additional_visualizations %}
+    <div class="data-visualization">
+        <h3>{{ viz.title }}</h3>
+        <p>{{ viz.description }}</p>
+        <div class="chart" data-config="{{ viz.config | tojson }}"></div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Chart initialization and interactivity
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize charts
+    const charts = document.querySelectorAll('.chart');
+    charts.forEach(chart => {
+        const config = JSON.parse(chart.dataset.config);
+        // Chart rendering logic would go here
+        // This could use any charting library (e.g., Chart.js, D3.js)
+    });
+
+    // Add any additional interactivity
+});
+</script>
+{% endblock %}</title>
+</head>
+<body>
+
+</body>
+</html>

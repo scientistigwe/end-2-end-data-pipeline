@@ -1,662 +1,642 @@
 # backend/core/staging/staging_manager.py
 
-from datetime import datetime, timedelta
 import logging
-import os
-import shutil
-from pathlib import Path
-from typing import Dict, Any, Optional, List
-from uuid import uuid4
-import json
+import asyncio
+import uuid
+from typing import Dict, Any, Optional, List, Tuple
+from datetime import datetime, timedelta
+from sqlalchemy import func
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from ..messaging.broker import MessageBroker
+from ..messaging.event_types import (
+    MessageType, ProcessingStage, ProcessingStatus,
+    MessageMetadata, ModuleIdentifier, ComponentType, ReportSectionType
+)
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import MessageType, ProcessingMessage
-from backend.db.models.staging_model import StagedData, SourceStageMetadata, StagingState, StagingControlPoint
-from backend.core.monitoring.process import ProcessMonitor
+# Import all staging models
+from db.models.staging.base_staging_model import BaseStagedOutput
+from db.models.staging.quality_output_model import StagedQualityOutput
+from db.models.staging.insight_output_model import StagedInsightOutput
+from db.models.staging.advanced_analytics_output_model import StagedAnalyticsOutput
+from db.models.staging.report_output_model import StagedReportOutput
+from db.models.staging.staging_history_model import StagingProcessingHistory
+from db.models.staging.staging_control_model import StagingControlPoint
+
+# Import data source and pipeline models
+from db.models.data_source import (
+    DataSource, FileSourceInfo, APISourceConfig,
+    DatabaseSourceConfig, S3SourceConfig, StreamSourceConfig
+)
+from db.models.pipeline import (
+    Pipeline, PipelineStep, PipelineRun, PipelineStepRun,
+    QualityGate, PipelineLog
+)
+
+from db.models.auth import (
+    User, UserSession, UserActivityLog, TeamMember, ServiceAccount
+)
 
 logger = logging.getLogger(__name__)
 
 
 class StagingManager:
-    """Manages staging area for all data sources"""
+    """
+    Comprehensive Staging Manager handling all aspects of data staging
+    Including storage, tracking, versioning, and cleanup
+    """
 
-    def __init__(
-            self,
-            db_session: AsyncSession,
-            message_broker: MessageBroker,
-            base_path: str = "staging"
-    ):
-        self.db_session = db_session
+    def __init__(self, message_broker: MessageBroker, db_session):
         self.message_broker = message_broker
-        self.base_path = Path(base_path)
-        self.process_monitor = ProcessMonitor()
+        self.db_session = db_session
 
-        # Create staging directories
-        self._create_staging_directories()
+        # Module identification
+        self.module_identifier = ModuleIdentifier(
+            component_name="staging_manager",
+            component_type=ComponentType.MANAGER,
+            department="staging",
+            role="manager"
+        )
 
-    def _create_staging_directories(self):
-        """Create required staging directories"""
-        for dir_name in ['temp', 'active', 'archive']:
-            dir_path = self.base_path / dir_name
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # Model mappings
+        self._output_model_map = {
+            ComponentType.QUALITY: StagedQualityOutput,
+            ComponentType.INSIGHT: StagedInsightOutput,
+            ComponentType.ANALYTICS: StagedAnalyticsOutput,
+            ComponentType.REPORT: StagedReportOutput
+        }
 
-    async def create_staging_area(
-            self,
-            source_type: str,
-            source_identifier: str,
-            metadata: Dict[str, Any]
-    ) -> str:
-        """Create a new staging area for data"""
+        self._source_config_map = {
+            'file': FileSourceInfo,
+            'api': APISourceConfig,
+            'db': DatabaseSourceConfig,
+            's3': S3SourceConfig,
+            'stream': StreamSourceConfig
+        }
+
+        # Initialize
+        self._initialize()
+
+    def _initialize(self):
+        """Initialize staging manager and start background tasks"""
         try:
-            # Create staged data record
-            staged_data = StagedData(
-                id=str(uuid4()),
-                source_type=source_type,
-                source_identifier=source_identifier,
-                source_metadata=metadata,
-                status='initializing'
+            # Subscribe to messages
+            asyncio.create_task(
+                self.message_broker.subscribe(
+                    self.module_identifier,
+                    [
+                        "data.storage",
+                        "stage.*",
+                        "*.complete",
+                        "cleanup.request"
+                    ],
+                    self._handle_staging_message
+                )
             )
 
-            self.db_session.add(staged_data)
-            await self.db_session.commit()
+            # Start cleanup task
+            asyncio.create_task(self._periodic_cleanup())
 
-            # Create source-specific metadata
-            source_metadata = SourceStageMetadata(
-                staged_data_id=staged_data.id,
-                source_type=source_type,
-                metadata=self._get_source_metadata(source_type, metadata)
-            )
-
-            self.db_session.add(source_metadata)
-            await self.db_session.commit()
-
-            # Create initial state
-            state = StagingState(
-                staged_data_id=staged_data.id,
-                stage='initialization',
-                status='pending'
-            )
-
-            self.db_session.add(state)
-            await self.db_session.commit()
-
-            # Create storage directory for file-based sources
-            if source_type in ['file', 'cloud']:
-                storage_path = self._create_storage_path(staged_data.id)
-                staged_data.storage_path = str(storage_path)
-                await self.db_session.commit()
-
-            await self._notify_staging_created(staged_data.id, source_type)
-            return staged_data.id
+            logger.info("Staging Manager initialized successfully")
 
         except Exception as e:
-            logger.error(f"Error creating staging area: {str(e)}")
+            logger.error(f"Staging Manager initialization failed: {str(e)}")
             raise
 
-    def _get_source_metadata(
+    # DATA INGESTION AND STORAGE
+
+    async def store_incoming_data(
             self,
+            pipeline_id: str,
+            data: Any,
+            metadata: Dict[str, Any],
             source_type: str,
-            metadata: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Extract source-specific metadata"""
-        if source_type == 'file':
-            return {
-                'file_original_name': metadata.get('filename'),
-                'file_mime_type': metadata.get('mime_type')
-            }
-        elif source_type == 'api':
-            return {
-                'api_endpoint': metadata.get('endpoint'),
-                'api_method': metadata.get('method')
-            }
-        elif source_type == 'cloud':
-            return {
-                'cloud_provider': metadata.get('provider'),
-                'cloud_region': metadata.get('region'),
-                'cloud_path': metadata.get('path')
-            }
-        elif source_type == 'stream':
-            return {
-                'stream_checkpoint': metadata.get('checkpoint'),
-                'stream_position': metadata.get('position', 0)
-            }
-        elif source_type == 'db':
-            return {
-                'db_query': metadata.get('query'),
-                'db_table_name': metadata.get('table_name')
-            }
-        return {}
+            user_id: Optional[str] = None
+    ) -> str:
+        """Store incoming data with complete tracking"""
+        try:
+            # Validate pipeline and source
+            pipeline = await self.db_session.query(Pipeline).get(pipeline_id)
+            if not pipeline:
+                raise ValueError(f"Pipeline not found: {pipeline_id}")
 
-    def _create_storage_path(self, staged_id: str) -> Path:
-        """Create storage path for staged data"""
-        today = datetime.now().strftime('%Y-%m-%d')
-        storage_path = self.base_path / 'active' / today / staged_id
-        storage_path.mkdir(parents=True, exist_ok=True)
-        return storage_path
+            if user_id and pipeline.owner_id != user_id:
+                raise ValueError("Unauthorized access to pipeline")
 
-    async def store_staged_data(
+            source = await self.db_session.query(DataSource).get(pipeline.source_id)
+            if not source:
+                raise ValueError(f"Data source not found for pipeline: {pipeline_id}")
+
+            # Create staged output
+            output_id = str(uuid.uuid4())
+            staged_output = BaseStagedOutput(
+                id=output_id,
+                pipeline_id=pipeline_id,
+                component_type=ComponentType.QUALITY_MANAGER,
+                output_type=ReportSectionType.DATA,
+                status=ProcessingStatus.PENDING,
+                metadata={
+                    **metadata,
+                    'source_id': str(source.id),
+                    'source_type': source.type,
+                    'source_name': source.name,
+                    'ingestion_time': datetime.utcnow().isoformat()
+                },
+                storage_path=f"data/{pipeline_id}/{output_id}",
+                data_size=len(str(data))
+            )
+
+            self.db_session.add(staged_output)
+
+            # Create pipeline run
+            pipeline_run = PipelineRun(
+                pipeline_id=pipeline_id,
+                version=pipeline.version,
+                status='running',
+                start_time=datetime.utcnow(),
+                trigger_type='data_received',
+                inputs={
+                    'staged_id': output_id,
+                    'source_type': source.type
+                }
+            )
+            self.db_session.add(pipeline_run)
+
+            # Track processing history
+            history = StagingProcessingHistory(
+                staged_output_id=output_id,
+                event_type="data_received",
+                status=ProcessingStatus.PENDING,
+                details={
+                    "source_type": source_type,
+                    "pipeline_run_id": pipeline_run.id,
+                    "user_id": user_id
+                }
+            )
+            self.db_session.add(history)
+
+            # Log pipeline event
+            pipeline_log = PipelineLog(
+                pipeline_id=pipeline_id,
+                event_type='data_staged',
+                message=f"Data received from source {source.name}",
+                details={
+                    'staged_id': output_id,
+                    'source_type': source.type,
+                    'user_id': user_id
+                },
+                timestamp=datetime.utcnow()
+            )
+            self.db_session.add(pipeline_log)
+
+            await self.db_session.commit()
+
+            # Notify CPM
+            await self._notify_data_staged(
+                output_id,
+                staged_output.metadata,
+                pipeline_id,
+                pipeline_run.id
+            )
+
+            return output_id
+
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"Data staging failed: {str(e)}")
+            raise
+
+    async def store_component_output(
             self,
             staged_id: str,
-            data: Any,
-            metadata: Optional[Dict[str, Any]] = None
+            component_type: ComponentType,
+            output: Dict[str, Any],
+            output_type: ReportSectionType,
+            user_id: Optional[str] = None
     ) -> bool:
-        """Store data in staging area"""
+        """Store processing output from a component"""
         try:
-            # Get staged data record
-            staged_data = await self._get_staged_data(staged_id)
-            if not staged_data:
-                raise ValueError(f"No staging area found for ID: {staged_id}")
+            # Validate access if user_id provided
+            if user_id and not await self.check_access_permission(
+                    staged_id, user_id, 'write'
+            ):
+                raise ValueError("Unauthorized access")
 
-            # Store based on source type
-            if staged_data.source_type == 'file':
-                await self._store_file_data(staged_data, data)
-            elif staged_data.source_type == 'api':
-                await self._store_api_data(staged_data, data)
-            elif staged_data.source_type == 'cloud':
-                await self._store_cloud_data(staged_data, data)
-            elif staged_data.source_type == 'stream':
-                await self._store_stream_data(staged_data, data)
-            elif staged_data.source_type == 'db':
-                await self._store_db_data(staged_data, data)
+            # Get output model
+            output_model = self._output_model_map.get(component_type)
+            if not output_model:
+                raise ValueError(f"Unknown component type: {component_type}")
 
-            # Update metadata if provided
-            if metadata:
-                staged_data.source_metadata.update(metadata)
-                await self.db_session.commit()
+            # Create component output
+            component_output = output_model(
+                id=staged_id,
+                **output
+            )
+            self.db_session.add(component_output)
 
-            await self._notify_data_stored(staged_id)
+            # Update base output
+            base_output = await self.db_session.query(BaseStagedOutput).get(staged_id)
+            if base_output:
+                base_output.status = ProcessingStatus.COMPLETED
+                base_output.updated_at = datetime.utcnow()
+
+            # Add history entry
+            history = StagingProcessingHistory(
+                staged_output_id=staged_id,
+                event_type=f"{component_type.value}_complete",
+                status=ProcessingStatus.COMPLETED,
+                details={
+                    "output_type": output_type.value,
+                    "user_id": user_id
+                }
+            )
+            self.db_session.add(history)
+
+            await self.db_session.commit()
             return True
 
         except Exception as e:
-            logger.error(f"Error storing staged data: {str(e)}")
-            raise
+            await self.db_session.rollback()
+            logger.error(f"Output storage failed: {str(e)}")
+            return False
 
-    async def get_staged_data(
+    # DATA RETRIEVAL AND ACCESS
+
+    async def retrieve_data(
             self,
-            staged_id: str
+            staged_id: str,
+            component_type: ComponentType,
+            user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Retrieve staged data"""
+        """Retrieve data for component processing with access control"""
         try:
-            staged_data = await self._get_staged_data(staged_id)
-            if not staged_data:
+            # Validate access
+            if user_id and not await self.check_access_permission(
+                    staged_id, user_id, 'read'
+            ):
                 return None
 
-            # Get data based on source type
-            if staged_data.source_type == 'file':
-                data = await self._get_file_data(staged_data)
-            elif staged_data.source_type == 'api':
-                data = await self._get_api_data(staged_data)
-            elif staged_data.source_type == 'cloud':
-                data = await self._get_cloud_data(staged_data)
-            elif staged_data.source_type == 'stream':
-                data = await self._get_stream_data(staged_data)
-            elif staged_data.source_type == 'db':
-                data = await self._get_db_data(staged_data)
-            else:
-                data = None
+            # Get base output
+            base_output = await self.db_session.query(BaseStagedOutput).get(staged_id)
+            if not base_output:
+                return None
+
+            # Update status
+            base_output.status = ProcessingStatus.PROCESSING
+            base_output.updated_at = datetime.utcnow()
+
+            # Add history
+            history = StagingProcessingHistory(
+                staged_output_id=staged_id,
+                event_type="data_retrieved",
+                status=ProcessingStatus.IN_PROGRESS,
+                details={
+                    "component_type": component_type.value,
+                    "user_id": user_id
+                }
+            )
+            self.db_session.add(history)
+
+            await self.db_session.commit()
+
+            # Get component-specific output if exists
+            component_output = None
+            if component_type in self._output_model_map:
+                component_output = await self.db_session.query(
+                    self._output_model_map[component_type]
+                ).get(staged_id)
 
             return {
-                'id': staged_data.id,
-                'source_type': staged_data.source_type,
-                'source_identifier': staged_data.source_identifier,
-                'metadata': staged_data.source_metadata,
-                'data': data,
-                'status': staged_data.status,
-                'created_at': staged_data.created_at.isoformat()
+                "metadata": base_output.metadata,
+                "storage_path": base_output.storage_path,
+                "pipeline_id": base_output.pipeline_id,
+                "created_at": base_output.created_at.isoformat(),
+                "component_output": component_output.__dict__ if component_output else None
             }
 
         except Exception as e:
-            logger.error(f"Error retrieving staged data: {str(e)}")
-            raise
+            await self.db_session.rollback()
+            logger.error(f"Data retrieval failed: {str(e)}")
+            return None
 
-    async def update_stage_status(
+    # VERSION CONTROL AND RECOVERY
+
+    async def create_output_version(
             self,
             staged_id: str,
-            stage: str,
-            status: str,
-            metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
-        """Update staging state"""
+            version_note: str,
+            user_id: Optional[str] = None
+    ) -> Optional[str]:
+        """Create new version of staged output"""
         try:
-            state = await self._get_or_create_state(staged_id, stage)
-            state.status = status
+            # Validate access
+            if user_id and not await self.check_access_permission(
+                    staged_id, user_id, 'write'
+            ):
+                return None
 
-            if metadata:
-                state.processing_metadata = metadata
+            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
+            if not output:
+                return None
 
-            if status in ['completed', 'failed']:
-                state.completed_at = datetime.now()
-
-            await self.db_session.commit()
-            await self._notify_status_update(staged_id, stage, status)
-            return True
-
-        except Exception as e:
-            logger.error(f"Error updating stage status: {str(e)}")
-            raise
-
-    async def create_control_point(
-            self,
-            staged_id: str,
-            control_point_type: str,
-            metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Create control point for staging area"""
-        try:
-            control_point = StagingControlPoint(
-                id=str(uuid4()),
-                staged_data_id=staged_id,
-                control_point_type=control_point_type,
-                status='pending'
-            )
-
-            if metadata:
-                control_point.metadata = metadata
-
-            self.db_session.add(control_point)
-            await self.db_session.commit()
-
-            await self._notify_control_point_created(control_point.id)
-            return control_point.id
-
-        except Exception as e:
-            logger.error(f"Error creating control point: {str(e)}")
-            raise
-
-    async def archive_staged_data(
-            self,
-            staged_id: str,
-            ttl_days: int = 30
-    ) -> bool:
-        """Archive staged data"""
-        try:
-            staged_data = await self._get_staged_data(staged_id)
-            if not staged_data:
-                return False
-
-            # Move file-based data to archive
-            if staged_data.storage_path:
-                archive_path = self._create_archive_path(staged_id)
-                shutil.move(staged_data.storage_path, str(archive_path))
-                staged_data.storage_path = str(archive_path)
-
-            # Update status and expiry
-            staged_data.status = 'archived'
-            staged_data.expires_at = datetime.now() + timedelta(days=ttl_days)
-            await self.db_session.commit()
-
-            await self._notify_data_archived(staged_id)
-            return True
-
-        except Exception as e:
-            logger.error(f"Error archiving staged data: {str(e)}")
-            raise
-
-    def _create_archive_path(self, staged_id: str) -> Path:
-        """Create archive path for staged data"""
-        today = datetime.now().strftime('%Y-%m-%d')
-        archive_path = self.base_path / 'archive' / today / staged_id
-        archive_path.mkdir(parents=True, exist_ok=True)
-        return archive_path
-
-    async def cleanup_expired_data(self) -> int:
-        """Clean up expired staged data"""
-        try:
-            # Find expired records
-            query = select(StagedData).where(
-                StagedData.expires_at < datetime.now(),
-                StagedData.status == 'archived'
-            )
-            result = await self.db_session.execute(query)
-            expired_data = result.scalars().all()
-
-            cleaned_count = 0
-            for data in expired_data:
-                # Remove files if exist
-                if data.storage_path:
-                    path = Path(data.storage_path)
-                    if path.exists():
-                        if path.is_file():
-                            path.unlink()
-                        else:
-                            shutil.rmtree(path)
-
-                # Remove db records
-                await self.db_session.delete(data)
-                cleaned_count += 1
-
-            await self.db_session.commit()
-            return cleaned_count
-
-        except Exception as e:
-            logger.error(f"Error cleaning up expired data: {str(e)}")
-            raise
-
-    async def _notify_staging_created(self, staged_id: str, source_type: str):
-        """Notify about staging area creation"""
-        message = ProcessingMessage(
-            message_type=MessageType.STAGE_STORE,
-            content={
-                'staged_id': staged_id,
-                'source_type': source_type,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_data_stored(self, staged_id: str):
-        """Notify about data being stored"""
-        message = ProcessingMessage(
-            message_type=MessageType.STAGE_SUCCESS,
-            content={
-                'staged_id': staged_id,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_status_update(self, staged_id: str, stage: str, status: str):
-        """Notify about status update"""
-        message = ProcessingMessage(
-            message_type=MessageType.STAGE_UPDATE,
-            content={
-                'staged_id': staged_id,
-                'stage': stage,
-                'status': status,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_control_point_created(self, control_point_id: str):
-        """Notify about control point creation"""
-        message = ProcessingMessage(
-            message_type=MessageType.CONTROL_POINT_REACHED,
-            content={
-                'control_point_id': control_point_id,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_data_archived(self, staged_id: str):
-        """Notify about data being archived"""
-        message = ProcessingMessage(
-            message_type=MessageType.STAGE_COMPLETE,
-            content={
-                'staged_id': staged_id,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    # Helper methods for source-specific storage
-    async def _store_file_data(self, staged_data: StagedData, data: bytes):
-        """Store file data"""
-        file_path = Path(staged_data.storage_path) / "data"
-        file_path.write_bytes(data)
-        staged_data.data_size = len(data)
-        await self.db_session.commit()
-
-    async def _store_api_data(self, staged_data: StagedData, data: Dict):
-        """Store API response data"""
-        file_path = Path(staged_data.storage_path) / "response.json"
-        file_path.write_text(json.dumps(data))
-        staged_data.data_size = len(json.dumps(data))
-        await self.db_session.commit()
-
-    async def _store_cloud_data(self, staged_data: StagedData, data: bytes):
-        """Store cloud data"""
-        file_path = Path(staged_data.storage_path) / "data"
-        file_path.write_bytes(data)
-        staged_data.data_size = len(data)
-        await self.db_session.commit()
-
-    async def _store_stream_data(self, staged_data: StagedData, data: bytes):
-        """Store stream data"""
-        file_path = Path(staged_data.storage_path) / "stream_data"
-        file_path.write_bytes(data)
-        staged_data.data_size = len(data)
-        await self.db_session.commit()
-
-
-
-        async def _store_db_data(self, staged_data: StagedData, data: List[Dict]):
-            """Store db query results"""
-            file_path = Path(staged_data.storage_path) / "query_results.json"
-            file_path.write_text(json.dumps(data))
-            staged_data.data_size = len(json.dumps(data))
-
-            # Update metadata with row count
-            source_metadata = await self._get_source_metadata_record(staged_data.id)
-            if source_metadata:
-                source_metadata.db_row_count = len(data)
-
-            await self.db_session.commit()
-
-        async def _get_file_data(self, staged_data: StagedData) -> Optional[bytes]:
-            """Retrieve file data"""
-            file_path = Path(staged_data.storage_path) / "data"
-            if file_path.exists():
-                return file_path.read_bytes()
-            return None
-
-        async def _get_api_data(self, staged_data: StagedData) -> Optional[Dict]:
-            """Retrieve API response data"""
-            file_path = Path(staged_data.storage_path) / "response.json"
-            if file_path.exists():
-                return json.loads(file_path.read_text())
-            return None
-
-        async def _get_cloud_data(self, staged_data: StagedData) -> Optional[bytes]:
-            """Retrieve cloud data"""
-            file_path = Path(staged_data.storage_path) / "data"
-            if file_path.exists():
-                return file_path.read_bytes()
-            return None
-
-        async def _get_stream_data(self, staged_data: StagedData) -> Optional[bytes]:
-            """Retrieve stream data"""
-            file_path = Path(staged_data.storage_path) / "stream_data"
-            if file_path.exists():
-                return file_path.read_bytes()
-            return None
-
-        async def _get_db_data(self, staged_data: StagedData) -> Optional[List[Dict]]:
-            """Retrieve db query results"""
-            file_path = Path(staged_data.storage_path) / "query_results.json"
-            if file_path.exists():
-                return json.loads(file_path.read_text())
-            return None
-
-        async def _get_staged_data(self, staged_id: str) -> Optional[StagedData]:
-            """Get staged data record"""
-            query = select(StagedData).where(StagedData.id == staged_id)
-            result = await self.db_session.execute(query)
-            return result.scalar_one_or_none()
-
-        async def _get_source_metadata_record(self, staged_id: str) -> Optional[SourceStageMetadata]:
-            """Get source metadata record"""
-            query = select(SourceStageMetadata).where(
-                SourceStageMetadata.staged_data_id == staged_id
-            )
-            result = await self.db_session.execute(query)
-            return result.scalar_one_or_none()
-
-        async def _get_or_create_state(
-                self,
-                staged_id: str,
-                stage: str
-        ) -> StagingState:
-            """Get or create staging state record"""
-            query = select(StagingState).where(
-                StagingState.staged_data_id == staged_id,
-                StagingState.stage == stage
-            )
-            result = await self.db_session.execute(query)
-            state = result.scalar_one_or_none()
-
-            if not state:
-                state = StagingState(
-                    staged_data_id=staged_id,
-                    stage=stage,
-                    status='pending'
-                )
-                self.db_session.add(state)
-
-            return state
-
-        async def get_staging_metrics(self) -> Dict[str, Any]:
-            """Get staging area metrics"""
-            try:
-                # Get counts by status
-                status_counts = {}
-                for status in ['active', 'archived', 'failed']:
-                    query = select(func.count(StagedData.id)).where(
-                        StagedData.status == status
-                    )
-                    result = await self.db_session.execute(query)
-                    status_counts[status] = result.scalar()
-
-                # Get counts by source type
-                source_type_counts = {}
-                query = select(
-                    StagedData.source_type,
-                    func.count(StagedData.id)
-                ).group_by(StagedData.source_type)
-                result = await self.db_session.execute(query)
-                source_type_counts = dict(result.all())
-
-                # Get storage metrics
-                storage_metrics = await self._get_storage_metrics()
-
-                return {
-                    'status_counts': status_counts,
-                    'source_type_counts': source_type_counts,
-                    'storage_metrics': storage_metrics,
-                    'timestamp': datetime.now().isoformat()
+            # Create new version
+            new_version = BaseStagedOutput(
+                pipeline_id=output.pipeline_id,
+                component_type=output.component_type,
+                output_type=output.output_type,
+                metadata={
+                    **output.metadata,
+                    'previous_version': staged_id,
+                    'version_note': version_note,
+                    'created_by': user_id
                 }
+            )
+            self.db_session.add(new_version)
 
-            except Exception as e:
-                logger.error(f"Error getting staging metrics: {str(e)}")
-                raise
+            # Track versioning in history
+            history = StagingProcessingHistory(
+                staged_output_id=staged_id,
+                event_type="version_created",
+                status=output.status,
+                details={
+                    "new_version_id": new_version.id,
+                    "version_note": version_note,
+                    "user_id": user_id
+                }
+            )
+            self.db_session.add(history)
 
-        async def _get_storage_metrics(self) -> Dict[str, int]:
-            """Calculate storage metrics"""
-            metrics = {
-                'total_size': 0,
-                'active_size': 0,
-                'archived_size': 0
-            }
+            await self.db_session.commit()
+            return new_version.id
 
-            # Sum data sizes
-            query = select(
-                StagedData.status,
-                func.sum(StagedData.data_size)
-            ).group_by(StagedData.status)
-            result = await self.db_session.execute(query)
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"Version creation failed: {str(e)}")
+            return None
 
-            for status, size in result:
-                if status == 'active':
-                    metrics['active_size'] = size or 0
-                elif status == 'archived':
-                    metrics['archived_size'] = size or 0
+    async def recover_failed_output(
+            self,
+            staged_id: str,
+            user_id: Optional[str] = None
+    ) -> Optional[str]:
+        """Recover failed staged output"""
+        try:
+            # Validate access
+            if user_id and not await self.check_access_permission(
+                    staged_id, user_id, 'write'
+            ):
+                return None
 
-            metrics['total_size'] = metrics['active_size'] + metrics['archived_size']
-            return metrics
+            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
+            if not output or output.status != ProcessingStatus.FAILED:
+                return None
 
-        async def vacuum_staging(self, older_than_days: int = 7) -> int:
-            """Remove old archived data"""
-            try:
-                cutoff_date = datetime.now() - timedelta(days=older_than_days)
+            # Create recovery point
+            recovery_id = await self.create_output_version(
+                staged_id,
+                "Recovery point",
+                user_id
+            )
 
-                # Find old archived data
-                query = select(StagedData).where(
-                    StagedData.status == 'archived',
-                    StagedData.created_at < cutoff_date
+            if recovery_id:
+                # Reset status for retry
+                output.status = ProcessingStatus.PENDING
+                output.updated_at = datetime.utcnow()
+
+                # Track recovery attempt
+                history = StagingProcessingHistory(
+                    staged_output_id=staged_id,
+                    event_type="recovery_attempted",
+                    status=ProcessingStatus.PENDING,
+                    details={
+                        "recovery_point": recovery_id,
+                        "user_id": user_id
+                    }
                 )
-                result = await self.db_session.execute(query)
-                old_data = result.scalars().all()
-
-                removed_count = 0
-                for data in old_data:
-                    # Remove files
-                    if data.storage_path:
-                        path = Path(data.storage_path)
-                        if path.exists():
-                            if path.is_file():
-                                path.unlink()
-                            else:
-                                shutil.rmtree(path)
-
-                    # Remove db record
-                    await self.db_session.delete(data)
-                    removed_count += 1
+                self.db_session.add(history)
 
                 await self.db_session.commit()
 
-                await self._notify_vacuum_complete(removed_count)
-                return removed_count
+            return recovery_id
 
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"Recovery failed: {str(e)}")
+            return None
+
+    # CLEANUP AND MAINTENANCE
+
+    async def _periodic_cleanup(self):
+        """Run periodic cleanup tasks"""
+        while True:
+            try:
+                await self.cleanup_expired_data()
+                await asyncio.sleep(3600)  # Run every hour
             except Exception as e:
-                logger.error(f"Error vacuuming staging area: {str(e)}")
-                raise
+                logger.error(f"Periodic cleanup failed: {str(e)}")
+                await asyncio.sleep(300)  # Retry after 5 minutes
 
-        async def _notify_vacuum_complete(self, removed_count: int):
-            """Notify about vacuum completion"""
-            message = ProcessingMessage(
-                message_type=MessageType.STAGE_VALIDATE,
-                content={
-                    'operation': 'vacuum',
-                    'removed_count': removed_count,
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
+    async def cleanup_expired_data(self) -> None:
+        """Clean up expired staged data"""
+        try:
+            # Find expired outputs
+            expired_outputs = await self.db_session.query(BaseStagedOutput).filter(
+                BaseStagedOutput.expires_at <= datetime.utcnow(),
+                BaseStagedOutput.status != ProcessingStatus.ARCHIVED
+            ).all()
+
+            for output in expired_outputs:
+                await self.archive_output(output.id)
+
+        except Exception as e:
+            logger.error(f"Cleanup failed: {str(e)}")
+
+    # MONITORING AND METRICS
+
+    async def get_storage_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive storage usage metrics"""
+        try:
+            # Get total size
+            total_size = await self.db_session.query(
+                func.sum(BaseStagedOutput.data_size)
+            ).scalar()
+
+            # Get status distribution
+            status_counts = await self.db_session.query(
+                BaseStagedOutput.status,
+                func.count(BaseStagedOutput.id)
+            ).group_by(BaseStagedOutput.status).all()
+
+            # Get component distribution
+            component_counts = await self.db_session.query(
+                BaseStagedOutput.component_type,
+                func.count(BaseStagedOutput.id)
+            ).group_by(BaseStagedOutput.component_type).all()
+
+            # Get pipeline metrics
+            pipeline_metrics = await self.db_session.query(
+                BaseStagedOutput.pipeline_id,
+                func.count(BaseStagedOutput.id).label('output_count'),
+                func.sum(BaseStagedOutput.data_size).label('total_size')
+            ).group_by(BaseStagedOutput.pipeline_id).all()
+
+            return {
+                'total_size_bytes': total_size or 0,
+                'status_distribution': dict(status_counts),
+                'component_distribution': dict(component_counts),
+                'pipeline_metrics': {
+                    p[0]: {'count': p[1], 'size': p[2]}
+                    for p in pipeline_metrics
+                },
+                'timestamp': datetime.utcnow().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get storage metrics: {str(e)}")
+            return {}
+
+    async def get_pipeline_staging_status(
+            self,
+            pipeline_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get staging status for all components in a pipeline"""
+        try:
+            # Get latest output for each component
+            status_by_component = {}
+            for comp_type in ComponentType:
+                latest = await self.db_session.query(BaseStagedOutput).filter(
+                    BaseStagedOutput.pipeline_id == pipeline_id,
+                    BaseStagedOutput.component_type == comp_type
+                ).order_by(BaseStagedOutput.created_at.desc()).first()
+
+                if latest:
+                    status_by_component[comp_type.value] = {
+                        'status': latest.status.value,
+                        'last_updated': latest.updated_at.isoformat(),
+                        'output_id': latest.id,
+                        'metadata': latest.metadata
+                    }
+                else:
+                    status_by_component[comp_type.value] = {
+                        'status': 'not_started',
+                        'last_updated': None,
+                        'output_id': None
+                    }
+
+            return status_by_component
+
+        except Exception as e:
+            logger.error(f"Failed to get pipeline staging status: {str(e)}")
+            return None
+
+    # ACCESS CONTROL
+
+    async def check_access_permission(
+            self,
+            staged_id: str,
+            user_id: str,
+            action: str
+    ) -> bool:
+        """Check if user has permission to access staged data"""
+        try:
+            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
+            if not output:
+                return False
+
+            pipeline = await self.db_session.query(Pipeline).get(output.pipeline_id)
+            if not pipeline:
+                return False
+
+            # Direct ownership
+            if pipeline.owner_id == user_id:
+                return True
+
+            # Team access
+            if pipeline.team_id:
+                team_member = await self.db_session.query(TeamMember).filter(
+                    TeamMember.team_id == pipeline.team_id,
+                    TeamMember.user_id == user_id
+                ).first()
+
+                if team_member:
+                    if action == 'read':
+                        return True
+                    if action == 'write' and team_member.role in ['admin', 'editor']:
+                        return True
+
+            # Service account access
+            service_account = await self.db_session.query(ServiceAccount).filter(
+                ServiceAccount.user_id == user_id,
+                ServiceAccount.scope.contains([f"pipeline:{pipeline.id}:{action}"])
+            ).first()
+
+            if service_account:
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Permission check failed: {str(e)}")
+            return False
+
+    # MESSAGE HANDLING
+
+    async def _handle_staging_message(self, message: Dict[str, Any]) -> None:
+        """Handle incoming staging-related messages"""
+        try:
+            message_type = message.get('message_type')
+            content = message.get('content', {})
+
+            if message_type == MessageType.STAGING_CLEANUP_START:
+                await self.cleanup_expired_data()
+
+            elif message_type == MessageType.COMPONENT_OUTPUT_READY:
+                await self.store_component_output(
+                    content['staged_id'],
+                    content['component_type'],
+                    content['output'],
+                    content['output_type']
+                )
+
+            elif message_type == MessageType.DATA_ACCESS_REQUEST:
+                data = await self.retrieve_data(
+                    content['staged_id'],
+                    content['component_type'],
+                    content.get('user_id')
+                )
+                # Send response if required
+
+            # Handle other message types...
+
+        except Exception as e:
+            logger.error(f"Message handling failed: {str(e)}")
+
+    # UTILITY METHODS
+
+    async def _notify_data_staged(
+            self,
+            staged_id: str,
+            metadata: Dict[str, Any],
+            pipeline_id: str,
+            run_id: str
+    ) -> None:
+        """Notify about newly staged data"""
+        try:
+            message = {
+                'message_type': MessageType.DATA_STORAGE,
+                'content': {
+                    'staged_id': staged_id,
+                    'pipeline_id': pipeline_id,
+                    'run_id': run_id,
+                    'metadata': metadata
+                },
+                'source_identifier': self.module_identifier,
+                'metadata': MessageMetadata(
+                    source_component="staging_manager",
+                    target_component="control_point_manager"
+                )
+            }
+
             await self.message_broker.publish(message)
 
-        async def get_stage_history(self, staged_id: str) -> List[Dict[str, Any]]:
-            """Get complete history of a staged item"""
-            try:
-                # Get all states
-                query = select(StagingState).where(
-                    StagingState.staged_data_id == staged_id
-                ).order_by(StagingState.created_at)
-                result = await self.db_session.execute(query)
-                states = result.scalars().all()
-
-                # Get all control points
-                query = select(StagingControlPoint).where(
-                    StagingControlPoint.staged_data_id == staged_id
-                ).order_by(StagingControlPoint.created_at)
-                result = await self.db_session.execute(query)
-                control_points = result.scalars().all()
-
-                # Combine and sort by timestamp
-                history = []
-
-                for state in states:
-                    history.append({
-                        'type': 'state',
-                        'stage': state.stage,
-                        'status': state.status,
-                        'timestamp': state.created_at.isoformat(),
-                        'metadata': state.processing_metadata
-                    })
-
-                for cp in control_points:
-                    history.append({
-                        'type': 'control_point',
-                        'control_type': cp.control_point_type,
-                        'status': cp.status,
-                        'timestamp': cp.created_at.isoformat(),
-                        'decision': cp.decision
-                    })
-
-                return sorted(history, key=lambda x: x['timestamp'])
-
-            except Exception as e:
-                logger.error(f"Error getting stage history: {str(e)}")
-                raise
+        except Exception as e:
+            logger.error(f"Notification failed: {str(e)}")

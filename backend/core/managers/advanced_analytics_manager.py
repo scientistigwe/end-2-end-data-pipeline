@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 
 from ..messaging.broker import MessageBroker
-from ..messaging.types import (
+from ..messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ProcessingStatus,
@@ -15,8 +15,8 @@ from ..messaging.types import (
 )
 from ..control.cpm import ControlPointManager
 from ..staging.staging_manager import StagingManager
-from .base_manager import BaseManager, ManagerState
-from ..handlers.channel.analytics_handler import AdvancedAnalyticsHandler
+from .base.base_manager import BaseManager, ManagerState
+from core.handlers.channel.advanced_analytics_handler import AdvancedAnalyticsHandler
 
 
 class AdvancedAnalyticsManager(BaseManager):

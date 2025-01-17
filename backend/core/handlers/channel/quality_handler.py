@@ -13,8 +13,8 @@ from ...messaging.event_types import (
 )
 from ...staging.staging_manager import StagingManager
 from ..base.base_handler import BaseChannelHandler, HandlerState
-from ....data_pipeline.quality.processor.quality_processor import QualityProcessor
-from ....data_pipeline.quality.types.quality_types import (
+from data.processing.quality.processor.quality_processor import QualityProcessor
+from data.processing.quality.types.quality_types import (
     QualityState,
     QualityPhase,
     QualityContext,

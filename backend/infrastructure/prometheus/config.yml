@@ -1,0 +1,60 @@
+# prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: 'analyst_pa_backend'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['celery:8888']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+---
+# alerts.yml
+groups:
+  - name: analyst_pa_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: process_cpu_seconds_total > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 85% for 5 minutes"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 2e9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 2GB for 5 minutes"
+
+      - alert: SlowResponseTime
+        expr: http_request_duration_seconds > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response times detected"
+          description: "API endpoints are responding slower than 2 seconds"

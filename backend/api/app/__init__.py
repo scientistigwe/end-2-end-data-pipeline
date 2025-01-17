@@ -10,7 +10,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy import create_engine
 
 # Import configurations
-from backend.docs.analyst_pa.backend.config import get_config
+from config import get_config
 
 # Import middleware
 from .middleware.error_handler import register_error_handlers

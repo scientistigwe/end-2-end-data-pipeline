@@ -19,7 +19,7 @@ class QualityCheckType(Enum):
 
 class QualityIssueType(Enum):
     """Types of quality issues"""
-    MISSING_VALUE = "missing_value"
+    MISSING_VALUE = "templates"
     DATA_TYPE_MISMATCH = "data_type_mismatch"
     FORMAT_ERROR = "format_error"
     RANGE_VIOLATION = "range_violation"

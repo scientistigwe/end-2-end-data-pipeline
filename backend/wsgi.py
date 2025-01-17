@@ -1,5 +1,5 @@
 import logging
-from backend.docs.analyst_pa.backend.flask_api import create_app
+from api.app import create_app
 
 # Set up logging
 logging.basicConfig(

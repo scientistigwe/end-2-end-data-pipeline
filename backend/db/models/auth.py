@@ -294,3 +294,180 @@ class UserActivityLog(BaseModel):
         Index('ix_user_activity_logs_success', 'success'),
         {'extend_existing': True}
     )
+
+
+class TeamMember(BaseModel):
+    """
+    Represents a user's membership in a team
+    """
+    __tablename__ = 'team_members'
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    team_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('teams.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+
+    # Role-based access control
+    role = Column(
+        Enum('admin', 'editor', 'viewer', name='team_member_role'),
+        default='viewer',
+        nullable=False
+    )
+
+    # Optional additional metadata
+    joined_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    status = Column(
+        Enum('active', 'inactive', 'pending', name='team_member_status'),
+        default='active',
+        nullable=False
+    )
+
+    # Relationships
+    user = relationship(
+        "User",
+        foreign_keys=[user_id],
+        back_populates="team_memberships"
+    )
+    team = relationship(
+        "Team",
+        foreign_keys=[team_id],
+        back_populates="members"
+    )
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'team_id', name='uq_user_team'),
+        Index('ix_team_members_status', 'status'),
+        Index('ix_team_members_role', 'role')
+    )
+
+    def has_permission(self, permission: str) -> bool:
+        """
+        Check if the member has a specific permission based on their role
+
+        Args:
+            permission (str): Permission to check (e.g., 'read', 'write')
+
+        Returns:
+            bool: Whether the member has the specified permission
+        """
+        role_permissions = {
+            'admin': ['read', 'write', 'manage'],
+            'editor': ['read', 'write'],
+            'viewer': ['read']
+        }
+        return permission in role_permissions.get(self.role, [])
+
+
+class Team(BaseModel):
+    """
+    Represents a team or organization group
+    """
+    __tablename__ = 'teams'
+
+    name = Column(String(255), nullable=False)
+    description = Column(String(500))
+    owner_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='SET NULL')
+    )
+
+    # Relationships
+    owner = relationship(
+        "User",
+        foreign_keys=[owner_id]
+    )
+    members = relationship(
+        "TeamMember",
+        back_populates="team",
+        cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index('ix_teams_name', 'name'),
+        Index('ix_teams_owner', 'owner_id')
+    )
+
+
+class ServiceAccount(BaseModel):
+    """
+    Represents a service account with specific access scopes
+    """
+    __tablename__ = 'service_accounts'
+
+    name = Column(String(255), nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+
+    # JSON field to store flexible access scopes
+    scope = Column(JSONB, nullable=False, default=list)
+
+    # Tracking and management
+    expires_at = Column(DateTime)
+    status = Column(
+        Enum('active', 'inactive', 'expired', name='service_account_status'),
+        default='active',
+        nullable=False
+    )
+
+    # Relationship to user who created/owns the service account
+    user = relationship(
+        "User",
+        foreign_keys=[user_id]
+    )
+
+    __table_args__ = (
+        Index('ix_service_accounts_status', 'status'),
+        Index('ix_service_accounts_name', 'name'),
+        CheckConstraint(
+            'expires_at IS NULL OR expires_at > created_at',
+            name='ck_valid_expiry'
+        )
+    )
+
+    def is_active(self) -> bool:
+        """
+        Check if the service account is currently active
+
+        Returns:
+            bool: Whether the service account is active and not expired
+        """
+        now = datetime.utcnow()
+        return (
+                self.status == 'active' and
+                (self.expires_at is None or self.expires_at > now)
+        )
+
+    def has_permission(self, permission_scope: str) -> bool:
+        """
+        Check if the service account has a specific permission scope
+
+        Args:
+            permission_scope (str): Scope to check (e.g., 'pipeline:123:read')
+
+        Returns:
+            bool: Whether the service account has the specified scope
+        """
+        return (
+                self.is_active() and
+                any(permission_scope in scope for scope in self.scope)
+        )
+
+
+# Update User model to include team_memberships relationship
+User.team_memberships = relationship(
+    "TeamMember",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)

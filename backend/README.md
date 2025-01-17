@@ -187,3 +187,26 @@ analyst_pa/
     │
     └── e2e/
         └── features/
+
+
+# Example usage:
+
+# Create a quality manager identifier
+quality_manager = ModuleIdentifier.create_manager_identifier(
+    ComponentType.QUALITY_MANAGER,
+    "quality_analysis_manager"
+)
+
+# Create a quality handler identifier
+quality_handler = ModuleIdentifier.create_handler_identifier(
+    ComponentType.QUALITY_HANDLER,
+    "quality_analysis_handler"
+)
+
+# Create a message from manager to handler
+message = ProcessingMessage(
+    message_type=MessageType.QUALITY_START,
+    content={"data": "example"},
+    source_identifier=quality_manager,
+    target_identifier=quality_handler
+)

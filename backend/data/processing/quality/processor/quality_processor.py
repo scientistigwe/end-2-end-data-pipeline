@@ -6,9 +6,9 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.event_types import MessageType, ProcessingMessage
-from backend.core.staging.staging_manager import StagingManager
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import MessageType, ProcessingMessage
+from core.staging.staging_manager import StagingManager
 
 # Import quality modules
 from ..detectors import (

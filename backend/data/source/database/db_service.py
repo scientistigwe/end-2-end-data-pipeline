@@ -1,211 +1,249 @@
-from __future__ import annotations
+# backend/source_handlers/database/db_service.py
 
 import logging
-import asyncio
-import pandas as pd
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from dataclasses import dataclass, field
 from uuid import uuid4
 
 from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import (
-    ComponentType,
-    MessageType,
-    ProcessingMessage,
-    ModuleIdentifier,
-    ProcessingStage,
-    ProcessingStatus
-)
-from backend.core.orchestration.data_conductor import DataConductor
-from backend.core.orchestration.staging_manager import StagingManager
-from backend.core.orchestration.pipeline_manager import PipelineManager
+from backend.core.staging.staging_manager import StagingManager
 from backend.core.control.control_point_manager import ControlPointManager
-from backend.core.monitoring.process import ProcessMonitor
-from backend.core.monitoring.collectors import MetricsCollector
-from backend.core.utils.process_manager import ProcessManager
-
+from backend.core.messaging.types import (
+    MessageType, ProcessingStage, ModuleIdentifier, ComponentType
+)
+from .db_handler import DatabaseHandler
 from .db_validator import DatabaseSourceValidator
 from .db_config import DatabaseSourceConfig
-from .db_fetcher import DBFetcher
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DBProcessContext:
-    """Context for db operations"""
-    request_id: str
-    pipeline_id: str
-    stage: ProcessingStage
-    status: ProcessingStatus
-    metadata: Dict[str, Any]
-    created_at: datetime = field(default_factory=datetime.now)
-    error: Optional[str] = None
-    processing_history: List[Dict[str, Any]] = field(default_factory=list)
-    control_points: List[str] = field(default_factory=list)
-
-
-class DBService:
-    """Database service for data sourcing through CPM"""
+class DatabaseService:
+    """Service for handling database data operations at API layer"""
 
     def __init__(
             self,
-            message_broker: Optional[MessageBroker] = None,
-            control_point_manager: Optional[ControlPointManager] = None,
-            config: Optional[DatabaseSourceConfig] = None,
-            metrics_collector: Optional[MetricsCollector] = None,
+            message_broker: MessageBroker,
+            staging_manager: StagingManager,
+            cpm: ControlPointManager,
+            config: Optional[DatabaseSourceConfig] = None
     ):
-        # Core components
-        self.message_broker = message_broker or MessageBroker()
-        self.control_point_manager = control_point_manager or ControlPointManager(
-            message_broker=self.message_broker
-        )
+        self.message_broker = message_broker
+        self.staging_manager = staging_manager
+        self.cpm = cpm
         self.config = config or DatabaseSourceConfig()
-        self.metrics_collector = metrics_collector or MetricsCollector()
 
-        # Initialize monitoring
-        self.process_monitor = ProcessMonitor(
-            metrics_collector=self.metrics_collector,
-            source_type="database_service",
-            source_id=str(uuid4())
+        # Initialize components
+        self.handler = DatabaseHandler(
+            staging_manager,
+            message_broker,
+            timeout=self.config.REQUEST_TIMEOUT
         )
+        self.validator = DatabaseSourceValidator(config=self.config)
 
-        # Operation tracking
-        self.active_operations: Dict[str, DBProcessContext] = {}
-
-        # Register handlers with CPM
-        self._setup_handlers()
-
-    def _setup_handlers(self) -> None:
-        """Register handlers with Control Point Manager"""
-        handlers = {
-            'db.request.start': self._handle_request_start,
-            'db.request.complete': self._handle_request_complete,
-            'db.request.error': self._handle_request_error,
-            'db.validation.complete': self._handle_validation_complete
-        }
-
-        # Register with CPM
-        self.control_point_manager.register_handler(
-            source_type='db',
-            handlers=handlers
+        # Module identification
+        self.module_identifier = ModuleIdentifier(
+            component_name="database_service",
+            component_type=ComponentType.SERVICE,
+            department="source",
+            role="service"
         )
 
     async def source_data(
             self,
-            connection_config: Dict[str, Any],
+            source_type: str,
+            host: str,
+            database: str,
             query: str,
+            operation: str = 'read',
+            params: Optional[Dict[str, Any]] = None,
+            auth: Optional[Dict[str, Any]] = None,
             user_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Source data from db through CPM"""
-        # Create process context
-        context = DBProcessContext(
-            request_id=str(uuid4()),
-            pipeline_id=str(uuid4()),
-            stage=ProcessingStage.INITIAL_VALIDATION,
-            status=ProcessingStatus.PENDING,
-            metadata={
-                'user_id': user_id,
-                'source_type': 'db'
-            }
-        )
-        self.active_operations[context.request_id] = context
-
+        """Source data from database"""
         try:
-            # Create validation control point
-            validation_point = await self.control_point_manager.create_control_point(
-                pipeline_id=context.pipeline_id,
-                stage=ProcessingStage.INITIAL_VALIDATION,
-                data={
-                    'connection_config': {
-                        k: v for k, v in connection_config.items()
-                        if k not in ['password']  # Exclude sensitive info
-                    },
-                    'query': query,
-                    'metadata': context.metadata
-                },
-                options=['proceed', 'reject']
-            )
+            # Create metadata for tracking
+            metadata = {
+                'user_id': user_id,
+                'source_type': 'database',
+                'db_type': source_type,
+                'host': host,
+                'database': database,
+                'operation': operation
+            }
 
-            # Wait for validation decision
-            decision = await self.control_point_manager.wait_for_decision(
-                validation_point.id,
-                timeout=self.config.VALIDATION_TIMEOUT
-            )
+            # Initial validation
+            validation_result = await self.validator.validate_source({
+                'source_type': source_type,
+                'host': host,
+                'database': database,
+                'operation': operation,
+                'auth': auth
+            })
 
-            if decision.decision == 'proceed':
-                # Create processing control point
-                process_point = await self.control_point_manager.create_control_point(
-                    pipeline_id=context.pipeline_id,
-                    stage=ProcessingStage.PROCESSING,
-                    data={
-                        'request_id': context.request_id,
-                        'connection_config': connection_config,
-                        'query': query,
-                        'metadata': context.metadata
-                    },
-                    options=['process']
-                )
-
+            if not validation_result['passed']:
                 return {
-                    'status': 'processing',
-                    'request_id': context.request_id,
-                    'pipeline_id': context.pipeline_id
+                    'status': 'error',
+                    'errors': validation_result['issues']
                 }
 
-            else:
-                context.status = ProcessingStatus.REJECTED
-                context.error = decision.details.get('reason', 'Request rejected')
-                return {
-                    'status': 'rejected',
-                    'reason': context.error
+            # Process through handler
+            result = await self.handler.handle_database_request(
+                source_type=source_type,
+                host=host,
+                database=database,
+                query=query,
+                operation=operation,
+                params=params,
+                auth=auth,
+                metadata=metadata
+            )
+
+            if result['status'] != 'success':
+                return result
+
+            # Create control point
+            control_point = await self.cpm.create_control_point(
+                stage=ProcessingStage.RECEPTION,
+                metadata={
+                    'source_type': 'database',
+                    'staged_id': result['staged_id'],
+                    'user_id': user_id,
+                    'db_info': result['db_info']
                 }
+            )
+
+            return {
+                'status': 'success',
+                'staged_id': result['staged_id'],
+                'control_point_id': control_point.id,
+                'tracking_url': f'/api/sources/database/{result["staged_id"]}/status'
+            }
 
         except Exception as e:
-            logger.error(f"Database request error: {str(e)}", exc_info=True)
-
-            context.status = ProcessingStatus.FAILED
-            context.error = str(e)
-
+            logger.error(f"Database data sourcing error: {str(e)}")
             return {
                 'status': 'error',
                 'error': str(e)
             }
 
-    async def list_active_operations(self) -> List[Dict[str, Any]]:
-        """List all active db operations"""
-        return [
-            {
-                'request_id': operation.request_id,
-                'pipeline_id': operation.pipeline_id,
-                'status': operation.status.value,
-                'stage': operation.stage.value,
-                'created_at': operation.created_at.isoformat(),
-                'error': operation.error
-            }
-            for operation in self.active_operations.values()
-        ]
-
-    async def cancel_operation(self, request_id: str) -> Dict[str, Any]:
-        """Cancel an active db operation"""
+    async def get_source_status(
+            self,
+            staged_id: str,
+            user_id: str
+    ) -> Dict[str, Any]:
+        """Get database data processing status"""
         try:
-            context = self.active_operations.get(request_id)
-            if not context:
-                return {
-                    'status': 'error',
-                    'message': f'Operation {request_id} not found'
-                }
+            # Get staging status
+            staged_data = await self.staging_manager.get_data(staged_id)
+            if not staged_data:
+                return {'status': 'not_found'}
 
-            # Update status
-            context.status = ProcessingStatus.CANCELLED
+            # Check authorization
+            if staged_data['metadata'].get('user_id') != user_id:
+                return {'status': 'unauthorized'}
 
-            # Remove from active operations
-            del self.active_operations[request_id]
+            # Get control point status
+            control_status = await self.cpm.get_status(
+                staged_data['metadata'].get('control_point_id')
+            )
+
+            return {
+                'staged_id': staged_id,
+                'status': staged_data['status'],
+                'control_status': control_status,
+                'db_info': staged_data['metadata'].get('db_info'),
+                'last_updated': datetime.utcnow().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Status retrieval error: {str(e)}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def list_user_sources(
+            self,
+            user_id: str
+    ) -> Dict[str, Any]:
+        """List database sources for a user"""
+        try:
+            # Get staged sources for user
+            user_sources = await self.staging_manager.list_data(
+                filters={'metadata.user_id': user_id, 'metadata.source_type': 'database'}
+            )
 
             return {
                 'status': 'success',
-                'message': f'Operation {request_id} cancelled'
+                'sources': [
+                    {
+                        'staged_id': f['id'],
+                        'source_type': f['metadata'].get('db_type'),
+                        'host': f['metadata'].get('host'),
+                        'database': f['metadata'].get('database'),
+                        'operation': f['metadata'].get('operation'),
+                        'status': f['status'],
+                        'fetched_at': f['created_at'],
+                        'db_info': f['metadata'].get('db_info')
+                    }
+                    for f in user_sources
+                ]
+            }
+
+        except Exception as e:
+            logger.error(f"Source listing error: {str(e)}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def validate_credentials(
+            self,
+            credentials: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate database credentials"""
+        try:
+            # Validate credentials
+            validation_result = await self.validator.validate_source({
+                'source_type': credentials.get('source_type'),
+                'host': credentials.get('host'),
+                'database': credentials.get('database'),
+                'auth': credentials
+            })
+
+            return {
+                'status': 'success' if validation_result['passed'] else 'error',
+                'validation_details': validation_result
+            }
+
+        except Exception as e:
+            logger.error(f"Credential validation error: {str(e)}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    async def cancel_operation(self, staged_id: str) -> Dict[str, Any]:
+        """Cancel an active database operation"""
+        try:
+            # Retrieve staged data
+            staged_data = await self.staging_manager.get_data(staged_id)
+            if not staged_data:
+                return {
+                    'status': 'error',
+                    'message': f'Operation {staged_id} not found'
+                }
+
+            # Update status to cancelled
+            await self.staging_manager.update_data_status(
+                staged_id,
+                status='cancelled'
+            )
+
+            return {
+                'status': 'success',
+                'message': f'Operation {staged_id} cancelled'
             }
 
         except Exception as e:
@@ -218,10 +256,6 @@ class DBService:
     async def cleanup(self) -> None:
         """Clean up service resources"""
         try:
-            # Clear all active operations
-            self.active_operations.clear()
-
-            logger.info("DBService resources cleaned up")
-
+            logger.info("DatabaseService resources cleaned up")
         except Exception as e:
             logger.error(f"Cleanup error: {str(e)}", exc_info=True)

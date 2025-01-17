@@ -2,9 +2,10 @@
 
 import logging
 from typing import Dict, Any, Optional
+import uuid
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
 
 from ..types.insight_types import (
     InsightType,
@@ -21,18 +22,19 @@ from ..generators import (
     pattern_insights,
     trend_insights,
     relationship_insights,
-    anomaly_insights
+    anomaly_insights,
+    business_goal_insights
 )
 
 from ..validators import (
     pattern_validator,
     trend_validator,
     relationship_validator,
-    anomaly_validator
+    anomaly_validator,
+business_goal_validator
 )
 
 logger = logging.getLogger(__name__)
-
 
 class InsightProcessor:
     """
@@ -75,8 +77,12 @@ class InsightProcessor:
                 "detect": anomaly_insights.detect_anomalies,
                 "analyze": anomaly_insights.analyze_anomalies,
                 "validate": anomaly_insights.validate_anomalies
+            },
+            InsightType.BUSINESS_GOAL: {  # Add this block
+                "detect": business_goal_insights.detect_business_insights,
+                "analyze": business_goal_insights.analyze_business_insights,
+                "validate": business_goal_insights.validate_business_insights
             }
-            # Add other insight types
         }
 
         # Insight validation
@@ -84,8 +90,85 @@ class InsightProcessor:
             InsightType.PATTERN: pattern_validator.validate_pattern_insight,
             InsightType.TREND: trend_validator.validate_trend_insight,
             InsightType.CORRELATION: relationship_validator.validate_relationship_insight,
-            InsightType.ANOMALY: anomaly_validator.validate_anomaly_insight
+            InsightType.ANOMALY: anomaly_validator.validate_anomaly_insight,
+            InsightType.BUSINESS_GOAL: business_goal_validator.validate_business_goal_insight  # Add this
         }
+
+    def _determine_appropriate_insights(
+            self,
+            characteristics: Dict[str, Any],
+            domain_type: Optional[str]
+    ) -> Dict[InsightType, float]:
+        """Determine which insight types are appropriate"""
+        appropriate = {}
+
+        # Check for patterns
+        if characteristics['size'] > 100:
+            appropriate[InsightType.PATTERN] = 0.8
+
+        # Check for trends
+        if characteristics['temporal']:
+            appropriate[InsightType.TREND] = 0.9
+
+        # Check for correlations
+        if characteristics['numeric'] and characteristics['dimensions'] > 1:
+            appropriate[InsightType.CORRELATION] = 0.85
+
+        # Check for anomalies
+        if characteristics['numeric'] or characteristics['temporal']:
+            appropriate[InsightType.ANOMALY] = 0.7
+
+        # Always include business goal insights if business goals are present
+        if 'business_goals' in characteristics:  # Add this block
+            appropriate[InsightType.BUSINESS_GOAL] = 0.95
+
+        # Add domain-specific weights
+        if domain_type:
+            self._adjust_for_domain(appropriate, domain_type)
+
+        return appropriate
+
+    def _analyze_data_characteristics(self, data: Any) -> Dict[str, Any]:
+        """Analyze characteristics of the data"""
+        characteristics = {
+            'temporal': self._has_temporal_data(data),
+            'numeric': self._has_numeric_data(data),
+            'categorical': self._has_categorical_data(data),
+            'size': len(data),
+            'dimensions': len(data.columns) if hasattr(data, 'columns') else 1,
+            'has_missing': self._has_missing_data(data),
+            'business_goals': self._has_business_goals(data)  # Add this
+        }
+        return characteristics
+
+    def _has_business_goals(self, data: Any) -> bool:
+        """Check if business goals are present in metadata"""
+        # This should check if business goals exist in the metadata
+        return hasattr(data, 'metadata') and 'business_goals' in data.metadata
+
+    def _adjust_for_domain(
+            self,
+            insights: Dict[InsightType, float],
+            domain_type: str
+    ) -> None:
+        """Adjust insight weights based on domain"""
+        domain_adjustments = {
+            'financial': {
+                InsightType.ANOMALY: 0.2,
+                InsightType.TREND: 0.1,
+                InsightType.BUSINESS_GOAL: 0.2  # Add this
+            },
+            'operational': {
+                InsightType.PATTERN: 0.15,
+                InsightType.CORRELATION: 0.1,
+                InsightType.BUSINESS_GOAL: 0.15  # Add this
+            }
+        }
+
+        if domain_type in domain_adjustments:
+            for insight_type, adjustment in domain_adjustments[domain_type].items():
+                if insight_type in insights:
+                    insights[insight_type] += adjustment
 
     async def analyze_context(
             self,
@@ -120,71 +203,6 @@ class InsightProcessor:
         except Exception as e:
             self.logger.error(f"Context analysis failed: {str(e)}")
             raise
-
-    def _analyze_data_characteristics(self, data: Any) -> Dict[str, Any]:
-        """Analyze characteristics of the data"""
-        characteristics = {
-            'temporal': self._has_temporal_data(data),
-            'numeric': self._has_numeric_data(data),
-            'categorical': self._has_categorical_data(data),
-            'size': len(data),
-            'dimensions': len(data.columns) if hasattr(data, 'columns') else 1,
-            'has_missing': self._has_missing_data(data)
-        }
-        return characteristics
-
-    def _determine_appropriate_insights(
-            self,
-            characteristics: Dict[str, Any],
-            domain_type: Optional[str]
-    ) -> Dict[InsightType, float]:
-        """Determine which insight types are appropriate"""
-        appropriate = {}
-
-        # Check for patterns
-        if characteristics['size'] > 100:
-            appropriate[InsightType.PATTERN] = 0.8
-
-        # Check for trends
-        if characteristics['temporal']:
-            appropriate[InsightType.TREND] = 0.9
-
-        # Check for correlations
-        if characteristics['numeric'] and characteristics['dimensions'] > 1:
-            appropriate[InsightType.CORRELATION] = 0.85
-
-        # Check for anomalies
-        if characteristics['numeric'] or characteristics['temporal']:
-            appropriate[InsightType.ANOMALY] = 0.7
-
-        # Add domain-specific weights
-        if domain_type:
-            self._adjust_for_domain(appropriate, domain_type)
-
-        return appropriate
-
-    def _adjust_for_domain(
-            self,
-            insights: Dict[InsightType, float],
-            domain_type: str
-    ) -> None:
-        """Adjust insight weights based on domain"""
-        domain_adjustments = {
-            'financial': {
-                InsightType.ANOMALY: 0.2,
-                InsightType.TREND: 0.1
-            },
-            'operational': {
-                InsightType.PATTERN: 0.15,
-                InsightType.CORRELATION: 0.1
-            }
-            # Add other domain adjustments
-        }
-
-        if domain_type in domain_adjustments:
-            for insight_type, adjustment in domain_adjustments[domain_type].items():
-                if insight_type in insights:
-                    insights[insight_type] += adjustment
 
     async def generate_insights(
             self,

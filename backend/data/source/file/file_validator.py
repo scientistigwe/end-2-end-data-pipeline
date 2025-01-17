@@ -1,40 +1,33 @@
-from __future__ import annotations
+# backend/data/source/file/file_validator.py
 
-import asyncio
 import logging
-import os
-import re
 import magic
-import hashlib
-from typing import Dict, Any, Optional, List
+import os
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
-
-from backend.core.monitoring.collectors import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
-class ValidationLevel(Enum):
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
 
 @dataclass
-class FileSourceConfig:
-    """Configuration for file data source validation"""
-    # Allowed file formats and extensions
-    ALLOWED_FORMATS: List[str] = field(default_factory=lambda: [
+class FileValidationConfig:
+    """Configuration for file validation"""
+
+    # Size limits
+    max_file_size_mb: int = 100
+    min_file_size_bytes: int = 1  # Non-empty files
+
+    # Format settings
+    allowed_formats: List[str] = field(default_factory=lambda: [
         'csv', 'xlsx', 'xls', 'json', 'parquet', 'txt'
     ])
 
-    # Allowed MIME types for each format
-    MIME_TYPES: Dict[str, List[str]] = field(default_factory=lambda: {
-        'csv': ['text/csv', 'text/plain', 'application/csv'],
+    # MIME type mappings
+    mime_types: Dict[str, List[str]] = field(default_factory=lambda: {
+        'csv': ['text/csv', 'text/plain'],
         'xlsx': [
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-excel.sheet.macroEnabled.12',
             'application/vnd.ms-excel'
         ],
         'xls': ['application/vnd.ms-excel'],
@@ -43,200 +36,160 @@ class FileSourceConfig:
         'txt': ['text/plain']
     })
 
-    # Maximum file size (in MB)
-    MAX_FILE_SIZE_MB: int = 100
-
-    # Sensitive file name patterns to block
-    BLOCKED_FILENAME_PATTERNS: List[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'credentials', r'key', r'token'
+    # Security settings
+    blocked_patterns: List[str] = field(default_factory=lambda: [
+        r'password', r'secret', r'key', r'token', r'credential'
     ])
 
-    # Allowed file name characters
-    FILENAME_REGEX: str = r'^[a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]+$'
+    scan_viruses: bool = True
+    scan_encoding: bool = True
 
-@dataclass
-class ValidationResult:
-    """Structured validation result for file source"""
-    passed: bool
-    check_type: str
-    message: str
-    details: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
-    severity: ValidationLevel = ValidationLevel.ERROR
 
-class FileSourceValidator:
-    """
-    Validator for file data source attributes
-    Focuses on source-level validation without parsing internal data
-    """
-    def __init__(
-        self, 
-        config: Optional[FileSourceConfig] = None,
-        metrics_collector: Optional[MetricsCollector] = None
-    ):
-        """
-        Initialize validator with configuration and optional metrics collector
-        
-        Args:
-            config: Optional configuration for file source validation
-            metrics_collector: Optional metrics collector
-        """
-        self.config = config or FileSourceConfig()
-        self.metrics_collector = metrics_collector
+class FileValidator:
+    """Enhanced file validator with integrated config"""
+
+    def __init__(self, config: Optional[FileValidationConfig] = None):
+        self.config = config or FileValidationConfig()
 
     async def validate_file_source(
-        self, 
-        file_path: str, 
-        metadata: Dict[str, Any]
+            self,
+            file_path: Path,
+            metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Perform comprehensive file source validation
-        
-        Args:
-            file_path: Path to the file
-            metadata: File metadata dictionary
-        
-        Returns:
-            Comprehensive validation results
-        """
+        """Validate file source with comprehensive checks"""
         try:
-            validation_start = datetime.now()
-            
-            # Execute validations
-            validation_tasks = [
-                self.validate_file_extension(file_path, metadata),
-                self.validate_file_size(file_path, metadata),
-                self.validate_file_name(metadata.get('filename', '')),
-                self.validate_mime_type(file_path, metadata)
-            ]
-            
-            # Gather results
-            results = await asyncio.gather(*validation_tasks, return_exceptions=True)
-            
-            # Process results
-            processed_results = []
-            for result in results:
-                if isinstance(result, Exception):
-                    processed_results.append(ValidationResult(
-                        passed=False,
-                        check_type='error',
-                        message=f"Validation error: {str(result)}",
-                        details={'error': str(result)},
-                        severity=ValidationLevel.CRITICAL
-                    ))
-                elif isinstance(result, ValidationResult):
-                    processed_results.append(result)
-            
-            # Compile validation summary
-            validation_summary = self._compile_validation_results(processed_results)
+            issues = []
+            warnings = []
 
-            # Record validation metrics if collector exists
-            if self.metrics_collector:
-                await self.metrics_collector.record_validation_metrics(
-                    source_type='file',
-                    validation_results=validation_summary,
-                    duration=(datetime.now() - validation_start).total_seconds()
-                )
+            # Basic checks
+            if not file_path.exists():
+                issues.append("File does not exist")
+                return self._build_result(False, issues, warnings)
 
-            return validation_summary
-        
+            # Size validation
+            size_validation = await self._validate_size(file_path)
+            issues.extend(size_validation.get('issues', []))
+            warnings.extend(size_validation.get('warnings', []))
+
+            # Format validation
+            format_validation = await self._validate_format(
+                file_path,
+                metadata.get('content_type')
+            )
+            issues.extend(format_validation.get('issues', []))
+            warnings.extend(format_validation.get('warnings', []))
+
+            # Security validation
+            security_validation = await self._validate_security(file_path, metadata)
+            issues.extend(security_validation.get('issues', []))
+            warnings.extend(security_validation.get('warnings', []))
+
+            return self._build_result(len(issues) == 0, issues, warnings)
+
         except Exception as e:
-            logger.error(f"Comprehensive file source validation error: {str(e)}", exc_info=True)
-            
-            # Record error metrics if collector exists
-            if self.metrics_collector:
-                await self.metrics_collector.record_validation_error(
-                    source_type='file',
-                    error=str(e)
+            logger.error(f"Validation error: {str(e)}")
+            return self._build_result(False, [str(e)], [])
+
+    async def _validate_size(self, file_path: Path) -> Dict[str, Any]:
+        """Validate file size constraints"""
+        issues = []
+        warnings = []
+
+        try:
+            size_bytes = file_path.stat().st_size
+            size_mb = size_bytes / (1024 * 1024)
+
+            if size_bytes < self.config.min_file_size_bytes:
+                issues.append("File is empty")
+
+            if size_mb > self.config.max_file_size_mb:
+                issues.append(
+                    f"File size ({size_mb:.2f}MB) exceeds limit "
+                    f"({self.config.max_file_size_mb}MB)"
                 )
-            
-            return {
-                'passed': False,
-                'error': str(e),
-                'checks': [],
-                'summary': {
-                    'total_checks': 0,
-                    'passed_checks': 0,
-                    'failed_checks': 1,
-                    'highest_severity': ValidationLevel.CRITICAL.value
-                }
-            }
 
-    # ... [rest of the methods remain the same as in the previous implementation]
+            if size_mb > self.config.max_file_size_mb * 0.9:
+                warnings.append("File size approaching limit")
 
-    def _compile_validation_results(
-        self, 
-        results: List[ValidationResult]
+            return {'issues': issues, 'warnings': warnings}
+
+        except Exception as e:
+            logger.error(f"Size validation error: {str(e)}")
+            return {'issues': [str(e)], 'warnings': []}
+
+    async def _validate_format(
+            self,
+            file_path: Path,
+            content_type: Optional[str]
     ) -> Dict[str, Any]:
-        """
-        Compile validation results into a summary
-        
-        Args:
-            results: List of validation results
-        
-        Returns:
-            Comprehensive validation summary
-        """
-        # Base implementation remains the same as before
+        """Validate file format and content type"""
+        issues = []
+        warnings = []
+
+        try:
+            # Extension check
+            ext = file_path.suffix[1:].lower()
+            if ext not in self.config.allowed_formats:
+                issues.append(f"Unsupported file format: {ext}")
+
+            # MIME type check
+            detected_type = magic.from_file(str(file_path), mime=True)
+            if content_type and detected_type != content_type:
+                warnings.append(
+                    f"Content type mismatch: declared {content_type}, "
+                    f"detected {detected_type}"
+                )
+
+            # Validate against allowed MIME types
+            allowed_mimes = self.config.mime_types.get(ext, [])
+            if detected_type not in allowed_mimes:
+                issues.append(f"Invalid content type for {ext}: {detected_type}")
+
+            return {'issues': issues, 'warnings': warnings}
+
+        except Exception as e:
+            logger.error(f"Format validation error: {str(e)}")
+            return {'issues': [str(e)], 'warnings': []}
+
+    async def _validate_security(
+            self,
+            file_path: Path,
+            metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate file security aspects"""
+        issues = []
+        warnings = []
+
+        try:
+            # Check filename patterns
+            filename = metadata.get('filename', file_path.name)
+            for pattern in self.config.blocked_patterns:
+                if pattern.lower() in filename.lower():
+                    issues.append(f"Filename contains blocked pattern: {pattern}")
+
+            # Check file permissions
+            if not os.access(file_path, os.R_OK):
+                issues.append("File is not readable")
+
+            if os.access(file_path, os.X_OK):
+                warnings.append("File has execute permissions")
+
+            return {'issues': issues, 'warnings': warnings}
+
+        except Exception as e:
+            logger.error(f"Security validation error: {str(e)}")
+            return {'issues': [str(e)], 'warnings': []}
+
+    def _build_result(
+            self,
+            passed: bool,
+            issues: List[str],
+            warnings: List[str]
+    ) -> Dict[str, Any]:
+        """Build structured validation result"""
         return {
-            'passed': all(result.passed for result in results),
-            'checks': [
-                {
-                    'type': result.check_type,
-                    'passed': result.passed,
-                    'message': result.message,
-                    'details': result.details,
-                    'severity': result.severity.value,
-                    'timestamp': result.timestamp.isoformat()
-                }
-                for result in results
-            ],
-            'summary': {
-                'total_checks': len(results),
-                'passed_checks': sum(1 for result in results if result.passed),
-                'failed_checks': sum(1 for result in results if not result.passed),
-                'highest_severity': max(
-                    (result.severity for result in results),
-                    default=ValidationLevel.INFO
-                ).value
-            }
+            'passed': passed,
+            'issues': issues,
+            'warnings': warnings,
+            'validation_time': datetime.utcnow().isoformat()
         }
-
-    async def share_validation_report(
-        self, 
-        validation_results: Dict[str, Any], 
-        file_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Share validation report with additional processing
-        
-        Args:
-            validation_results: Validation results to share
-            file_id: Optional file identifier
-        
-        Returns:
-            Processed validation report
-        """
-        try:
-            # Enrich validation report with additional metadata
-            enriched_report = {
-                'id': file_id or str(uuid.uuid4()),
-                'timestamp': datetime.now().isoformat(),
-                'validation': validation_results
-            }
-
-            # Optionally push to metrics or logging
-            if self.metrics_collector:
-                await self.metrics_collector.log_validation_report(
-                    source_type='file',
-                    report=enriched_report
-                )
-
-            return enriched_report
-
-        except Exception as e:
-            logger.error(f"Error sharing validation report: {str(e)}", exc_info=True)
-            return {
-                'error': str(e),
-                'validation': validation_results
-            }

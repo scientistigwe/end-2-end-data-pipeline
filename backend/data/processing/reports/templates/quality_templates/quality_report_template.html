@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{# backend/data_pipeline/reporting/templates/quality_report.html #}
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+    .quality-score {
+        font-size: 3rem;
+        font-weight: bold;
+        text-align: center;
+        color: var(--primary-color);
+    }
+
+    .quality-label {
+        font-size: 1.2rem;
+        text-align: center;
+        color: var(--secondary-color);
+        margin-bottom: 1rem;
+    }
+
+    .quality-gauge {
+        position: relative;
+        width: 200px;
+        height: 100px;
+        margin: 0 auto;
+    }
+
+    .issues-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+
+    .issue-card {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1rem;
+        border-left: 4px solid transparent;
+    }
+
+    .issue-card.critical {
+        border-left-color: var(--error-color);
+    }
+
+    .issue-card.high {
+        border-left-color: var(--warning-color);
+    }
+
+    .issue-card.medium {
+        border-left-color: var(--primary-color);
+    }
+
+    .issue-card.low {
+        border-left-color: var(--secondary-color);
+    }
+
+    .recommendation-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .recommendation-item {
+        background: var(--surface-color);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid var(--primary-color);
+    }
+
+    .recommendation-priority {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+    }
+
+    .priority-high {
+        background-color: #fce8e6;
+        color: var(--error-color);
+    }
+
+    .priority-medium {
+        background-color: #fef7e0;
+        color: var(--warning-color);
+    }
+
+    .priority-low {
+        background-color: #e6f4ea;
+        color: var(--success-color);
+    }
+
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section overview">
+    <h2 class="section-title">Quality Overview</h2>
+    
+    <div class="quality-overview">
+        <div class="quality-score">{{ report.quality_score | format_percentage }}</div>
+        <div class="quality-label">Overall Quality Score</div>
+        <div class="quality-gauge">
+            <!-- Gauge visualization would go here -->
+        </div>
+    </div>
+
+    <div class="issues-summary">
+        <div class="metric-card">
+            <div class="metric-title">Total Issues</div>
+            <div class="metric-value">{{ report.issues_found }}</div>
+        </div>
+        {% for severity, count in report.issues_by_severity.items() %}
+        <div class="metric-card">
+            <div class="metric-title">{{ severity | title }} Issues</div>
+            <div class="metric-value">{{ count }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Quality Metrics</h2>
+    <div class="metric-grid">
+        {% for category, metrics in report.metrics.items() %}
+        <div class="metric-card">
+            <div class="metric-title">{{ category | title }}</div>
+            {% for name, value in metrics.items() %}
+            <div class="metric-item">
+                <span class="metric-name">{{ name | title }}</span>
+                <span class="metric-value">{{ value | format_number }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">Quality Issues</h2>
+    {% for severity in ['critical', 'high', 'medium', 'low'] %}
+        {% if report.issues[severity] %}
+        <h3>{{ severity | title }} Priority Issues</h3>
+        {% for issue in report.issues[severity] %}
+        <div class="issue-card {{ severity }}">
+            <h4>{{ issue.title }}</h4>
+            <p>{{ issue.description }}</p>
+            {% if issue.affected_columns %}
+            <div class="affected-columns">
+                <strong>Affected Columns:</strong>
+                {{ issue.affected_columns | join(', ') }}
+            </div>
+            {% endif %}
+            {% if issue.impact %}
+            <div class="issue-impact">
+                <strong>Impact:</strong>
+                {{ issue.impact }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+    {% endfor %}
+</div>
+
+<div class="section">
+    <h2 class="section-title">Recommendations</h2>
+    <div class="recommendation-list">
+        {% for rec in report.recommendations %}
+        <div class="recommendation-item">
+            <div class="recommendation-priority priority-{{ rec.priority }}">
+                {{ rec.priority | title }} Priority
+            </div>
+            <h3>{{ rec.title }}</h3>
+            <p>{{ rec.description }}</p>
+            {% if rec.action_items %}
+            <div class="action-items">
+                <strong>Action Items:</strong>
+                <ul>
+                    {% for action in rec.action_items %}
+                    <li>{{ action }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% if report.profile_data %}
+<div class="section">
+    <h2 class="section-title">Data Profile</h2>
+    <div class="metric-grid">
+        <div class="metric-card">
+            <div class="metric-title">Total Columns</div>
+            <div class="metric-value">{{ report.profile_data.total_columns }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Total Rows</div>
+            <div class="metric-value">{{ report.profile_data.total_rows }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Missing Values</div>
+            <div class="metric-value">{{ report.profile_data.missing_cells }}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Duplicate Rows</div>
+            <div class="metric-value">{{ report.profile_data.duplicate_rows }}</div>
+        </div>
+    </div>
+
+    {% if report.profile_data.column_profiles %}
+    <div class="column-profiles">
+        <h3>Column Profiles</h3>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Column</th>
+                        <th>Type</th>
+                        <th>Missing (%)</th>
+                        <th>Unique Values</th>
+                        <th>Sample Values</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for col in report.profile_data.column_profiles %}
+                    <tr>
+                        <td>{{ col.name }}</td>
+                        <td>{{ col.type }}</td>
+                        <td>{{ col.missing_percentage | format_percentage }}</td>
+                        <td>{{ col.unique_count }}</td>
+                        <td>{{ col.sample_values | join(', ') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add any JavaScript needed for interactivity or visualizations
+</script>
+{% endblock %}</title>
+</head>
+<body>
+
+</body>
+</html>

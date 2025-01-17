@@ -1,0 +1,362 @@
+# backend/data_pipeline/reporting/templates/domains/finance_template.json
+{
+    "domain": "finance",
+    "name": "Financial Analysis",
+    "icon": "📊",
+    "common_columns": {
+        "date": {
+            "type": "datetime",
+            "purpose": "Transaction or reporting date",
+            "required": true
+        },
+        "amount": {
+            "type": "numeric",
+            "purpose": "Transaction amount",
+            "required": true
+        },
+        "transaction_type": {
+            "type": "categorical",
+            "purpose": "Type of financial transaction"
+        },
+        "category": {
+            "type": "categorical",
+            "purpose": "Expense or revenue category"
+        },
+        "account": {
+            "type": "categorical",
+            "purpose": "Account identifier"
+        }
+    },
+    "common_metrics": [
+        {
+            "id": "revenue",
+            "name": "Revenue",
+            "description": "Total incoming money from sales/services",
+            "type": "currency",
+            "aggregation": "sum"
+        },
+        {
+            "id": "expenses",
+            "name": "Expenses",
+            "description": "Total outgoing money for operations",
+            "type": "currency",
+            "aggregation": "sum"
+        },
+        {
+            "id": "profit_margin",
+            "name": "Profit Margin",
+            "description": "Percentage of revenue that is profit",
+            "type": "percentage",
+            "calculation": "(revenue - expenses) / revenue * 100"
+        },
+        {
+            "id": "roi",
+            "name": "ROI",
+            "description": "Return on Investment",
+            "type": "percentage",
+            "calculation": "net_profit / investment * 100"
+        }
+    ],
+    "analysis_types": [
+        {
+            "id": "trend_analysis",
+            "name": "Trend Analysis",
+            "description": "Analyze patterns and trends in financial metrics over time",
+            "required_columns": ["date", "amount"]
+        },
+        {
+            "id": "profitability",
+            "name": "Profitability Analysis",
+            "description": "Analyze profit margins and cost structures",
+            "required_columns": ["amount", "transaction_type"]
+        },
+        {
+            "id": "cash_flow",
+            "name": "Cash Flow Analysis",
+            "description": "Analyze cash inflows and outflows",
+            "required_columns": ["date", "amount", "transaction_type"]
+        }
+    ],
+    "common_questions": [
+        "What are the main revenue drivers?",
+        "Which expenses have the highest impact on profitability?",
+        "Are there any concerning trends in cash flow?",
+        "How does profitability vary across different categories?",
+        "What is the ROI for different investments?"
+    ],
+    "visualizations": [
+        {
+            "id": "revenue_trend",
+            "name": "Revenue Trend Chart",
+            "type": "line",
+            "description": "Show revenue trends over time"
+        },
+        {
+            "id": "expense_breakdown",
+            "name": "Expense Breakdown",
+            "type": "pie",
+            "description": "Show distribution of expenses by category"
+        },
+        {
+            "id": "profit_margin_analysis",
+            "name": "Profit Margin Analysis",
+            "type": "bar",
+            "description": "Compare profit margins across categories"
+        }
+    ],
+    "success_criteria_templates": [
+        {
+            "metric": "revenue",
+            "target": "increase",
+            "typical_threshold": "10%"
+        },
+        {
+            "metric": "profit_margin",
+            "target": "increase",
+            "typical_threshold": "5%"
+        },
+        {
+            "metric": "expenses",
+            "target": "decrease",
+            "typical_threshold": "5%"
+        }
+    ]
+}
+
+# backend/data_pipeline/reporting/templates/domains/healthcare_template.json
+{
+    "domain": "healthcare",
+    "name": "Healthcare Analysis",
+    "icon": "🏥",
+    "common_columns": {
+        "patient_id": {
+            "type": "categorical",
+            "purpose": "Patient identifier",
+            "required": true
+        },
+        "diagnosis": {
+            "type": "categorical",
+            "purpose": "Medical diagnosis"
+        },
+        "treatment": {
+            "type": "categorical",
+            "purpose": "Treatment provided"
+        },
+        "date": {
+            "type": "datetime",
+            "purpose": "Treatment or visit date"
+        },
+        "outcome": {
+            "type": "categorical",
+            "purpose": "Treatment outcome"
+        }
+    },
+    "common_metrics": [
+        {
+            "id": "recovery_rate",
+            "name": "Recovery Rate",
+            "description": "Percentage of patients who recovered",
+            "type": "percentage",
+            "aggregation": "average"
+        },
+        {
+            "id": "treatment_duration",
+            "name": "Treatment Duration",
+            "description": "Average duration of treatment",
+            "type": "duration",
+            "aggregation": "average"
+        },
+        {
+            "id": "readmission_rate",
+            "name": "Readmission Rate",
+            "description": "Rate of patient readmissions",
+            "type": "percentage",
+            "calculation": "readmissions / total_patients * 100"
+        }
+    ],
+    "analysis_types": [
+        {
+            "id": "outcome_analysis",
+            "name": "Outcome Analysis",
+            "description": "Analyze treatment outcomes and success rates",
+            "required_columns": ["treatment", "outcome"]
+        },
+        {
+            "id": "patient_segmentation",
+            "name": "Patient Segmentation",
+            "description": "Group patients by characteristics and outcomes",
+            "required_columns": ["patient_id", "diagnosis"]
+        },
+        {
+            "id": "treatment_efficacy",
+            "name": "Treatment Efficacy",
+            "description": "Analyze effectiveness of different treatments",
+            "required_columns": ["treatment", "outcome"]
+        }
+    ],
+    "common_questions": [
+        "Which treatments have the highest success rates?",
+        "Are there patterns in patient readmissions?",
+        "How do outcomes vary by patient demographics?",
+        "What factors contribute to longer recovery times?",
+        "Which interventions are most cost-effective?"
+    ],
+    "visualizations": [
+        {
+            "id": "outcome_distribution",
+            "name": "Outcome Distribution",
+            "type": "pie",
+            "description": "Distribution of treatment outcomes"
+        },
+        {
+            "id": "recovery_timeline",
+            "name": "Recovery Timeline",
+            "type": "line",
+            "description": "Patient recovery progress over time"
+        },
+        {
+            "id": "treatment_comparison",
+            "name": "Treatment Comparison",
+            "type": "bar",
+            "description": "Compare effectiveness of different treatments"
+        }
+    ],
+    "success_criteria_templates": [
+        {
+            "metric": "recovery_rate",
+            "target": "increase",
+            "typical_threshold": "15%"
+        },
+        {
+            "metric": "readmission_rate",
+            "target": "decrease",
+            "typical_threshold": "5%"
+        },
+        {
+            "metric": "treatment_duration",
+            "target": "decrease",
+            "typical_threshold": "10%"
+        }
+    ]
+}
+
+# backend/data_pipeline/reporting/templates/domains/retail_template.json
+{
+    "domain": "retail",
+    "name": "Retail Analysis",
+    "icon": "🛍️",
+    "common_columns": {
+        "transaction_id": {
+            "type": "categorical",
+            "purpose": "Transaction identifier",
+            "required": true
+        },
+        "product_id": {
+            "type": "categorical",
+            "purpose": "Product identifier"
+        },
+        "date": {
+            "type": "datetime",
+            "purpose": "Transaction date"
+        },
+        "customer_id": {
+            "type": "categorical",
+            "purpose": "Customer identifier"
+        },
+        "quantity": {
+            "type": "numeric",
+            "purpose": "Quantity sold"
+        },
+        "price": {
+            "type": "numeric",
+            "purpose": "Product price"
+        }
+    },
+    "common_metrics": [
+        {
+            "id": "sales_revenue",
+            "name": "Sales Revenue",
+            "description": "Total revenue from sales",
+            "type": "currency",
+            "aggregation": "sum"
+        },
+        {
+            "id": "average_order_value",
+            "name": "Average Order Value",
+            "description": "Average value per transaction",
+            "type": "currency",
+            "calculation": "total_revenue / total_orders"
+        },
+        {
+            "id": "customer_retention",
+            "name": "Customer Retention",
+            "description": "Rate of returning customers",
+            "type": "percentage",
+            "calculation": "returning_customers / total_customers * 100"
+        }
+    ],
+    "analysis_types": [
+        {
+            "id": "sales_analysis",
+            "name": "Sales Analysis",
+            "description": "Analyze sales patterns and trends",
+            "required_columns": ["date", "quantity", "price"]
+        },
+        {
+            "id": "customer_analysis",
+            "name": "Customer Analysis",
+            "description": "Analyze customer behavior and segments",
+            "required_columns": ["customer_id", "transaction_id"]
+        },
+        {
+            "id": "product_analysis",
+            "name": "Product Analysis",
+            "description": "Analyze product performance",
+            "required_columns": ["product_id", "quantity"]
+        }
+    ],
+    "common_questions": [
+        "What are the best-selling products?",
+        "When are peak sales periods?",
+        "Who are our most valuable customers?",
+        "Which products are often bought together?",
+        "What is the customer lifetime value?"
+    ],
+    "visualizations": [
+        {
+            "id": "sales_trend",
+            "name": "Sales Trend",
+            "type": "line",
+            "description": "Show sales trends over time"
+        },
+        {
+            "id": "product_performance",
+            "name": "Product Performance",
+            "type": "bar",
+            "description": "Compare performance across products"
+        },
+        {
+            "id": "customer_segments",
+            "name": "Customer Segments",
+            "type": "pie",
+            "description": "Show customer segment distribution"
+        }
+    ],
+    "success_criteria_templates": [
+        {
+            "metric": "sales_revenue",
+            "target": "increase",
+            "typical_threshold": "10%"
+        },
+        {
+            "metric": "customer_retention",
+            "target": "increase",
+            "typical_threshold": "5%"
+        },
+        {
+            "metric": "average_order_value",
+            "target": "increase",
+            "typical_threshold": "15%"
+        }
+    ]
+}

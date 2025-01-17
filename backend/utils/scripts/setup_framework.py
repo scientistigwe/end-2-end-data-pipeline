@@ -39,7 +39,7 @@
 #         """Define categories and their associated issues"""
 #         return [
 #             CategoryConfig("basic_data_validation",
-#                            ["missing_value", "data_type_mismatch", "required_field", "null_check", "empty_string"]),
+#                            ["templates", "data_type_mismatch", "required_field", "null_check", "empty_string"]),
 #             CategoryConfig("text_standardization",
 #                            ["case_inconsistency", "whitespace_irregularity", "special_character", "typo",
 #                             "pattern_normalization"]),

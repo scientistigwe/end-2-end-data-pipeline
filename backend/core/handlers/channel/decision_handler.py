@@ -5,8 +5,8 @@ import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.event_types import (
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ProcessingStage,
@@ -14,8 +14,8 @@ from backend.core.messaging.event_types import (
     DecisionContext,
     MessageMetadata
 )
-from backend.core.handlers.base.base_handler import BaseChannelHandler
-from backend.data.processing.decisions.types.decision_types import (
+from core.handlers.base.base_handler import BaseChannelHandler
+from data.processing.decisions.types.decision_types import (
     DecisionSource,
     DecisionRequest,
     ComponentDecision,
@@ -24,8 +24,8 @@ from backend.data.processing.decisions.types.decision_types import (
     DecisionPhase,
     DecisionStatus
 )
-from backend.core.staging.staging_manager import StagingManager
-from backend.data.processing.decisions.processor.decision_processor import DecisionProcessor
+from core.staging.staging_manager import StagingManager
+from data.processing.decisions.processor.decision_processor import DecisionProcessor
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,8 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
-from ..messaging.broker import MessageBroker
-from ..messaging.event_types import (
+from ...messaging.broker import MessageBroker
+from ...messaging.event_types import (
     MessageType,
     ProcessingStage,
     ProcessingStatus,
@@ -16,8 +16,8 @@ from ..messaging.event_types import (
     MessageMetadata,
     ProcessingContext
 )
-from ..control.cpm import ControlPointManager
-from ..registry.component_registry import ComponentRegistry, ComponentType
+from ...control.cpm import ControlPointManager
+from ...registry.component_registry import ComponentRegistry, ComponentType
 
 
 class ManagerState(Enum):

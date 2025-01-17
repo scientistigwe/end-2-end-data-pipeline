@@ -1,0 +1,607 @@
+# backend/data_pipeline/reporting/templates/base/base.html.template
+
+< !DOCTYPE
+html >
+< html
+lang = "en" >
+< head >
+< meta
+charset = "UTF-8" >
+< meta
+name = "viewport"
+content = "width=device-width, initial-scale=1.0" >
+< title > {{report.title}} < / title >
+< style >
+:root
+{
+    --primary - color:  # 1a73e8;
+        --secondary - color:  # 5f6368;
+--success - color:  # 0f9d58;
+--warning - color:  # f4b400;
+--error - color:  # d93025;
+--background - color:  # ffffff;
+--text - color:  # 202124;
+}
+
+body
+{
+    font - family: Arial, sans - serif;
+line - height: 1.6;
+color: var(--text - color);
+margin: 0;
+padding: 0;
+}
+
+.container
+{
+    max - width: 1200px;
+margin: 0
+auto;
+padding: 20
+px;
+}
+
+.header
+{
+    background - color: var(--primary - color);
+color: white;
+padding: 20
+px
+0;
+margin - bottom: 30
+px;
+}
+
+.header - content
+{
+    max - width: 1200px;
+margin: 0
+auto;
+padding: 0
+20
+px;
+}
+
+.section
+{
+    margin - bottom: 30px;
+padding: 20
+px;
+background: white;
+border - radius: 8
+px;
+box - shadow: 0
+2
+px
+4
+px
+rgba(0, 0, 0, 0.1);
+}
+
+.metric - card
+{
+    background:  # f8f9fa;
+        padding: 15
+px;
+border - radius: 6
+px;
+margin - bottom: 15
+px;
+}
+
+.visualization
+{
+    margin: 20px 0;
+padding: 15
+px;
+background: white;
+border: 1
+px
+solid  # e0e0e0;
+border - radius: 8
+px;
+}
+
+.recommendations
+{
+    background:  # f8f9fa;
+        padding: 20
+px;
+border - radius: 8
+px;
+}
+
+.footer
+{
+    margin - top: 50px;
+padding: 20
+px;
+background:  # f8f9fa;
+text - align: center;
+font - size: 0.9
+em;
+color: var(--secondary - color);
+}
+
+/ *Status
+indicators * /
+.status - success
+{color: var(--success - color);}
+.status - warning
+{color: var(--warning - color);}
+.status - error
+{color: var(--error - color);}
+< / style >
+< / head >
+< body >
+< div
+
+
+class ="header" >
+
+< div
+
+
+class ="header-content" >
+
+< h1 > {{report.title}} < / h1 >
+< p > {{report.description}} < / p >
+< / div >
+< / div >
+
+< div
+
+
+class ="container" >
+
+
+{ % block
+content %}{ % endblock %}
+< / div >
+
+< div
+
+
+class ="footer" >
+
+< p > Generated
+on
+{{report.metadata.generated_at}} < / p >
+< p > Pipeline
+ID: {{report.pipeline_id}} < / p >
+< / div >
+< / body >
+< / html >
+
+# backend/data_pipeline/reporting/templates/base/base.md.template
+
+# {{ report.title }}
+
+{{report.description}}
+
+{ % block
+content %}{ % endblock %}
+
+---
+Generated
+on
+{{report.metadata.generated_at}}
+Pipeline
+ID: {{report.pipeline_id}}
+
+# backend/data_pipeline/reporting/templates/quality/quality_report.html.template
+
+{ % extends
+"base/base.html.template" %}
+
+{ % block
+content %}
+< div
+
+
+class ="section overview" >
+
+< h2 > Quality
+Analysis
+Overview < / h2 >
+< div
+
+
+class ="metric-card" >
+
+< h3 > Quality
+Score: {{report.overview.quality_score}} < / h3 >
+< div
+
+
+class ="progress-bar" >
+
+< div
+
+
+class ="progress" style="width: {{ report.overview.quality_score }}%" > < / div >
+
+< / div >
+< / div >
+
+< div
+
+
+class ="issues-summary" >
+
+< h3 > Issues
+Summary < / h3 >
+< ul >
+{ %
+for severity, count in report.overview.issues_summary.items() %}
+< li
+
+
+class ="severity-{{ severity }}" > {{severity}}: {{count}} <
+
+/ li >
+{ % endfor %}
+< / ul >
+< / div >
+< / div >
+
+{ %
+for section in report.sections %}
+< div
+
+
+class ="section" >
+
+< h2 > {{section.title}} < / h2 >
+{{section.content | safe}}
+
+{ % if section.visualizations %}
+< div
+
+
+class ="visualizations" >
+
+
+{ %
+for viz in section.visualizations %}
+< div
+
+
+class ="visualization" >
+
+< h3 > {{viz.title}} < / h3 >
+{{viz.content | safe}}
+< / div >
+{ % endfor %}
+< / div >
+{ % endif %}
+< / div >
+{ % endfor %}
+
+< div
+
+
+class ="section recommendations" >
+
+< h2 > Recommendations < / h2 >
+{ %
+for rec in report.recommendations %}
+< div
+
+
+class ="recommendation priority-{{ rec.priority }}" >
+
+< h3 > {{rec.title}} < / h3 >
+< p > {{rec.description}} < / p >
+< ul >
+{ %
+for action in rec.action_items %}
+< li > {{action}} < / li >
+{ % endfor %}
+< / ul >
+< / div >
+{ % endfor %}
+< / div >
+{ % endblock %}
+
+# backend/data_pipeline/reporting/templates/insight/insight_report.html.template
+
+{ % extends
+"base/base.html.template" %}
+
+{ % block
+content %}
+< div
+
+
+class ="section overview" >
+
+< h2 > Insight
+Analysis
+Overview < / h2 >
+< div
+
+
+class ="metric-card" >
+
+< h3 > Business
+Goal
+Alignment: {{report.overview.goal_alignment.score}} % < / h3 >
+< p > Status: {{report.overview.goal_alignment.status}} < / p >
+< / div >
+
+< div
+
+
+class ="insights-summary" >
+
+< h3 > Key
+Insights
+Found: {{report.overview.total_insights}} < / h3 >
+< div
+
+
+class ="insight-distribution" >
+
+
+{ %
+for category, count in report.overview.insight_distribution.items() %}
+< div
+
+
+class ="category-{{ category }}" >
+
+< span > {{category}}: < / span > {{count}}
+< / div >
+{ % endfor %}
+< / div >
+< / div >
+< / div >
+
+{ %
+for section in report.sections %}
+< div
+
+
+class ="section" >
+
+< h2 > {{section.title}} < / h2 >
+{{section.content | safe}}
+
+{ % if section.visualizations %}
+< div
+
+
+class ="visualizations" >
+
+
+{ %
+for viz in section.visualizations %}
+< div
+
+
+class ="visualization" >
+
+< h3 > {{viz.title}} < / h3 >
+{{viz.content | safe}}
+< / div >
+{ % endfor %}
+< / div >
+{ % endif %}
+< / div >
+{ % endfor %}
+{ % endblock %}
+
+# backend/data_pipeline/reporting/templates/analytics/analytics_report.html.template
+
+{ % extends
+"base/base.html.template" %}
+
+{ % block
+content %}
+< div
+
+
+class ="section overview" >
+
+< h2 > Analytics
+Overview < / h2 >
+< div
+
+
+class ="metric-card" >
+
+< h3 > Model
+Performance < / h3 >
+{ %
+for metric, value in report.overview.model_performance.items() %}
+< div
+
+
+class ="metric" >
+
+< span > {{metric}}: < / span > {{value}}
+< / div >
+{ % endfor %}
+< / div >
+
+< div
+
+
+class ="feature-importance" >
+
+< h3 > Top
+Features < / h3 >
+< div
+
+
+class ="feature-list" >
+
+
+{ %
+for feature in report.overview.top_features %}
+< div
+
+
+class ="feature" >
+
+< span > {{feature.name}}: < / span > {{feature.importance}}
+< / div >
+{ % endfor %}
+< / div >
+< / div >
+< / div >
+
+{ %
+for section in report.sections %}
+< div
+
+
+class ="section" >
+
+< h2 > {{section.title}} < / h2 >
+{{section.content | safe}}
+
+{ % if section.visualizations %}
+< div
+
+
+class ="visualizations" >
+
+
+{ %
+for viz in section.visualizations %}
+< div
+
+
+class ="visualization" >
+
+< h3 > {{viz.title}} < / h3 >
+{{viz.content | safe}}
+< / div >
+{ % endfor %}
+< / div >
+{ % endif %}
+< / div >
+{ % endfor %}
+{ % endblock %}
+
+# backend/data_pipeline/reporting/templates/summary/summary_report.html.template
+
+{ % extends
+"base/base.html.template" %}
+
+{ % block
+content %}
+< div
+
+
+class ="section executive-summary" >
+
+< h2 > Executive
+Summary < / h2 >
+< div
+
+
+class ="summary-metrics" >
+
+
+{ %
+for metric in report.executive_summary.metrics %}
+< div
+
+
+class ="metric-card" >
+
+< h3 > {{metric.title}} < / h3 >
+< p
+
+
+class ="value" > {{metric.value}} < / p >
+
+< p
+
+
+class ="interpretation" > {{metric.interpretation}} < / p >
+
+< / div >
+{ % endfor %}
+< / div >
+< / div >
+
+< div
+
+
+class ="section achievements" >
+
+< h2 > Key
+Achievements < / h2 >
+< div
+
+
+class ="achievement-list" >
+
+
+{ %
+for achievement in report.key_achievements %}
+< div
+
+
+class ="achievement" >
+
+< h3 > {{achievement.title}} < / h3 >
+< p > {{achievement.description}} < / p >
+< div
+
+
+class ="impact" > Impact: {{achievement.impact}} <
+
+/ div >
+< / div >
+{ % endfor %}
+< / div >
+< / div >
+
+{ %
+for stage in report.stage_summaries %}
+< div
+
+
+class ="section stage-summary" >
+
+< h2 > {{stage.title}} < / h2 >
+{{stage.content | safe}}
+< / div >
+{ % endfor %}
+
+< div
+
+
+class ="section recommendations" >
+
+< h2 > Implementation
+Plan < / h2 >
+{ %
+for phase in report.implementation_plan.phases %}
+< div
+
+
+class ="phase" >
+
+< h3 > {{phase.title}} < / h3 >
+< p > Timeframe: {{phase.timeframe}} < / p >
+< ul >
+{ %
+for rec in phase.recommendations %}
+< li
+
+
+class ="priority-{{ rec.priority }}" > {{rec.description}} < / li >
+
+
+{ % endfor %}
+< / ul >
+< / div >
+{ % endfor %}
+< / div >
+{ % endblock %}

@@ -9,7 +9,7 @@ from ..utils.route_registry import APIRoutes, RouteDefinition
 from flask import current_app, g
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
-from backend.docs.analyst_pa.backend.config import get_config  # Import your configuration
+from config import get_config  # Import your configuration
 
 
 logger = logging.getLogger(__name__)

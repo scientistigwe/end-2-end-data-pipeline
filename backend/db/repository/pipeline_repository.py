@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
-from backend.db.models.pipeline import (
+from db.models.pipeline import (
     Pipeline, PipelineStep, PipelineRun,
     PipelineStepRun, QualityGate, PipelineLog,
     PipelineTemplate, PipelineVersion

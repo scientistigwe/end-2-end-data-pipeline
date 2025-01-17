@@ -4,17 +4,17 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.event_types import (
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ProcessingStatus,
     MessageMetadata
 )
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.handlers.base.base_handler import BaseChannelHandler, HandlerState
-from backend.data.processing.insights.processor.insight_processor import InsightProcessor
-from backend.data.processing.insights.types.insight_types import (
+from core.staging.staging_manager import StagingManager
+from core.handlers.base.base_handler import BaseChannelHandler, HandlerState
+from data.processing.insights.processor.insight_processor import InsightProcessor
+from data.processing.insights.types.insight_types import (
     InsightType,
     InsightStatus,
     InsightPhase,

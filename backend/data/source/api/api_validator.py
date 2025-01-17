@@ -1,500 +1,309 @@
-from __future__ import annotations
+# backend/source_handlers/api/api_validator.py
 
 import logging
-import asyncio
+from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 import re
-import aiohttp
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass, field
+import ssl
+import socket
 from datetime import datetime
-from enum import Enum
-import json
-
-from backend.core.monitoring.process import ProcessMonitor
-from backend.core.monitoring.collectors import MetricsCollector
-from .api_config import Config
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
 
-class ValidationLevel(Enum):
-    """Validation severity levels"""
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
-
-
 @dataclass
-class ValidationResult:
-    """Structured validation result"""
-    passed: bool
-    check_type: str
-    message: str
-    details: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
-    severity: ValidationLevel = ValidationLevel.ERROR
+class APIValidationConfig:
+    """Configuration for API validation"""
+
+    # Allowed protocols and methods
+    allowed_schemes: set[str] = field(default_factory=lambda: {'http', 'https'})
+    allowed_methods: set[str] = field(default_factory=lambda: {'GET', 'POST', 'PUT', 'DELETE', 'PATCH'})
+
+    # Connection settings
+    connection_timeout: int = 5  # seconds
+    max_redirects: int = 3
+
+    # Security settings
+    require_ssl: bool = True
+
+    # Header validation
+    required_headers: Dict[str, set[str]] = field(default_factory=lambda: {
+        'GET': {'Accept'},
+        'POST': {'Content-Type', 'Accept'},
+        'PUT': {'Content-Type', 'Accept'},
+        'DELETE': {'Accept'},
+        'PATCH': {'Content-Type', 'Accept'}
+    })
+
+    # Authentication validation
+    supported_auth_types: set[str] = field(default_factory=lambda: {
+        'none', 'basic', 'bearer', 'oauth2', 'api_key'
+    })
+
+    # Blocked patterns in headers/URLs
+    blocked_patterns: list[str] = field(default_factory=lambda: [
+        r'password', r'secret', r'token', r'key', r'credential'
+    ])
 
 
 class APIValidator:
-    """Enhanced API validator with comprehensive validation capabilities"""
+    """Enhanced API validator with integrated config"""
 
-    def __init__(
+    def __init__(self, config: Optional[APIValidationConfig] = None):
+        self.config = config or APIValidationConfig()
+
+    async def validate_api_source(
             self,
-            config: Optional[Config] = None,
-            metrics_collector: Optional[MetricsCollector] = None
-    ):
-        """Initialize validator with configuration"""
-        self.config = config or Config()
-        self.metrics_collector = metrics_collector or MetricsCollector()
-        self.process_monitor = ProcessMonitor(
-            metrics_collector=self.metrics_collector,
-            source_type="api_validator",
-            source_id="validator"
-        )
-
-        # Validation thresholds
-        self.validation_thresholds = {
-            'timeout_seconds': self.config.REQUEST.REQUEST_TIMEOUT,
-            'max_retries': self.config.RETRY.MAX_RETRIES,
-            'max_redirects': self.config.REQUEST.MAX_REDIRECTS,
-            'max_content_length': self.config.REQUEST.MAX_CONTENT_LENGTH
-        }
-
-        # Initialize HTTP session
-        self.session = None
-
-    async def __aenter__(self):
-        """Async context manager entry"""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        if self.session:
-            await self.session.close()
-            self.session = None
-
-    async def validate_request_comprehensive(
-            self,
-            request_data: Dict[str, Any],
-            metadata: Dict[str, Any]
+            endpoint: str,
+            method: str,
+            headers: Optional[Dict[str, str]] = None,
+            auth: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Perform comprehensive request validation
-
-        Args:
-            request_data: Request configuration to validate
-            metadata: Additional metadata for validation
-
-        Returns:
-            Dictionary containing validation results
+        Validate API source configuration
+        Provides comprehensive validation with issues and warnings
         """
         try:
-            validation_start = datetime.now()
-            results = []
+            issues = []
+            warnings = []
 
-            # Execute validations concurrently
-            validation_tasks = [
-                self.validate_endpoint(request_data.get('endpoint', '')),
-                self.validate_method(request_data.get('method', 'GET')),
-                self.validate_headers(request_data.get('headers', {})),
-                self.validate_params(request_data.get('params', {})),
-                self.validate_body(request_data.get('body'))
-            ]
+            # Validate URL
+            url_validation = await self._validate_url(endpoint)
+            issues.extend(url_validation.get('issues', []))
+            warnings.extend(url_validation.get('warnings', []))
 
-            if 'auth' in request_data:
-                validation_tasks.append(
-                    self.validate_auth_config(request_data['auth'])
-                )
+            # Validate method
+            method_validation = await self._validate_method(method)
+            issues.extend(method_validation.get('issues', []))
+            warnings.extend(method_validation.get('warnings', []))
 
-            # Gather results
-            results.extend(await asyncio.gather(*validation_tasks, return_exceptions=True))
+            # Validate headers
+            if headers:
+                header_validation = await self._validate_headers(method, headers)
+                issues.extend(header_validation.get('issues', []))
+                warnings.extend(header_validation.get('warnings', []))
 
-            # Filter out exceptions and create error validations
-            filtered_results = []
-            for result in results:
-                if isinstance(result, Exception):
-                    filtered_results.append(ValidationResult(
-                        passed=False,
-                        check_type='error',
-                        message=f"Validation error: {str(result)}",
-                        details={'error': str(result)},
-                        severity=ValidationLevel.ERROR
-                    ))
-                else:
-                    filtered_results.append(result)
+            # Validate authentication
+            if auth:
+                auth_validation = await self._validate_auth(auth)
+                issues.extend(auth_validation.get('issues', []))
+                warnings.extend(auth_validation.get('warnings', []))
 
-            # Compile results
-            validation_summary = self._compile_validation_results(filtered_results)
+            # Connection check (only if no critical issues)
+            if not issues:
+                connection_validation = await self._validate_connection(endpoint)
+                issues.extend(connection_validation.get('issues', []))
+                warnings.extend(connection_validation.get('warnings', []))
 
-            # Record metrics
-            await self.process_monitor.record_operation_metric(
-                'request_validation',
-                success=validation_summary['passed'],
-                duration=(datetime.now() - validation_start).total_seconds(),
-                check_count=len(filtered_results)
+            return self._build_result(
+                passed=len(issues) == 0,
+                issues=issues,
+                warnings=warnings
             )
 
-            return validation_summary
-
         except Exception as e:
-            logger.error(f"Comprehensive validation error: {str(e)}", exc_info=True)
+            logger.error(f"API validation error: {str(e)}")
+            return self._build_result(
+                passed=False,
+                issues=[str(e)],
+                warnings=[]
+            )
+
+    async def _validate_url(self, url: str) -> Dict[str, Any]:
+        """Validate URL format and components"""
+        issues = []
+        warnings = []
+
+        try:
+            parsed = urlparse(url)
+
+            # Scheme validation
+            if not parsed.scheme:
+                issues.append('URL scheme is missing')
+            elif parsed.scheme not in self.config.allowed_schemes:
+                issues.append(f'Invalid URL scheme: {parsed.scheme}')
+
+            # Host validation
+            if not parsed.netloc:
+                issues.append('URL host is missing')
+            elif not self._is_valid_hostname(parsed.netloc):
+                issues.append(f'Invalid hostname: {parsed.netloc}')
+
+            # Path validation
+            if not parsed.path:
+                warnings.append('URL path is empty')
+
+            # Query validation
+            if parsed.query and not self._is_valid_query(parsed.query):
+                warnings.append('Query string might contain invalid characters')
+
             return {
-                'passed': False,
-                'error': str(e),
-                'checks': []
+                'issues': issues,
+                'warnings': warnings
             }
 
-    async def validate_endpoint(self, endpoint: str) -> ValidationResult:
-        """Validate API endpoint"""
-        try:
-            if not endpoint:
-                return ValidationResult(
-                    passed=False,
-                    check_type='endpoint',
-                    message="Endpoint URL is required",
-                    details={},
-                    severity=ValidationLevel.ERROR
-                )
-
-            # URL format validation
-            url_pattern = r'^https?:\/\/[\w\-\.]+(:\d+)?(\/[\w\-\.\/?%&=]*)?$'
-            if not re.match(url_pattern, endpoint):
-                return ValidationResult(
-                    passed=False,
-                    check_type='endpoint',
-                    message="Invalid URL format",
-                    details={'endpoint': endpoint},
-                    severity=ValidationLevel.ERROR
-                )
-
-            # Check endpoint accessibility
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.head(
-                            endpoint,
-                            timeout=self.validation_thresholds['timeout_seconds'],
-                            allow_redirects=True
-                    ) as response:
-                        return ValidationResult(
-                            passed=response.status < 400,
-                            check_type='endpoint',
-                            message=f"Endpoint check: {response.status}",
-                            details={
-                                'status': response.status,
-                                'headers': dict(response.headers)
-                            },
-                            severity=ValidationLevel.ERROR if response.status >= 400 else ValidationLevel.INFO
-                        )
-                except asyncio.TimeoutError:
-                    return ValidationResult(
-                        passed=False,
-                        check_type='endpoint',
-                        message="Endpoint timeout",
-                        details={'timeout': self.validation_thresholds['timeout_seconds']},
-                        severity=ValidationLevel.ERROR
-                    )
-
         except Exception as e:
-            logger.error(f"Endpoint validation error: {str(e)}", exc_info=True)
-            return ValidationResult(
-                passed=False,
-                check_type='endpoint',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
+            return {
+                'issues': [f'URL parsing error: {str(e)}'],
+                'warnings': []
+            }
 
-    async def validate_method(self, method: str) -> ValidationResult:
+    async def _validate_method(self, method: str) -> Dict[str, Any]:
         """Validate HTTP method"""
-        try:
-            if not method:
-                return ValidationResult(
-                    passed=False,
-                    check_type='method',
-                    message="HTTP method is required",
-                    details={},
-                    severity=ValidationLevel.ERROR
-                )
+        issues = []
+        warnings = []
 
-            method = method.upper()
-            if method not in self.config.ALLOWED_METHODS:
-                return ValidationResult(
-                    passed=False,
-                    check_type='method',
-                    message=f"Invalid HTTP method: {method}",
-                    details={
-                        'method': method,
-                        'allowed_methods': self.config.ALLOWED_METHODS
-                    },
-                    severity=ValidationLevel.ERROR
-                )
+        method = method.upper()
+        if method not in self.config.allowed_methods:
+            issues.append(f'Invalid HTTP method: {method}')
 
-            return ValidationResult(
-                passed=True,
-                check_type='method',
-                message="Valid HTTP method",
-                details={'method': method},
-                severity=ValidationLevel.INFO
-            )
-
-        except Exception as e:
-            return ValidationResult(
-                passed=False,
-                check_type='method',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
-
-    async def validate_headers(
-            self,
-            headers: Dict[str, str]
-    ) -> ValidationResult:
-        """Validate request headers"""
-        try:
-            issues = []
-
-            # Check for required headers
-            required_headers = {'Accept', 'User-Agent'}
-            missing_headers = required_headers - set(headers.keys())
-            if missing_headers:
-                issues.append(f"Missing required headers: {', '.join(missing_headers)}")
-
-            # Validate content type if present
-            content_type = headers.get('Content-Type', '')
-            if content_type and not any(
-                    ct in content_type
-                    for ct in ['application/json', 'application/x-www-form-urlencoded']
-            ):
-                issues.append(f"Unsupported Content-Type: {content_type}")
-
-            # Check for sensitive information in headers
-            sensitive_patterns = [
-                r'(?i)(api[-_]?key|token|secret)',
-                r'(?i)(auth|bearer)'
-            ]
-            for key in headers.keys():
-                if any(re.search(pattern, key) for pattern in sensitive_patterns):
-                    issues.append(f"Sensitive information found in header: {key}")
-
-            return ValidationResult(
-                passed=len(issues) == 0,
-                check_type='headers',
-                message="Header validation complete",
-                details={
-                    'issues': issues,
-                    'valid_headers': list(headers.keys())
-                },
-                severity=ValidationLevel.ERROR if issues else ValidationLevel.INFO
-            )
-
-        except Exception as e:
-            return ValidationResult(
-                passed=False,
-                check_type='headers',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
-
-    async def validate_auth_config(
-            self,
-            auth_config: Dict[str, Any]
-    ) -> ValidationResult:
-        """Validate authentication configuration"""
-        try:
-            auth_type = auth_config.get('type', '').lower()
-            issues = []
-
-            if not auth_type:
-                return ValidationResult(
-                    passed=False,
-                    check_type='auth',
-                    message="Auth type is required",
-                    details={},
-                    severity=ValidationLevel.ERROR
-                )
-
-            # Validate based on auth type
-            if auth_type == 'basic':
-                if 'username' not in auth_config:
-                    issues.append("Missing username for basic auth")
-                if 'password' not in auth_config:
-                    issues.append("Missing password for basic auth")
-
-            elif auth_type == 'bearer':
-                if 'token' not in auth_config:
-                    issues.append("Missing token for bearer auth")
-
-            elif auth_type == 'oauth2':
-                required_fields = ['client_id', 'client_secret', 'token_url']
-                missing_fields = [
-                    field for field in required_fields
-                    if field not in auth_config
-                ]
-                if missing_fields:
-                    issues.append(f"Missing OAuth2 fields: {', '.join(missing_fields)}")
-
-            else:
-                issues.append(f"Unsupported auth type: {auth_type}")
-
-            return ValidationResult(
-                passed=len(issues) == 0,
-                check_type='auth',
-                message="Auth configuration validation complete",
-                details={
-                    'issues': issues,
-                    'auth_type': auth_type
-                },
-                severity=ValidationLevel.ERROR if issues else ValidationLevel.INFO
-            )
-
-        except Exception as e:
-            return ValidationResult(
-                passed=False,
-                check_type='auth',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
-
-    async def validate_params(
-            self,
-            params: Dict[str, Any]
-    ) -> ValidationResult:
-        """Validate request parameters"""
-        try:
-            issues = []
-
-            # Check param values
-            for key, value in params.items():
-                # Check for empty values
-                if value is None or value == '':
-                    issues.append(f"Empty value for parameter: {key}")
-
-                # Check value types
-                if not isinstance(value, (str, int, float, bool, list)):
-                    issues.append(f"Invalid type for parameter {key}: {type(value)}")
-
-                # Check list parameters
-                if isinstance(value, list):
-                    if not all(isinstance(v, (str, int, float, bool)) for v in value):
-                        issues.append(f"Invalid value type in list parameter: {key}")
-
-            return ValidationResult(
-                passed=len(issues) == 0,
-                check_type='params',
-                message="Parameter validation complete",
-                details={
-                    'issues': issues,
-                    'param_count': len(params)
-                },
-                severity=ValidationLevel.ERROR if issues else ValidationLevel.INFO
-            )
-
-        except Exception as e:
-            return ValidationResult(
-                passed=False,
-                check_type='params',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
-
-    def _compile_validation_results(
-            self,
-            results: List[ValidationResult]
-    ) -> Dict[str, Any]:
-        """Compile validation results into summary"""
         return {
-            'passed': all(result.passed for result in results),
-            'checks': [
-                {
-                    'type': result.check_type,
-                    'passed': result.passed,
-                    'message': result.message,
-                    'details': result.details,
-                    'severity': result.severity.value,
-                    'timestamp': result.timestamp.isoformat()
-                }
-                for result in results
-            ],
-            'summary': {
-                'total_checks': len(results),
-                'passed_checks': sum(1 for result in results if result.passed),
-                'failed_checks': sum(1 for result in results if not result.passed),
-                'highest_severity': max(
-                    (result.severity for result in results),
-                    default=ValidationLevel.INFO
-                ).value
-            }
+            'issues': issues,
+            'warnings': warnings
         }
-    
-    async def validate_config(self, config: Config) -> ValidationResult:
-        """
-        Validate API configuration
-        
-        Args:
-            config: Config instance to validate
-            
-        Returns:
-            ValidationResult containing validation outcome
-        """
+
+    async def _validate_headers(
+            self,
+            method: str,
+            headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Validate request headers"""
+        issues = []
+        warnings = []
+
+        # Check required headers
+        method_headers = self.config.required_headers.get(method, set())
+        missing_headers = method_headers - set(headers.keys())
+        if missing_headers:
+            issues.append(f"Missing required headers: {', '.join(missing_headers)}")
+
+        # Check for blocked patterns in headers
+        for key, value in headers.items():
+            # Check for sensitive header names
+            if any(re.search(pattern, key, re.IGNORECASE) for pattern in self.config.blocked_patterns):
+                warnings.append(f'Sensitive header detected: {key}')
+
+            # Check for empty values
+            if not value:
+                issues.append(f'Empty value for header: {key}')
+
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
+
+    async def _validate_auth(self, auth: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate authentication configuration"""
+        issues = []
+        warnings = []
+
+        auth_type = auth.get('type', '').lower()
+
+        # Check auth type
+        if not auth_type:
+            issues.append('Authentication type is missing')
+        elif auth_type not in self.config.supported_auth_types:
+            issues.append(f'Unsupported authentication type: {auth_type}')
+
+        # Specific auth type validations
+        if auth_type == 'basic':
+            if not auth.get('username'):
+                issues.append('Username is required for basic authentication')
+            if not auth.get('password'):
+                issues.append('Password is required for basic authentication')
+
+        elif auth_type == 'bearer':
+            if not auth.get('token'):
+                issues.append('Token is required for bearer authentication')
+
+        elif auth_type == 'oauth2':
+            required_fields = ['client_id', 'client_secret', 'token_url']
+            for field in required_fields:
+                if not auth.get(field):
+                    issues.append(f'{field.replace("_", " ").title()} is required for OAuth2')
+
+        return {
+            'issues': issues,
+            'warnings': warnings
+        }
+
+    async def _validate_connection(self, url: str) -> Dict[str, Any]:
+        """Validate basic connection to API endpoint"""
+        issues = []
+        warnings = []
+
         try:
-            issues = []
+            parsed = urlparse(url)
+            port = parsed.port or (443 if parsed.scheme == 'https' else 80)
 
-            # Validate auth configuration
-            if config.auth_type != "none":
-                if config.auth_type == "basic" and not (config.api_key and config.api_secret):
-                    issues.append("Basic auth requires both api_key and api_secret")
-                elif config.auth_type == "bearer" and not config.auth_token:
-                    issues.append("Bearer auth requires auth_token")
-                elif config.auth_type == "oauth2" and not (config.api_key and config.api_secret):
-                    issues.append("OAuth2 requires both api_key and api_secret")
-                elif config.auth_type not in ["basic", "bearer", "oauth2"]:
-                    issues.append(f"Unsupported auth type: {config.auth_type}")
+            # Check DNS
+            try:
+                socket.gethostbyname(parsed.hostname)
+            except socket.gaierror:
+                issues.append(f'Could not resolve hostname: {parsed.hostname}')
+                return {'issues': issues, 'warnings': warnings}
 
-            # Validate base URL
-            if config.base_url:
-                if not config.base_url.startswith(('http://', 'https://')):
-                    issues.append("Base URL must start with http:// or https://")
-                
-                # Additional URL validation using existing endpoint validator
-                endpoint_validation = await self.validate_endpoint(config.base_url)
-                if not endpoint_validation.passed:
-                    issues.append(f"Base URL validation failed: {endpoint_validation.message}")
+            # Connection check
+            with socket.create_connection(
+                    (parsed.hostname, port),
+                    timeout=self.config.connection_timeout
+            ):
+                # SSL verification for HTTPS
+                if parsed.scheme == 'https' and self.config.require_ssl:
+                    try:
+                        with ssl.create_default_context().wrap_socket(
+                                socket.socket(socket.AF_INET),
+                                server_hostname=parsed.hostname
+                        ) as ssock:
+                            ssock.connect((parsed.hostname, port))
+                    except ssl.SSLError:
+                        warnings.append('SSL certificate validation failed')
 
-            # Validate rate limiting
-            if config.rate_limit_calls <= 0:
-                issues.append("Rate limit calls must be positive")
-            if config.rate_limit_period <= 0:
-                issues.append("Rate limit period must be positive")
+            return {
+                'issues': issues,
+                'warnings': warnings
+            }
 
-            return ValidationResult(
-                passed=len(issues) == 0,
-                check_type='config',
-                message="Configuration validation complete",
-                details={
-                    'issues': issues,
-                    'auth_type': config.auth_type,
-                    'has_base_url': bool(config.base_url),
-                    'rate_limits': {
-                        'calls': config.rate_limit_calls,
-                        'period': config.rate_limit_period
-                    }
-                },
-                severity=ValidationLevel.ERROR if issues else ValidationLevel.INFO
-            )
-
+        except (socket.timeout, ConnectionRefusedError):
+            issues.append('Connection failed')
+            return {
+                'issues': issues,
+                'warnings': warnings
+            }
         except Exception as e:
-            logger.error(f"Config validation error: {str(e)}", exc_info=True)
-            return ValidationResult(
-                passed=False,
-                check_type='config',
-                message=f"Validation error: {str(e)}",
-                details={'error': str(e)},
-                severity=ValidationLevel.ERROR
-            )
+            return {
+                'issues': [f'Connection validation error: {str(e)}'],
+                'warnings': []
+            }
+
+    def _build_result(
+            self,
+            passed: bool,
+            issues: list[str],
+            warnings: list[str]
+    ) -> Dict[str, Any]:
+        """Build structured validation result"""
+        return {
+            'passed': passed,
+            'issues': issues,
+            'warnings': warnings,
+            'validation_time': datetime.utcnow().isoformat()
+        }
+
+    def _is_valid_hostname(self, hostname: str) -> bool:
+        """Validate hostname format"""
+        if not hostname or len(hostname) > 255:
+            return False
+
+        if hostname[-1] == ".":
+            hostname = hostname[:-1]
+
+        allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+        return all(allowed.match(x) for x in hostname.split("."))
+
+    def _is_valid_query(self, query: str) -> bool:
+        """Validate query string format"""
+        # Basic validation of query string characters
+        invalid_chars = set('"\'\n\r\t<>')
+        return not any(char in query for char in invalid_chars)

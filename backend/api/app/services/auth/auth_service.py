@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
-from backend.db.models.auth import User, UserSession
+from db.models.auth import User, UserSession
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 

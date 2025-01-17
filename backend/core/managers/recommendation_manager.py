@@ -1,374 +1,337 @@
-import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from uuid import UUID
-import uuid
+# backend/core/managers/recommendation_manager.py
 
-from backend.core.orchestration.base_manager import BaseManager
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import (
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from ..messaging.broker import MessageBroker
+from ..messaging.event_types import (
     MessageType,
     ProcessingMessage,
-    ProcessingStatus,
     ProcessingStage,
-    ComponentType,
-    ModuleIdentifier
+    ProcessingStatus,
+    RecommendationContext,
+    MessageMetadata
 )
-from backend.core.channel_handlers.recommendation_handler import RecommendationChannelHandler
-from backend.db.repository.recommendation_repository import RecommendationRepository
-from backend.core.orchestration.pipeline_manager_helper import (
-    PipelineState,
-    PipelineStateManager
-)
-from backend.data_pipeline.recommendation.recommendation_processor import (
+from ..control.cpm import ControlPointManager
+from .base.base_manager import BaseManager
+from ..handlers.channel.recommendation_handler import RecommendationHandler
+from ..staging.staging_manager import StagingManager
+
+from data.processing.recommendation.types.recommendation_types import (
+    RecommendationType,
     RecommendationPhase,
-    RecommendationResult
+    RecommendationStatus
 )
 
 logger = logging.getLogger(__name__)
 
+
 class RecommendationManager(BaseManager):
     """
-    Recommendation manager orchestrating the recommendation generation process
-    Responsible for coordinating recommendations and managing their lifecycle
+    Manager for recommendation orchestration.
+    Coordinates recommendation process and integrates with pipeline.
     """
 
     def __init__(
             self,
             message_broker: MessageBroker,
-            repository: Optional[RecommendationRepository] = None,
-            recommendation_handler: Optional[RecommendationChannelHandler] = None,
-            state_manager: Optional[PipelineStateManager] = None,
-            component_name: str = "RecommendationManager"
+            control_point_manager: ControlPointManager,
+            staging_manager: StagingManager
     ):
-        """Initialize recommendation manager with comprehensive components"""
-        # Initialize base manager
         super().__init__(
             message_broker=message_broker,
-            component_name=component_name
+            control_point_manager=control_point_manager,
+            component_name="recommendation_manager",
+            domain_type="recommendation"
         )
 
-        # Dependency injection
-        self.repository = repository
-        self.recommendation_handler = recommendation_handler or RecommendationChannelHandler(message_broker)
-        self.state_manager = state_manager or PipelineStateManager()
+        self.staging_manager = staging_manager
+        self.recommendation_handler = RecommendationHandler(
+            message_broker=message_broker,
+            staging_manager=staging_manager
+        )
 
-        # Setup event handlers
-        self._setup_event_handlers()
+        # Setup message handlers
+        self._setup_message_handlers()
 
-    def _setup_event_handlers(self) -> None:
-        """Setup message handlers for recommendation-related events"""
-        try:
-            # Subscribe to recommendation handler message patterns
-            self.message_broker.subscribe(
-                component=self.module_id,
-                pattern="recommendation_handler.*",
-                callback=self._handle_handler_messages
-            )
+    def _setup_message_handlers(self) -> None:
+        """Setup handlers for recommendation-related messages"""
+        self.register_message_handler(
+            MessageType.RECOMMENDATION_START,
+            self._handle_recommendation_start
+        )
+        self.register_message_handler(
+            MessageType.RECOMMENDATION_UPDATE,
+            self._handle_recommendation_update
+        )
+        self.register_message_handler(
+            MessageType.RECOMMENDATION_COMPLETE,
+            self._handle_recommendation_complete
+        )
+        self.register_message_handler(
+            MessageType.RECOMMENDATION_ERROR,
+            self._handle_recommendation_error
+        )
 
-        except Exception as e:
-            logger.error(f"Failed to setup event handlers: {str(e)}")
-            self._handle_error(None, e)
-
-    async def _handle_handler_messages(self, message: ProcessingMessage) -> None:
-        """Central routing for messages from recommendation handler"""
-        try:
-            if message.message_type == MessageType.RECOMMENDATION_STATUS_UPDATE:
-                await self.handle_recommendation_status_update(message)
-            elif message.message_type == MessageType.RECOMMENDATION_COMPLETE:
-                await self.handle_recommendation_complete(message)
-            elif message.message_type == MessageType.RECOMMENDATION_ERROR:
-                await self.handle_recommendation_error(message)
-
-        except Exception as e:
-            logger.error(f"Error routing handler message: {str(e)}")
-            await self._handle_error(
-                message.content.get('pipeline_id'),
-                e
-            )
-
-    async def initiate_recommendation_process(
+    async def initiate_recommendations(
             self,
             pipeline_id: str,
-            data: Dict[str, Any]
-    ) -> UUID:
-        """Initiate a recommendation process for a specific pipeline"""
+            source_component: str,
+            config: Dict[str, Any]
+    ) -> None:
+        """Initiate recommendation process"""
         try:
-            # Generate unique recommendation ID
-            recommendation_id = UUID(uuid.uuid4())
-
-            # Create pipeline state if not exists
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if not pipeline_state:
-                pipeline_state = PipelineState(
-                    pipeline_id=pipeline_id,
-                    current_stage=ProcessingStage.RECOMMENDATION,
-                    status=ProcessingStatus.PENDING
-                )
-                self.state_manager.add_pipeline(pipeline_state)
-
-            # Create initial recommendation record in repository
-            if self.repository:
-                await self.repository.create_recommendation({
-                    'pipeline_id': pipeline_id,
-                    'recommendation_id': str(recommendation_id),
-                    'status': 'pending',
-                    'created_at': datetime.utcnow()
-                })
-
-            # Prepare recommendation process message
-            recommendation_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="recommendation_handler",
-                    component_type=ComponentType.HANDLER
-                ),
-                message_type=MessageType.RECOMMENDATION_START,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'data': data,
-                    'context': {
-                        'recommendation_id': str(recommendation_id),
-                        'pipeline_id': pipeline_id
-                    }
+            # Create control point
+            control_point = await self.control_point_manager.create_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                metadata={
+                    'source_component': source_component,
+                    'config': config
                 }
             )
 
-            # Publish message to recommendation handler
-            await self.message_broker.publish(recommendation_message)
+            # Create context
+            context = RecommendationContext(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                status=ProcessingStatus.PENDING,
+                source_component=source_component,
+                request_type=config.get('request_type', 'default'),
+                engine_types=config.get('engine_types', []),
+                ranking_rules=config.get('ranking_rules', {}),
+                aggregation_config=config.get('aggregation_config', {}),
+                filtering_rules=config.get('filtering_rules', {}),
+                performance_metrics={}
+            )
 
-            return recommendation_id
+            # Start recommendation process
+            start_message = ProcessingMessage(
+                message_type=MessageType.RECOMMENDATION_START,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'request_type': context.request_type,
+                    'config': config
+                },
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component="recommendation_handler",
+                    correlation_id=control_point.id
+                ),
+                context=context
+            )
+
+            await self.message_broker.publish(start_message)
 
         except Exception as e:
-            logger.error(f"Failed to initiate recommendation process: {str(e)}")
+            logger.error(f"Failed to initiate recommendations: {str(e)}")
             await self._handle_error(pipeline_id, e)
-            raise
 
-    async def handle_recommendation_status_update(self, message: ProcessingMessage) -> None:
-        """Handle status updates from recommendation handler"""
+    async def _handle_recommendation_start(
+            self,
+            message: ProcessingMessage
+    ) -> None:
+        """Handle recommendation process start"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
-            status = message.content.get('status')
-            progress = message.content.get('progress', 0)
+            pipeline_id = message.content['pipeline_id']
 
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus(status)
-                pipeline_state.current_progress = progress
+            # Update control point
+            await self.control_point_manager.update_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                status=ProcessingStatus.IN_PROGRESS,
+                metadata={
+                    'started_at': datetime.now().isoformat(),
+                    'config': message.content.get('config', {})
+                }
+            )
 
-            # Update repository if available
-            if self.repository:
-                await self.repository.update_recommendation_status(
-                    pipeline_id,
-                    status=status,
-                    progress=progress
-                )
+            # Forward to handler
+            await self.recommendation_handler._handle_recommendation_start(message)
 
         except Exception as e:
-            logger.error(f"Error handling recommendation status update: {str(e)}")
+            logger.error(f"Failed to handle recommendation start: {str(e)}")
             await self._handle_error(pipeline_id, e)
 
-    async def handle_recommendation_complete(self, message: ProcessingMessage) -> None:
+    async def _handle_recommendation_update(
+            self,
+            message: ProcessingMessage
+    ) -> None:
+        """Handle recommendation process updates"""
+        try:
+            pipeline_id = message.content['pipeline_id']
+            phase = message.content.get('phase')
+            status = message.content.get('status')
+
+            # Update control point
+            await self.control_point_manager.update_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                metadata={
+                    'phase': phase,
+                    'status': status,
+                    'updated_at': datetime.now().isoformat(),
+                    'metrics': message.content.get('metrics', {})
+                }
+            )
+
+            # Forward to handler
+            await self.recommendation_handler._handle_recommendation_update(message)
+
+        except Exception as e:
+            logger.error(f"Failed to handle recommendation update: {str(e)}")
+            await self._handle_error(pipeline_id, e)
+
+    async def _handle_recommendation_complete(
+            self,
+            message: ProcessingMessage
+    ) -> None:
         """Handle recommendation process completion"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
-            results = message.content.get('results', {})
+            pipeline_id = message.content['pipeline_id']
+            staged_id = message.content.get('staged_id')
 
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus.COMPLETED
-                pipeline_state.current_stage = ProcessingStage.DECISION_MAKING
-                pipeline_state.current_progress = 100.0
+            # Update control point
+            await self.control_point_manager.update_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                status=ProcessingStatus.COMPLETED,
+                metadata={
+                    'completed_at': datetime.now().isoformat(),
+                    'staged_id': staged_id,
+                    'metrics': message.content.get('metadata', {})
+                }
+            )
 
-            # Persist results in repository
-            if self.repository:
-                await self.repository.save_recommendation_results(
-                    pipeline_id,
-                    results
-                )
-
-            # Notify pipeline manager about stage completion
+            # Notify pipeline manager
             completion_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
                 message_type=MessageType.STAGE_COMPLETE,
                 content={
                     'pipeline_id': pipeline_id,
                     'stage': ProcessingStage.RECOMMENDATION.value,
-                    'results': results
-                }
+                    'staged_id': staged_id,
+                    'metrics': message.content.get('metadata', {})
+                },
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component="pipeline_manager"
+                )
             )
+
             await self.message_broker.publish(completion_message)
 
         except Exception as e:
-            logger.error(f"Error handling recommendation completion: {str(e)}")
+            logger.error(f"Failed to handle recommendation completion: {str(e)}")
             await self._handle_error(pipeline_id, e)
 
-    async def handle_recommendation_error(self, message: ProcessingMessage) -> None:
+    async def _handle_recommendation_error(
+            self,
+            message: ProcessingMessage
+    ) -> None:
         """Handle recommendation process errors"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
+            pipeline_id = message.content['pipeline_id']
             error = message.content.get('error')
 
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus.FAILED
-                pipeline_state.add_error(error)
-
-            # Persist error in repository
-            if self.repository:
-                await self.repository.log_recommendation_error(
-                    pipeline_id,
-                    error,
-                    stage=ProcessingStage.RECOMMENDATION.value
-                )
-
-            # Notify pipeline manager about stage failure
-            error_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
-                message_type=MessageType.STAGE_FAILED,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.RECOMMENDATION.value,
-                    'error': error
+            # Update control point
+            await self.control_point_manager.update_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION,
+                status=ProcessingStatus.FAILED,
+                metadata={
+                    'error': error,
+                    'failed_at': datetime.now().isoformat(),
+                    'phase': message.content.get('phase')
                 }
             )
-            await self.message_broker.publish(error_message)
 
-        except Exception as e:
-            logger.error(f"Error handling recommendation error: {str(e)}")
-
-    async def _handle_error(
-        self,
-        pipeline_id: Optional[str],
-        error: Exception
-    ) -> None:
-        """Comprehensive error handling"""
-        try:
-            # Log error
-            logger.error(f"Recommendation manager error: {str(error)}")
-
-            # Update pipeline state
-            if pipeline_id:
-                pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-                if pipeline_state:
-                    pipeline_state.status = ProcessingStatus.FAILED
-                    pipeline_state.add_error(str(error))
-
-            # Publish error message
+            # Notify pipeline manager
             error_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
                 message_type=MessageType.STAGE_ERROR,
                 content={
                     'pipeline_id': pipeline_id,
                     'stage': ProcessingStage.RECOMMENDATION.value,
-                    'error': str(error)
-                }
+                    'error': error,
+                    'phase': message.content.get('phase')
+                },
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component="pipeline_manager"
+                )
             )
+
             await self.message_broker.publish(error_message)
 
         except Exception as e:
-            logger.error(f"Critical error in recommendation manager error handling: {str(e)}")
+            logger.error(f"Failed to handle recommendation error: {str(e)}")
 
-    def get_recommendation_status(self, recommendation_id: UUID) -> Optional[Dict[str, Any]]:
-        """Retrieve status of a specific recommendation process"""
+    async def get_recommendation_status(
+            self,
+            pipeline_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get current status of recommendation process"""
         try:
-            # Get status from repository
-            if self.repository:
-                recommendation_status = self.repository.get_recommendation(recommendation_id)
+            # Get handler status
+            handler_status = await self.recommendation_handler.get_process_status(
+                pipeline_id
+            )
 
-                # Get process status from handler
-                process_status = self.recommendation_handler.get_process_status(str(recommendation_id))
+            # Get control point status
+            control_point = await self.control_point_manager.get_control_point(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECOMMENDATION
+            )
 
-                if recommendation_status:
-                    status_details = {
-                        'recommendation_id': str(recommendation_id),
-                        'status': recommendation_status.status,
-                        'created_at': recommendation_status.created_at.isoformat(),
-                        'updated_at': recommendation_status.updated_at.isoformat()
-                    }
-
-                    # Enhance with process details if available
-                    if process_status:
-                        status_details.update({
-                            'phase': process_status.get('phase'),
-                            'progress': process_status.get('progress', 0),
-                            'active': True,
-                            'metadata': process_status.get('metadata', {})
-                        })
-
-                    return status_details
+            if handler_status or control_point:
+                return {
+                    'pipeline_id': pipeline_id,
+                    'handler_status': handler_status,
+                    'control_point': control_point,
+                    'timestamp': datetime.now().isoformat()
+                }
 
             return None
 
         except Exception as e:
-            logger.error(f"Error retrieving recommendation status: {str(e)}")
+            logger.error(f"Failed to get recommendation status: {str(e)}")
             return None
 
-    async def cleanup(self) -> None:
-        """Comprehensive cleanup of recommendation manager resources"""
+    async def _handle_error(
+            self,
+            pipeline_id: str,
+            error: Exception
+    ) -> None:
+        """Handle errors in recommendation manager"""
         try:
-            # Cancel all active pipelines
-            for pipeline_id in self.state_manager.get_active_pipelines():
-                state = self.state_manager.get_pipeline_state(pipeline_id)
-                if state and state.status == ProcessingStatus.RUNNING:
-                    state.status = ProcessingStatus.CANCELLED
+            error_message = ProcessingMessage(
+                message_type=MessageType.RECOMMENDATION_ERROR,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'error': str(error),
+                    'component': self.component_name,
+                    'timestamp': datetime.now().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component="pipeline_manager"
+                )
+            )
 
-                    # Publish cancellation message
-                    cancellation_message = ProcessingMessage(
-                        source_identifier=self.module_id,
-                        target_identifier=ModuleIdentifier(
-                            component_name="pipeline_manager",
-                            component_type=ComponentType.MANAGER
-                        ),
-                        message_type=MessageType.STAGE_CANCELLED,
-                        content={
-                            'pipeline_id': pipeline_id,
-                            'stage': ProcessingStage.RECOMMENDATION.value
-                        }
-                    )
-                    await self.message_broker.publish(cancellation_message)
+            await self.message_broker.publish(error_message)
 
-            # Reset state manager
-            self.state_manager = PipelineStateManager()
+        except Exception as e:
+            logger.error(f"Error handling failed: {str(e)}")
 
-            # Cleanup recommendation handler
-            if hasattr(self.recommendation_handler, 'cleanup'):
-                await self.recommendation_handler.cleanup()
+    async def cleanup(self) -> None:
+        """Cleanup manager resources"""
+        try:
+            # Cleanup handler
+            await self.recommendation_handler.cleanup()
 
             # Call parent cleanup
             await super().cleanup()
 
         except Exception as e:
-            logger.error(f"Error during recommendation manager cleanup: {str(e)}")
-
-    # Factory method for easy instantiation 
-    @classmethod
-    def create(
-        cls,
-        message_broker: Optional[MessageBroker] = None,
-        repository: Optional[RecommendationRepository] = None
-    ) -> 'RecommendationManager':
-        """Factory method to create RecommendationManager with optional dependencies"""
-        # Import global message broker if not provided
-        if message_broker is None:
-            from backend.core.messaging.broker import message_broker
-
-        return cls(
-            message_broker=message_broker,
-            repository=repository
-        )
+            logger.error(f"Cleanup failed: {str(e)}")
+            raise

@@ -7,7 +7,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 
 from ...messaging.broker import MessageBroker
-from ...messaging.types import (
+from ...messaging.event_types import (
     MessageType,
     ProcessingStage,
     ProcessingStatus,
@@ -16,7 +16,7 @@ from ...messaging.types import (
 )
 from ...staging.staging_manager import StagingManager
 from ..base.base_handler import BaseChannelHandler, HandlerState, ProcessingTask
-from ....data_pipeline.advanced_analytics.processor.analytics_processor import (
+from data.processing.advanced_analytics.processors.analytics_processor import (
     AnalyticsProcessor,
     AnalyticsPhase,
     AnalyticsContext

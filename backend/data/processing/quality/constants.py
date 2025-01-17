@@ -43,7 +43,7 @@ class ProcessingModule(Enum):
 
 class DataIssueType(Enum):
     # Basic Data Validation Issues
-    MISSING_VALUE = "missing_value"
+    MISSING_VALUE = "templates"
     DATA_TYPE_MISMATCH = "data_type_mismatch"
     REQUIRED_FIELD = "required_field"
     NULL_CHECK = "null_check"

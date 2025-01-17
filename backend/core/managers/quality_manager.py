@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 
 from ..messaging.broker import MessageBroker
-from ..messaging.types import (
+from ..messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ProcessingStatus,
@@ -15,14 +15,16 @@ from ..messaging.types import (
 )
 from ..control.cpm import ControlPointManager
 from ..staging.staging_manager import StagingManager
-from .base_manager import BaseManager, ManagerState
+from ..managers.base.base_manager import BaseManager, ManagerState
 from ..handlers.channel.quality_handler import QualityHandler
-from ...data_pipeline.quality.types.quality_types import (
-    QualityState,
-    QualityPhase,
+from data.processing.quality.types.quality_types import (
+    QualityCheckConfig,
+    QualityCheckType,
     QualityProcessState,
-    QualityCheckConfig
+    QualityState,
+    QualityMetrics
 )
+
 
 
 class QualityManager(BaseManager):

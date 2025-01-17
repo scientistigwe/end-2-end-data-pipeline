@@ -5,10 +5,10 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from uuid import UUID
 
-from backend.db.repository.quality_repository import QualityRepository
-from backend.core.messaging.broker import MessageBroker
-from backend.core.orchestration.quality_manager import QualityManager
-from backend.data_pipeline.quality_analysis.data_quality_processor import (
+from db.repository.quality_repository import QualityRepository
+from core.messaging.broker import MessageBroker
+from core.orchestration.quality_manager import QualityManager
+from data_pipeline.quality_analysis.data_quality_processor import (
     DataQualityProcessor,
     QualityAnalysisResult
 )

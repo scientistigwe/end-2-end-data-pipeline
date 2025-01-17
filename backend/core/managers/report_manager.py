@@ -1,488 +1,263 @@
-import logging
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from uuid import UUID
-import uuid
+# backend/data_pipeline/reporting/report_manager.py
 
-from backend.core.orchestration.base_manager import BaseManager
-from backend.core.messaging.broker import MessageBroker
-from backend.core.messaging.types import (
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+from pathlib import Path
+
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
-    ProcessingStatus,
-    ProcessingStage,
-    ComponentType,
-    ModuleIdentifier
+    ProcessingStage
 )
-from backend.core.channel_handlers.report_handler import ReportHandler
-from backend.db.repository.report_repository import ReportRepository
-from backend.core.orchestration.pipeline_manager_helper import (
-    PipelineState,
-    PipelineStateManager
-)
-from backend.data_pipeline.reporting.report_processor import ReportPhase
+from core.managers.base.base_manager import BaseManager
+from core.handlers.channel.reports_handler import ReportHandler
 
 logger = logging.getLogger(__name__)
 
+
 class ReportManager(BaseManager):
     """
-    Report manager orchestrating the report generation process
-    Responsible for coordinating report generation and managing their lifecycle
+    Manages report generation and coordination.
+    Integrates with the pipeline and other components.
     """
 
     def __init__(
             self,
             message_broker: MessageBroker,
-            repository: Optional[ReportRepository] = None,
-            report_handler: Optional[ReportHandler] = None,
-            state_manager: Optional[PipelineStateManager] = None,
-            component_name: str = "ReportManager"
+            template_dir: Optional[Path] = None,
+            config: Optional[Dict[str, Any]] = None
     ):
-        """Initialize report manager with comprehensive components"""
-        # Initialize base manager
         super().__init__(
             message_broker=message_broker,
-            component_name=component_name
+            component_name="report_manager"
         )
 
-        # Dependency injection
-        self.repository = repository
-        self.report_handler = report_handler or ReportHandler(message_broker)
-        self.state_manager = state_manager or PipelineStateManager()
+        # Initialize handler
+        self.report_handler = ReportHandler(
+            message_broker=message_broker,
+            template_dir=template_dir,
+            config=config
+        )
 
-        # Setup event handlers
-        self._setup_event_handlers()
+        # Set up message handlers
+        self._setup_message_handlers()
 
-    def _setup_event_handlers(self) -> None:
+    def _setup_message_handlers(self) -> None:
         """Setup message handlers for report-related events"""
+        self.register_handler(
+            MessageType.QUALITY_COMPLETE,
+            self._handle_quality_complete
+        )
+        self.register_handler(
+            MessageType.INSIGHT_COMPLETE,
+            self._handle_insight_complete
+        )
+        self.register_handler(
+            MessageType.ANALYTICS_COMPLETE,
+            self._handle_analytics_complete
+        )
+        self.register_handler(
+            MessageType.PIPELINE_COMPLETE,
+            self._handle_pipeline_complete
+        )
+        self.register_handler(
+            MessageType.REPORT_STATUS_UPDATE,
+            self._handle_report_update
+        )
+        self.register_handler(
+            MessageType.REPORT_ERROR,
+            self._handle_report_error
+        )
+
+    async def _handle_quality_complete(self, message: ProcessingMessage) -> None:
+        """Handle quality analysis completion"""
         try:
-            # Subscribe to report handler message patterns
-            self.message_broker.subscribe(
-                component=self.module_id,
-                pattern="report_handler.*",
-                callback=self._handle_handler_messages
-            )
+            pipeline_id = message.content['pipeline_id']
+            quality_data = message.content.get('quality_results', {})
 
-        except Exception as e:
-            logger.error(f"Failed to setup event handlers: {str(e)}")
-            self._handle_error(None, e)
-
-    async def _handle_handler_messages(self, message: ProcessingMessage) -> None:
-        """Central routing for messages from report handler"""
-        try:
-            if message.message_type == MessageType.REPORT_STATUS_UPDATE:
-                await self.handle_report_status_update(message)
-            elif message.message_type == MessageType.REPORT_COMPLETE:
-                await self.handle_report_complete(message)
-            elif message.message_type == MessageType.REPORT_ERROR:
-                await self.handle_report_error(message)
-            elif message.message_type == MessageType.SECTION_COMPLETE:
-                await self.handle_section_complete(message)
-            elif message.message_type == MessageType.VISUALIZATION_COMPLETE:
-                await self.handle_visualization_complete(message)
-            elif message.message_type == MessageType.VALIDATION_COMPLETE:
-                await self.handle_validation_complete(message)
-
-        except Exception as e:
-            logger.error(f"Error routing handler message: {str(e)}")
-            await self._handle_error(
-                message.content.get('pipeline_id'),
-                e
-            )
-
-    async def initiate_report_generation(
-            self,
-            pipeline_id: str,
-            report_type: str,
-            template_id: Optional[UUID] = None,
-            parameters: Optional[Dict[str, Any]] = None
-    ) -> UUID:
-        """Initiate a report generation process"""
-        try:
-            # Generate unique run ID
-            run_id = UUID(uuid.uuid4())
-
-            # Create pipeline state if not exists
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if not pipeline_state:
-                pipeline_state = PipelineState(
-                    pipeline_id=pipeline_id,
-                    current_stage=ProcessingStage.REPORT_GENERATION,
-                    status=ProcessingStatus.PENDING
-                )
-                self.state_manager.add_pipeline(pipeline_state)
-
-            # Create initial record in repository
-            if self.repository:
-                template_data = {}
-                if template_id:
-                    template = await self.repository.get_template(template_id)
-                    if template:
-                        template_data = template.content
-                        await self.repository.increment_template_usage(template_id)
-
-                await self.repository.create_report_run({
-                    'name': f"{report_type.title()} Report",
-                    'pipeline_id': pipeline_id,
-                    'report_type': report_type,
-                    'template_id': template_id,
-                    'parameters': parameters or {},
-                    'status': 'pending',
-                    'started_at': datetime.utcnow()
-                })
-
-            # Prepare report generation message
-            report_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="report_handler",
-                    component_type=ComponentType.HANDLER
-                ),
-                message_type=MessageType.REPORT_START,
+            # Request quality report generation
+            await self.report_handler.handle_report_request(ProcessingMessage(
+                message_type=MessageType.REPORT_REQUEST,
                 content={
                     'pipeline_id': pipeline_id,
-                    'report_type': report_type,
-                    'template_data': template_data,
-                    'parameters': parameters or {},
-                    'context': {
-                        'run_id': str(run_id),
-                        'pipeline_id': pipeline_id
-                    }
+                    'stage': 'data_quality',
+                    'data': quality_data,
+                    'format': 'html'  # Default format
                 }
-            )
-
-            # Publish message to report handler
-            await self.message_broker.publish(report_message)
-
-            return run_id
+            ))
 
         except Exception as e:
-            logger.error(f"Failed to initiate report generation: {str(e)}")
+            logger.error(f"Error handling quality completion: {str(e)}")
             await self._handle_error(pipeline_id, e)
-            raise
 
-    async def handle_report_status_update(self, message: ProcessingMessage) -> None:
-        """Handle status updates from report handler"""
+    async def _handle_insight_complete(self, message: ProcessingMessage) -> None:
+        """Handle insight analysis completion"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
+            pipeline_id = message.content['pipeline_id']
+            insight_data = message.content.get('insight_results', {})
+
+            # Request insight report generation
+            await self.report_handler.handle_report_request(ProcessingMessage(
+                message_type=MessageType.REPORT_REQUEST,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': 'insight_analysis',
+                    'data': insight_data,
+                    'format': 'html'
+                }
+            ))
+
+        except Exception as e:
+            logger.error(f"Error handling insight completion: {str(e)}")
+            await self._handle_error(pipeline_id, e)
+
+    async def _handle_analytics_complete(self, message: ProcessingMessage) -> None:
+        """Handle analytics completion"""
+        try:
+            pipeline_id = message.content['pipeline_id']
+            analytics_data = message.content.get('analytics_results', {})
+
+            # Request analytics report generation
+            await self.report_handler.handle_report_request(ProcessingMessage(
+                message_type=MessageType.REPORT_REQUEST,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': 'advanced_analytics',
+                    'data': analytics_data,
+                    'format': 'html'
+                }
+            ))
+
+        except Exception as e:
+            logger.error(f"Error handling analytics completion: {str(e)}")
+            await self._handle_error(pipeline_id, e)
+
+    async def _handle_pipeline_complete(self, message: ProcessingMessage) -> None:
+        """Handle pipeline completion"""
+        try:
+            pipeline_id = message.content['pipeline_id']
+            pipeline_data = message.content.get('pipeline_results', {})
+
+            # Request summary report generation
+            await self.report_handler.handle_report_request(ProcessingMessage(
+                message_type=MessageType.REPORT_REQUEST,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': 'pipeline_summary',
+                    'data': pipeline_data,
+                    'format': 'html',
+                    'include_components': [
+                        'quality_summary',
+                        'insight_summary',
+                        'analytics_summary'
+                    ]
+                }
+            ))
+
+        except Exception as e:
+            logger.error(f"Error handling pipeline completion: {str(e)}")
+            await self._handle_error(pipeline_id, e)
+
+    async def _handle_report_update(self, message: ProcessingMessage) -> None:
+        """Handle report status updates"""
+        try:
+            pipeline_id = message.content['pipeline_id']
             status = message.content.get('status')
-            progress = message.content.get('progress', 0)
-            phase = message.content.get('phase')
 
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus(status)
-                pipeline_state.current_progress = progress
-
-            # Update repository if available
-            if self.repository:
-                await self.repository.update_run_status(
-                    pipeline_id,
-                    status=status,
-                    progress=progress,
-                    phase=phase
-                )
-
-            # Update section and visualization statuses if provided
-            section_status = message.content.get('section_status')
-            if section_status and self.repository:
-                for section_id, status_data in section_status.items():
-                    await self.repository.update_section_status(
-                        UUID(section_id),
-                        status=status_data.get('status'),
-                        generation_time=status_data.get('generation_time')
-                    )
-
-            viz_status = message.content.get('visualization_status')
-            if viz_status and self.repository:
-                for viz_id, status_data in viz_status.items():
-                    await self.repository.update_visualization_status(
-                        UUID(viz_id),
-                        status=status_data.get('status'),
-                        generation_time=status_data.get('generation_time')
-                    )
-
-        except Exception as e:
-            logger.error(f"Error handling report status update: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-
-    async def handle_report_complete(self, message: ProcessingMessage) -> None:
-        """Handle report process completion"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            results = message.content.get('results', {})
-            output_url = message.content.get('output_url')
-            output_size = message.content.get('output_size')
-
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus.COMPLETED
-                pipeline_state.current_stage = ProcessingStage.DELIVERY
-                pipeline_state.current_progress = 100.0
-
-            # Save results in repository
-            if self.repository:
-                await self.repository.update_run_status(
-                    pipeline_id,
-                    status='completed',
-                    output_url=output_url,
-                    output_size=output_size
-                )
-
-            # Notify pipeline manager about stage completion
-            completion_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
-                message_type=MessageType.STAGE_COMPLETE,
+            # Forward status to pipeline manager
+            update_message = ProcessingMessage(
+                message_type=MessageType.STAGE_UPDATE,
                 content={
                     'pipeline_id': pipeline_id,
                     'stage': ProcessingStage.REPORT_GENERATION.value,
-                    'results': {
-                        'output_url': output_url,
-                        'output_size': output_size,
-                        'report_data': results
-                    }
+                    'status': status,
+                    'timestamp': datetime.now().isoformat()
                 }
             )
-            await self.message_broker.publish(completion_message)
+
+            await self.message_broker.publish(update_message)
 
         except Exception as e:
-            logger.error(f"Error handling report completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
+            logger.error(f"Error handling report update: {str(e)}")
 
-    async def handle_report_error(self, message: ProcessingMessage) -> None:
-        """Handle report process errors"""
+    async def _handle_report_error(self, message: ProcessingMessage) -> None:
+        """Handle report generation errors"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
+            pipeline_id = message.content['pipeline_id']
             error = message.content.get('error')
-            phase = message.content.get('phase')
-            context = message.content.get('context', {})
 
-            # Update pipeline state
-            pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-            if pipeline_state:
-                pipeline_state.status = ProcessingStatus.FAILED
-                pipeline_state.add_error(error)
-
-            # Save error in repository
-            if self.repository:
-                await self.repository.update_run_status(
-                    pipeline_id,
-                    status='failed',
-                    error=error,
-                    error_details={
-                        'phase': phase,
-                        'context': context,
-                        'timestamp': datetime.utcnow().isoformat()
-                    }
-                )
-
-            # Notify pipeline manager about stage failure
+            # Notify pipeline manager about error
             error_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
-                message_type=MessageType.STAGE_FAILED,
+                message_type=MessageType.STAGE_ERROR,
                 content={
                     'pipeline_id': pipeline_id,
                     'stage': ProcessingStage.REPORT_GENERATION.value,
                     'error': error,
-                    'phase': phase
+                    'timestamp': datetime.now().isoformat()
                 }
             )
+
             await self.message_broker.publish(error_message)
 
         except Exception as e:
             logger.error(f"Error handling report error: {str(e)}")
 
-    async def handle_section_complete(self, message: ProcessingMessage) -> None:
-        """Handle section completion"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            section_id = message.content.get('section_id')
-            section_data = message.content.get('section_data', {})
-            generation_time = message.content.get('generation_time')
-
-            if self.repository:
-                await self.repository.update_section_completion(
-                    UUID(section_id),
-                    section_data,
-                    generation_time
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling section completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-
-    async def handle_visualization_complete(self, message: ProcessingMessage) -> None:
-        """Handle visualization completion"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            visualization_id = message.content.get('visualization_id')
-            visualization_data = message.content.get('visualization_data', {})
-            generation_time = message.content.get('generation_time')
-
-            if self.repository:
-                await self.repository.update_visualization_completion(
-                    UUID(visualization_id),
-                    visualization_data,
-                    generation_time
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling visualization completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-
-    async def handle_validation_complete(self, message: ProcessingMessage) -> None:
-        """Handle validation completion"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            validation_id = message.content.get('validation_id')
-            validation_results = message.content.get('validation_results', {})
-            status = message.content.get('status')
-            execution_time = message.content.get('execution_time')
-
-            if self.repository:
-                await self.repository.update_validation_completion(
-                    UUID(validation_id),
-                    validation_results,
-                    status,
-                    execution_time
-                )
-
-        except Exception as e:
-            logger.error(f"Error handling validation completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-
-    async def _handle_error(
+    async def generate_report(
             self,
-            pipeline_id: Optional[str],
-            error: Exception
+            pipeline_id: str,
+            stage: str,
+            data: Dict[str, Any],
+            format: str = 'html'
     ) -> None:
-        """Comprehensive error handling"""
+        """Generate report for specific stage"""
         try:
-            # Log error
-            logger.error(f"Report manager error: {str(error)}")
+            # Create report request
+            request = ProcessingMessage(
+                message_type=MessageType.REPORT_REQUEST,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': stage,
+                    'data': data,
+                    'format': format
+                }
+            )
 
-            # Update pipeline state
-            if pipeline_id:
-                pipeline_state = self.state_manager.get_pipeline_state(pipeline_id)
-                if pipeline_state:
-                    pipeline_state.status = ProcessingStatus.FAILED
-                    pipeline_state.add_error(str(error))
+            # Forward request to handler
+            await self.report_handler.handle_report_request(request)
 
-            # Publish error message
+        except Exception as e:
+            logger.error(f"Error initiating report generation: {str(e)}")
+            await self._handle_error(pipeline_id, e)
+
+    async def _handle_error(self, pipeline_id: str, error: Exception) -> None:
+        """Handle errors in report manager"""
+        try:
             error_message = ProcessingMessage(
-                source_identifier=self.module_id,
-                target_identifier=ModuleIdentifier(
-                    component_name="pipeline_manager",
-                    component_type=ComponentType.MANAGER
-                ),
                 message_type=MessageType.STAGE_ERROR,
                 content={
                     'pipeline_id': pipeline_id,
                     'stage': ProcessingStage.REPORT_GENERATION.value,
-                    'error': str(error)
+                    'error': str(error),
+                    'timestamp': datetime.now().isoformat()
                 }
             )
+
             await self.message_broker.publish(error_message)
 
         except Exception as e:
-            logger.error(f"Critical error in report manager error handling: {str(e)}")
+            logger.error(f"Error in error handling: {str(e)}")
 
-    def get_report_status(self, run_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get status of a specific report run"""
-        try:
-            # Get status from repository
-            if self.repository:
-                report_run = self.repository.get_report_run(run_id)
-                process_status = self.report_handler.get_process_status(str(run_id))
-
-                if report_run:
-                    status = {
-                        'run_id': str(run_id),
-                        'name': report_run.name,
-                        'type': report_run.report_type,
-                        'status': report_run.status,
-                        'progress': report_run.progress,
-                        'started_at': report_run.started_at.isoformat(),
-                        'section_count': len(report_run.sections),
-                        'visualization_count': len(report_run.visualizations)
-                    }
-
-                    # Add process details if available
-                    if process_status:
-                        status.update({
-                            'phase': process_status.get('phase'),
-                            'active': True,
-                            'processing_details': process_status
-                        })
-
-                    return status
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error retrieving report status: {str(e)}")
-            return None
+    def get_report_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of report generation"""
+        return self.report_handler.get_report_status(pipeline_id)
 
     async def cleanup(self) -> None:
-        """Comprehensive cleanup of report manager resources"""
+        """Cleanup manager resources"""
         try:
-            # Cancel all active pipelines
-            for pipeline_id in self.state_manager.get_active_pipelines():
-                state = self.state_manager.get_pipeline_state(pipeline_id)
-                if state and state.status == ProcessingStatus.RUNNING:
-                    state.status = ProcessingStatus.CANCELLED
-
-                    # Publish cancellation message
-                    cancellation_message = ProcessingMessage(
-                        source_identifier=self.module_id,
-                        target_identifier=ModuleIdentifier(
-                            component_name="pipeline_manager",
-                            component_type=ComponentType.MANAGER
-                        ),
-                        message_type=MessageType.STAGE_CANCELLED,
-                        content={
-                            'pipeline_id': pipeline_id,
-                            'stage': ProcessingStage.REPORT_GENERATION.value
-                        }
-                    )
-                    await self.message_broker.publish(cancellation_message)
-
-            # Reset state manager
-            self.state_manager = PipelineStateManager()
-
-            # Cleanup report handler
-            if hasattr(self.report_handler, 'cleanup'):
-                await self.report_handler.cleanup()
-
-            # Call parent cleanup
+            await self.report_handler.cleanup()
             await super().cleanup()
-
         except Exception as e:
-            logger.error(f"Error during report manager cleanup: {str(e)}")
-
-    # Factory method for easy instantiation
-    @classmethod
-    def create(
-            cls,
-            message_broker: Optional[MessageBroker] = None,
-            repository: Optional[ReportRepository] = None
-    ) -> 'ReportManager':
-        """Factory method to create ReportManager with optional dependencies"""
-        # Import global message broker if not provided
-        if message_broker is None:
-            from backend.core.messaging.broker import message_broker
-
-        return cls(
-            message_broker=message_broker,
-            repository=repository
-        )
+            logger.error(f"Error during cleanup: {str(e)}")
+            raise

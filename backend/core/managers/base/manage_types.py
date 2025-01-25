@@ -1,4 +1,4 @@
-# backend/core/managers/base/manage_types.py
+# backend/core/sub_managers/base/manage_types.py
 
 from queue import Queue
 from typing import Dict, Callable, Optional, Any

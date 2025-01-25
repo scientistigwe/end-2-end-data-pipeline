@@ -1,30 +1,23 @@
+import asyncio
 import logging
-from api.app import create_app
+from api.flask_app import create_app
 
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger(__name__)
 
-try:
-    logger.info("Initializing application...")
-    app = create_app()
-    logger.info("Application initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to create application: {e}", exc_info=True)
-    raise
+logger = setup_logging()
 
-if __name__ == "__main__":
+def initialize_application():
     try:
-        logger.info("Starting Flask server...")
-        app.run(
-            host='0.0.0.0',
-            port=5000,
-            debug=True,
-            use_reloader=True
-        )
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(create_app('production'))
     except Exception as e:
-        logger.error(f"Failed to start server: {e}", exc_info=True)
+        logger.error("Failed to initialize application", exc_info=True)
         raise
+
+application = initialize_application()

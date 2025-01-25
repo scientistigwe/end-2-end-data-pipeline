@@ -205,8 +205,22 @@ quality_handler = ModuleIdentifier.create_handler_identifier(
 
 # Create a message from manager to handler
 message = ProcessingMessage(
-    message_type=MessageType.QUALITY_START,
+    message_type=MessageType.QUALITY_START_REQUEST,
     content={"data": "example"},
     source_identifier=quality_manager,
     target_identifier=quality_handler
 )
+
+
+For Development:
+bashCopy# Option 1: Using run.py (Recommended for development)
+poetry run python run.py
+
+# Option 2: Using the application factory directly
+poetry run python -m api.app
+For Production:
+bashCopy# Using WSGI server (e.g., Gunicorn)
+poetry run gunicorn -w 4 -b 0.0.0.0:5000 "wsgi:application"
+The first option, using run.py, is recommended for development because it provides a clean development server with debugging enabled. This script is specifically designed for development work and includes helpful features like auto-reloading when code changes.
+The second option, running the module directly, works but offers less control over the development server configuration. It's better to use run.py which provides a more complete development environment.
+For production deployment, you should use the WSGI server approach with wsgi.py. This provides better performance and reliability for production environments. The WSGI server (Gunicorn in this example) handles multiple workers and proper request processing.

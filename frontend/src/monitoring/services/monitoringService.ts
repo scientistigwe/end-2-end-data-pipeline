@@ -1,4 +1,4 @@
-// src/monitoring/services/monitoringService.ts
+// src/monitoring/pipeline/monitoringService.ts
 import { monitoringApi } from '../api/monitoringApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { dateUtils } from '@/common/utils/date/dateUtils';

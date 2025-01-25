@@ -18,7 +18,7 @@ class InvalidCloudProviderError(DataPipelineError):
 
 
 class CloudConnectionError(DataPipelineError):
-    """Raised when there's an error connecting to cloud services."""
+    """Raised when there's an error connecting to cloud pipeline."""
 
     def __init__(self, service: str = None, details: str = None):
         message = f"Failed to connect to {service}: {details}" if service else "Cloud connection error"
@@ -34,7 +34,7 @@ class DataEncodingError(DataPipelineError):
 
 
 class StreamingConnectionError(DataPipelineError):
-    """Raised when there's an error connecting to streaming services."""
+    """Raised when there's an error connecting to streaming pipeline."""
 
     def __init__(self, service: str = None, details: str = None):
         message = f"Failed to connect to streaming service {service}: {details}" if service else "Streaming connection error"

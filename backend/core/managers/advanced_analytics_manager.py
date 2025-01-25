@@ -1,7 +1,7 @@
-# backend/core/managers/analytics_manager.py
+# backend/core/sub_managers/analytics_manager.py
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 import uuid
 
@@ -11,340 +11,235 @@ from ..messaging.event_types import (
     ProcessingMessage,
     ProcessingStatus,
     ProcessingStage,
-    MessageMetadata
+    MessageMetadata,
+    AnalyticsContext
 )
-from ..control.cpm import ControlPointManager
-from ..staging.staging_manager import StagingManager
-from .base.base_manager import BaseManager, ManagerState
-from core.handlers.channel.advanced_analytics_handler import AdvancedAnalyticsHandler
+from ..managers.base.base_manager import BaseManager, ManagerState
+
+logger = logging.getLogger(__name__)
 
 
-class AdvancedAnalyticsManager(BaseManager):
+class AnalyticsManager(BaseManager):
     """
-    Manager for advanced analytics orchestration.
-    Coordinates between CPM, Handler, and Staging Area.
+    Analytics Manager that coordinates advanced analytics through message broker.
+    Maintains local state but communicates all actions through messages.
     """
 
-    def __init__(
-        self,
-        message_broker: MessageBroker,
-        control_point_manager: ControlPointManager,
-        staging_manager: StagingManager
-    ):
+    def __init__(self, message_broker: MessageBroker):
         super().__init__(
             message_broker=message_broker,
-            control_point_manager=control_point_manager,
             component_name="advanced_analytics_manager",
             domain_type="analytics"
         )
 
-        # Initialize components
-        self.staging_manager = staging_manager
-        self.analytics_handler = AdvancedAnalyticsHandler(
-            message_broker=message_broker,
-            staging_manager=staging_manager
-        )
+        # Local state tracking
+        self.active_processes: Dict[str, AnalyticsContext] = {}
 
-        # Setup handlers
+        # Register message handlers
         self._setup_message_handlers()
 
     def _setup_message_handlers(self) -> None:
-        """Setup handlers for analytics-related messages"""
-        self.register_message_handler(
-            MessageType.ANALYTICS_START,
-            self._handle_analytics_start
-        )
-        self.register_message_handler(
-            MessageType.ANALYTICS_UPDATE,
-            self._handle_analytics_update
-        )
-        self.register_message_handler(
-            MessageType.ANALYTICS_COMPLETE,
-            self._handle_analytics_complete
-        )
-        self.register_message_handler(
-            MessageType.ANALYTICS_ERROR,
-            self._handle_analytics_error
-        )
+        """Register handlers for all analytics-related messages"""
+        handlers = {
+            MessageType.ANALYTICS_START_REQUEST: self._handle_start_request,
+            MessageType.ANALYTICS_MODEL_SELECTED: self._handle_model_selected,
+            MessageType.ANALYTICS_PROCESSING: self._handle_processing_update,
+            MessageType.ANALYTICS_COMPLETE: self._handle_process_complete,
+            MessageType.ANALYTICS_ERROR: self._handle_analytics_error,
+            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
+            MessageType.STAGING_AREA_CREATED: self._handle_staging_created
+        }
+
+        for message_type, handler in handlers.items():
+            self.register_message_handler(message_type, handler)
 
     async def initiate_analytics_process(
-        self,
-        pipeline_id: str,
-        config: Dict[str, Any]
+            self,
+            pipeline_id: str,
+            config: Dict[str, Any]
     ) -> str:
-        """Start an advanced analytics process"""
-        try:
-            # Create control point with CPM
-            control_point_id = await self.control_point_manager.create_control_point(
-                stage=ProcessingStage.ADVANCED_ANALYTICS,
-                metadata={
-                    'pipeline_id': pipeline_id,
-                    'config': config
-                }
+        """
+        Initiate analytics process through message broker
+        Returns correlation ID for tracking
+        """
+        correlation_id = str(uuid.uuid4())
+
+        # Request control point creation
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.CONTROL_POINT_CREATE_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage': ProcessingStage.ADVANCED_ANALYTICS,
+                'config': config
+            },
+            metadata=MessageMetadata(
+                correlation_id=correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
             )
+        ))
 
-            # Create staging area for analytics results
-            staged_id = await self.staging_manager.create_staging_area(
-                source_type='analytics',
-                source_identifier=pipeline_id,
-                metadata={
-                    'control_point_id': control_point_id,
-                    'config': config
-                }
+        # Initialize local tracking
+        self.active_processes[pipeline_id] = AnalyticsContext(
+            pipeline_id=pipeline_id,
+            stage=ProcessingStage.ADVANCED_ANALYTICS,
+            status=ProcessingStatus.PENDING,
+            model_type=config.get('model_type', 'default_model'),
+            parameters=config.get('parameters', {}),
+            features=config.get('features', [])
+        )
+
+        return correlation_id
+
+    async def _handle_control_point_created(self, message: ProcessingMessage) -> None:
+        """Handle control point creation confirmation"""
+        pipeline_id = message.content['pipeline_id']
+        control_point_id = message.content['control_point_id']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.control_point_id = control_point_id
+
+        # Request staging area creation
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_CREATE_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'control_point_id': control_point_id,
+                'source_type': 'analytics'
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="staging_manager"
             )
+        ))
 
-            # Send start message to handler
-            start_message = ProcessingMessage(
-                message_type=MessageType.ANALYTICS_START,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'staged_id': staged_id,
-                    'config': config
-                },
-                metadata=MessageMetadata(
-                    source_component=self.component_name,
-                    target_component="advanced_analytics_handler",
-                    correlation_id=str(uuid.uuid4())
-                )
-            )
-            await self.message_broker.publish(start_message)
+    async def _handle_staging_created(self, message: ProcessingMessage) -> None:
+        """Handle staging area creation confirmation"""
+        pipeline_id = message.content['pipeline_id']
+        staged_id = message.content['staged_id']
 
-            # Update control point status
-            await self.control_point_manager.update_control_point(
-                control_point_id,
-                status=ProcessingStatus.IN_PROGRESS,
-                metadata={
-                    'staged_id': staged_id,
-                    'started_at': datetime.now().isoformat()
-                }
-            )
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
 
-            return staged_id
+        context.staging_reference = staged_id
 
-        except Exception as e:
-            self.logger.error(f"Failed to initiate analytics process: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-            raise
-
-    async def _handle_analytics_start(self, message: ProcessingMessage) -> None:
-        """Handle start of analytics process"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            staged_id = message.content.get('staged_id')
-
-            # Update state tracking
-            self.state = ManagerState.PROCESSING
-            self._active_processes[pipeline_id] = {
+        # Start analytics processing
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.ANALYTICS_START,
+            content={
+                'pipeline_id': pipeline_id,
                 'staged_id': staged_id,
-                'start_time': datetime.now(),
-                'status': ProcessingStatus.IN_PROGRESS
-            }
-
-        except Exception as e:
-            await self._handle_error(pipeline_id, e)
-
-    async def _handle_analytics_update(self, message: ProcessingMessage) -> None:
-        """Handle analytics process updates"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            phase = message.content.get('phase')
-            staged_id = message.content.get('staged_id')
-            summary = message.content.get('summary', {})
-
-            # Update CPM
-            control_point = await self.control_point_manager.get_control_point(
-                self._active_processes[pipeline_id].get('control_point_id')
+                'config': context.parameters
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="analytics_handler"
             )
-            if control_point:
-                await self.control_point_manager.update_control_point(
-                    control_point.id,
-                    metadata={
-                        'current_phase': phase,
-                        'phase_summary': summary,
-                        'staged_id': staged_id,
-                        'updated_at': datetime.now().isoformat()
-                    }
-                )
+        ))
 
-            # Update staging area metadata
-            await self.staging_manager.update_stage_status(
-                staged_id=staged_id,
-                stage=phase,
-                status=ProcessingStatus.IN_PROGRESS.value,
-                metadata=summary
+    async def _handle_model_selected(self, message: ProcessingMessage) -> None:
+        """Handle model selection completion"""
+        pipeline_id = message.content['pipeline_id']
+        model_info = message.content['model_info']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.training_config.update(model_info)
+        context.status = ProcessingStatus.IN_PROGRESS
+        context.updated_at = datetime.now()
+
+    async def _handle_processing_update(self, message: ProcessingMessage) -> None:
+        """Handle analytics processing updates"""
+        pipeline_id = message.content['pipeline_id']
+        metrics = message.content.get('metrics', {})
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.performance_metrics.update(metrics)
+        context.updated_at = datetime.now()
+
+    async def _handle_process_complete(self, message: ProcessingMessage) -> None:
+        """Handle analytics process completion"""
+        pipeline_id = message.content['pipeline_id']
+        results = message.content['results']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.status = ProcessingStatus.COMPLETED
+        context.updated_at = datetime.now()
+
+        # Notify completion
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGE_COMPLETE,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage': ProcessingStage.ADVANCED_ANALYTICS,
+                'results': results
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
             )
+        ))
 
-        except Exception as e:
-            await self._handle_error(pipeline_id, e)
-
-    async def _handle_analytics_complete(self, message: ProcessingMessage) -> None:
-        """Handle completion of analytics process"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            staged_id = message.content.get('staged_id')
-            summary = message.content.get('summary', {})
-
-            # Update CPM
-            control_point = await self.control_point_manager.get_control_point(
-                self._active_processes[pipeline_id].get('control_point_id')
-            )
-            if control_point:
-                await self.control_point_manager.update_control_point(
-                    control_point.id,
-                    status=ProcessingStatus.COMPLETED,
-                    metadata={
-                        'completion_summary': summary,
-                        'completed_at': datetime.now().isoformat()
-                    }
-                )
-
-            # Update staging area status
-            await self.staging_manager.update_stage_status(
-                staged_id=staged_id,
-                stage=ProcessingStage.ADVANCED_ANALYTICS.value,
-                status=ProcessingStatus.COMPLETED.value,
-                metadata={
-                    'completion_summary': summary,
-                    'completed_at': datetime.now().isoformat()
-                }
-            )
-
-            # Notify about completion
-            complete_message = ProcessingMessage(
-                message_type=MessageType.STAGE_COMPLETE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.ADVANCED_ANALYTICS.value,
-                    'staged_id': staged_id,
-                    'summary': summary
-                }
-            )
-            await self.message_broker.publish(complete_message)
-
-            # Cleanup process tracking
-            if pipeline_id in self._active_processes:
-                del self._active_processes[pipeline_id]
-
-            self.state = ManagerState.ACTIVE
-
-        except Exception as e:
-            await self._handle_error(pipeline_id, e)
+        # Cleanup
+        del self.active_processes[pipeline_id]
 
     async def _handle_analytics_error(self, message: ProcessingMessage) -> None:
         """Handle analytics process errors"""
-        try:
-            pipeline_id = message.content.get('pipeline_id')
-            error = message.content.get('error')
-            phase = message.content.get('phase')
+        pipeline_id = message.content['pipeline_id']
+        error = message.content['error']
 
-            # Update CPM
-            control_point = await self.control_point_manager.get_control_point(
-                self._active_processes[pipeline_id].get('control_point_id')
-            )
-            if control_point:
-                await self.control_point_manager.update_control_point(
-                    control_point.id,
-                    status=ProcessingStatus.FAILED,
-                    metadata={
-                        'error': error,
-                        'failed_phase': phase,
-                        'failed_at': datetime.now().isoformat()
-                    }
-                )
+        context = self.active_processes.get(pipeline_id)
+        if context:
+            context.status = ProcessingStatus.FAILED
+            context.error = error
 
-            # Update staging area status
-            staged_id = self._active_processes[pipeline_id].get('staged_id')
-            if staged_id:
-                await self.staging_manager.update_stage_status(
-                    staged_id=staged_id,
-                    stage=phase,
-                    status=ProcessingStatus.FAILED.value,
-                    metadata={
-                        'error': error,
-                        'failed_at': datetime.now().isoformat()
-                    }
-                )
-
-            # Notify about failure
-            error_message = ProcessingMessage(
+            # Notify error
+            await self.message_broker.publish(ProcessingMessage(
                 message_type=MessageType.STAGE_ERROR,
                 content={
                     'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.ADVANCED_ANALYTICS.value,
-                    'error': error,
-                    'phase': phase
-                }
-            )
-            await self.message_broker.publish(error_message)
+                    'stage': ProcessingStage.ADVANCED_ANALYTICS,
+                    'error': error
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
 
-            # Cleanup process tracking
-            if pipeline_id in self._active_processes:
-                del self._active_processes[pipeline_id]
-
-            self.state = ManagerState.ERROR
-
-        except Exception as e:
-            self.logger.error(f"Error handling failed: {str(e)}")
-
-    async def get_analytics_status(
-        self,
-        pipeline_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get current status of analytics process"""
-        try:
-            process_info = self._active_processes.get(pipeline_id)
-            if not process_info:
-                return None
-
-            # Get status from handler
-            handler_status = self.analytics_handler.get_status()
-
-            # Get staging status
-            staging_status = await self.staging_manager.get_stage_status(
-                process_info['staged_id']
-            )
-
-            # Get control point status
-            control_point = await self.control_point_manager.get_control_point(
-                process_info['control_point_id']
-            )
-
-            return {
-                'pipeline_id': pipeline_id,
-                'staged_id': process_info['staged_id'],
-                'start_time': process_info['start_time'].isoformat(),
-                'status': process_info['status'].value,
-                'handler_status': handler_status,
-                'staging_status': staging_status,
-                'control_point_status': control_point.status if control_point else None
-            }
-
-        except Exception as e:
-            self.logger.error(f"Failed to get analytics status: {str(e)}")
-            return None
+            # Cleanup
+            del self.active_processes[pipeline_id]
 
     async def cleanup(self) -> None:
-        """Cleanup manager resources"""
+        """Clean up manager resources"""
         try:
-            # Cleanup handler
-            await self.analytics_handler.cleanup()
-
-            # Cleanup active processes
-            for pipeline_id in list(self._active_processes.keys()):
-                await self._handle_analytics_error(
-                    ProcessingMessage(
-                        message_type=MessageType.ANALYTICS_ERROR,
-                        content={
-                            'pipeline_id': pipeline_id,
-                            'error': 'Manager cleanup initiated',
-                            'phase': 'cleanup'
-                        }
-                    )
-                )
-
-            # Call parent cleanup
-            await super().cleanup()
+            # Notify cleanup for all active processes
+            for pipeline_id in list(self.active_processes.keys()):
+                await self.message_broker.publish(ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_CLEANUP,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'reason': 'Manager cleanup initiated'
+                    }
+                ))
+                del self.active_processes[pipeline_id]
 
         except Exception as e:
-            self.logger.error(f"Cleanup failed: {str(e)}")
+            logger.error(f"Cleanup failed: {str(e)}")
             raise

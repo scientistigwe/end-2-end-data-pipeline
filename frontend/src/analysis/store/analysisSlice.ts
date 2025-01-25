@@ -1,10 +1,10 @@
-// src/analysis/store/analysisSlice.ts
+// src/insight/store/analysisSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type {
   AnalysisResult,
   QualityReport,
   InsightReport
-} from '../types/analysis';
+} from '../types/insight';
 
 export interface AnalysisState {
   analyses: Record<string, AnalysisResult>;

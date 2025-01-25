@@ -1,4 +1,4 @@
-# backend\backend\db\types\data_source.py
+# backend\backend\db\types\base.py
 from sqlalchemy import (
     Column, String, DateTime, Enum, ForeignKey, Text, Boolean, Integer, Index
 )
@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates, configure_mappers
 from .base import BaseModel
 
-# backend/db/types/data_source.py
+# backend/db/types/base.py
 
 from sqlalchemy import (
     Column, String, DateTime, Enum, ForeignKey, Text, Boolean, Integer, Index

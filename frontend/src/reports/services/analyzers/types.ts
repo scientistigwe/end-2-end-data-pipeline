@@ -1,4 +1,4 @@
-// src/report/services/analyzers/types.ts
+// src/report/pipeline/analyzers/types.ts
 import type { Report, ReportMetric, ReportMetadata } from '../../types/models';
 
 export interface MetricAnalyzer {

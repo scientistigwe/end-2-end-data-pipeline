@@ -5,14 +5,14 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from werkzeug.datastructures import FileStorage
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.control.cpm import ControlPointManager
-from backend.core.messaging.types import (
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
+from core.control.cpm import ControlPointManager
+from core.messaging.event_types import (
     MessageType, ProcessingStage, ModuleIdentifier, ComponentType
 )
 from .file_handler import FileHandler
-from .file_validator import FileValidator
+from .file_validator import FileValidator, FileValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +24,13 @@ class FileService:
             self,
             message_broker: MessageBroker,
             staging_manager: StagingManager,
-            cpm: ControlPointManager
+            cpm: ControlPointManager,
+            config: Optional[FileValidationConfig]
     ):
         self.message_broker = message_broker
         self.staging_manager = staging_manager
         self.cpm = cpm
+        self.config = config or FileValidationConfig()
 
         # Initialize components
         self.handler = FileHandler(staging_manager, message_broker)

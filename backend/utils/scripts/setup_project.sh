@@ -4,9 +4,9 @@
 #mkdir -p end-2-end-data-pipeline
 #
 ## Create main package directories
-#mkdir -p data_pipeline/{source,validation,processing,analysis,modeling,deployment}
+#mkdir -p data_pipeline/{source,validation,processing,insight,modeling,deployment}
 #mkdir -p api/{routes,middleware}
-#mkdir -p frontend/src/{components,services,utils}
+#mkdir -p frontend/src/{components,pipeline,utils}
 #mkdir -p frontend/src/components/{DataIngestion,DataVisualization,ModelTraining,Monitoring}
 #mkdir -p tests/{unit,integration}
 #mkdir -p tests/unit/{test_sources,test_validation,test_processing}
@@ -21,7 +21,7 @@
 #touch data_pipeline/source/__init__.py
 #touch data_pipeline/validation/__init__.py
 #touch data_pipeline/processing/__init__.py
-#touch data_pipeline/analysis/__init__.py
+#touch data_pipeline/insight/__init__.py
 #touch data_pipeline/modeling/__init__.py
 #touch data_pipeline/deployment/__init__.py
 #touch api/__init__.py
@@ -37,8 +37,8 @@
 ## Create processing module files
 #touch data_pipeline/processing/{cleaner,transformer,feature_engineering,preprocessor}.py
 #
-## Create analysis module files
-#touch data_pipeline/analysis/{exploratory,statistical,reporting}.py
+## Create insight module files
+#touch data_pipeline/insight/{exploratory,statistical,reporting}.py
 #
 ## Create modeling module files
 #touch data_pipeline/modeling/{model_factory,trainer,evaluator,predictor}.py
@@ -47,7 +47,7 @@
 #touch data_pipeline/deployment/{model_serving,monitoring,scaling}.py
 #
 ## Create API files
-#touch api/app.py
+#touch api/flask_app.py
 #touch api/routes/{ingestion,processing,prediction}.py
 #touch api/middleware/{auth,validation}.py
 #

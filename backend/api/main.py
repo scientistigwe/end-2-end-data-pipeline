@@ -23,7 +23,7 @@ def configure_logging() -> logging.Logger:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             # File handler for persistent logging
-            logging.FileHandler(log_dir / 'app.log'),
+            logging.FileHandler(log_dir / 'flask_app.log'),
             # Stream handler for console output
             logging.StreamHandler()
         ]

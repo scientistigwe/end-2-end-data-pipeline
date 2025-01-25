@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 
 async def transform_data(data: pd.DataFrame) -> pd.DataFrame:
-    """Transform data for analysis"""
+    """Transform data for insight"""
     try:
         # Apply standard transformations
         transformed_data = data.copy()

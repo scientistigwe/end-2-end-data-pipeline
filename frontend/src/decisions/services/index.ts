@@ -1,2 +1,2 @@
-// src/decisions/services/index.ts
+// src/decisions/pipeline/index.ts
 export * from './decisionService';

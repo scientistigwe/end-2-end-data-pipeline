@@ -2,9 +2,8 @@
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
-from dataclasses import dataclass, field
 
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
@@ -12,428 +11,196 @@ from ...messaging.event_types import (
     ProcessingStage,
     ProcessingStatus,
     ProcessingMessage,
-    MessageMetadata
-)
-from ...staging.staging_manager import StagingManager
-from ..base.base_handler import BaseChannelHandler, HandlerState, ProcessingTask
-from data.processing.advanced_analytics.processors.analytics_processor import (
-    AnalyticsProcessor,
-    AnalyticsPhase,
+    MessageMetadata,
+    ModuleIdentifier,
+    ComponentType,
     AnalyticsContext
 )
+from ..base.base_handler import BaseChannelHandler
 
 
 class AdvancedAnalyticsHandler(BaseChannelHandler):
-    """
-    Handler for advanced analytics operations.
-    Coordinates between manager, processor, and staging area.
-    """
-
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            staging_manager: StagingManager
-    ):
-        super().__init__(
-            message_broker=message_broker,
-            handler_name="advanced_analytics_handler",
-            domain_type="analytics"
+    def __init__(self, message_broker: MessageBroker):
+        module_identifier = ModuleIdentifier(
+            component_name="advanced_analytics_handler",
+            component_type=ComponentType.ANALYTICS_HANDLER,
+            department="analytics",
+            role="handler"
         )
+        super().__init__(message_broker=message_broker, module_identifier=module_identifier)
 
-        # Initialize components
-        self.staging_manager = staging_manager
-        self.analytics_processor = AnalyticsProcessor(
-            message_broker=message_broker,
-            staging_manager=staging_manager
-        )
+        # State tracking
+        self._active_contexts: Dict[str, AnalyticsContext] = {}
+        self._task_timeouts: Dict[str, datetime] = {}
+        self._recovery_attempts: Dict[str, int] = {}
 
-        # Setup message handlers
-        self._setup_message_handlers()
+        # Start monitoring tasks
+        asyncio.create_task(self._monitor_tasks())
 
     def _setup_message_handlers(self) -> None:
-        """Setup handlers for analytics-specific messages"""
-        self.register_message_handler(
-            MessageType.ANALYTICS_START,
-            self._handle_analytics_start
-        )
-        self.register_message_handler(
-            MessageType.ANALYTICS_UPDATE,
-            self._handle_analytics_update
-        )
-        self.register_message_handler(
-            MessageType.ANALYTICS_REFINE,
-            self._handle_analytics_refine
-        )
-        self.register_message_handler(
-            MessageType.MODEL_PERFORMANCE_UPDATE,
-            self._handle_model_performance
-        )
+        handlers = {
+            # Process flow messages
+            MessageType.ANALYTICS_PROCESS_REQUEST: self._handle_process_request,
+            MessageType.ANALYTICS_PROCESS_COMPLETE: self._handle_process_complete,
 
-    async def _handle_analytics_start(self, message: ProcessingMessage) -> None:
-        """Handle start of analytics process"""
-        pipeline_id = message.content.get('pipeline_id')
-        staged_id = message.content.get('staged_id')
-        config = message.content.get('config', {})
+            # Stage control messages
+            MessageType.ANALYTICS_STAGE_START: self._handle_stage_start,
+            MessageType.ANALYTICS_STAGE_COMPLETE: self._handle_stage_complete,
+            MessageType.ANALYTICS_STAGE_FAILED: self._handle_stage_failed,
 
+            # Control messages
+            MessageType.ANALYTICS_PAUSE_REQUEST: self._handle_pause_request,
+            MessageType.ANALYTICS_RESUME_REQUEST: self._handle_resume_request,
+            MessageType.ANALYTICS_CANCEL_REQUEST: self._handle_cancel_request,
+
+            # Status messages
+            MessageType.ANALYTICS_STATUS_REQUEST: self._handle_status_request,
+            MessageType.ANALYTICS_STATUS_UPDATE: self._handle_status_update,
+
+            # Error handling
+            MessageType.ANALYTICS_ERROR: self._handle_error,
+            MessageType.ANALYTICS_RECOVERY_REQUEST: self._handle_recovery_request
+        }
+
+        for message_type, handler in handlers.items():
+            self.register_message_handler(message_type, handler)
+
+    async def _handle_process_request(self, message: ProcessingMessage) -> None:
+        """Handle new analytics process request"""
         try:
-            # Create processing task
-            task = ProcessingTask(
-                task_id=pipeline_id,
-                message=message,
-                processor_context={
-                    'staged_id': staged_id,
-                    'config': config
-                }
-            )
-            self._active_tasks[task.task_id] = task
-
-            # Run data preparation phase
-            await self._run_data_preparation(
+            pipeline_id = message.content['pipeline_id']
+            context = AnalyticsContext(
                 pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
+                stage=ProcessingStage.ADVANCED_ANALYTICS,
+                status=ProcessingStatus.IN_PROGRESS,
+                metadata=message.content
             )
 
-            # Notify about process start
-            await self._notify_process_status(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.DATA_PREPARATION,
-                status="started",
-                metadata={
-                    'staged_id': staged_id,
-                    'config_summary': self._get_config_summary(config)
-                }
-            )
+            # Initialize tracking
+            self._active_contexts[pipeline_id] = context
+            self._task_timeouts[pipeline_id] = datetime.now()
+
+            # Request first stage
+            await self._request_next_stage(pipeline_id)
 
         except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase="initialization",
-                error=str(e)
-            )
+            await self._handle_error(message, str(e))
 
-    async def _run_data_preparation(
-            self,
-            pipeline_id: str,
-            staged_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Execute data preparation phase"""
-        try:
-            results = await self.analytics_processor.prepare_data(
-                pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
-            )
+    async def _monitor_tasks(self) -> None:
+        """Monitor active tasks for timeouts"""
+        while True:
+            try:
+                await self._check_timeouts()
+                await asyncio.sleep(self.TIMEOUT_CHECK_INTERVAL)
+            except Exception as e:
+                self.logger.error(f"Task monitoring error: {str(e)}")
 
-            # Store phase results in staging
-            prep_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'phase': AnalyticsPhase.DATA_PREPARATION.value,
-                    'pipeline_id': pipeline_id
-                }
-            )
+    async def _check_timeouts(self) -> None:
+        """Check for timed out tasks"""
+        current_time = datetime.now()
+        for pipeline_id, start_time in self._task_timeouts.items():
+            if (current_time - start_time) > self.TASK_TIMEOUT:
+                await self._handle_timeout(pipeline_id)
 
-            # Proceed to feature engineering
-            await self._run_feature_engineering(
-                pipeline_id=pipeline_id,
-                staged_id=prep_staged_id,
-                config=config
-            )
-
-        except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.DATA_PREPARATION.value,
-                error=str(e)
-            )
-
-    async def _run_feature_engineering(
-            self,
-            pipeline_id: str,
-            staged_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Execute feature engineering phase"""
-        try:
-            results = await self.analytics_processor.engineer_features(
-                pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
-            )
-
-            # Store phase results
-            feature_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'phase': AnalyticsPhase.FEATURE_ENGINEERING.value,
-                    'pipeline_id': pipeline_id
-                }
-            )
-
-            # Notify about phase completion
-            await self._notify_phase_completion(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.FEATURE_ENGINEERING,
-                results=results,
-                staged_id=feature_staged_id
-            )
-
-            # Proceed to model training
-            await self._run_model_training(
-                pipeline_id=pipeline_id,
-                staged_id=feature_staged_id,
-                config=config
-            )
-
-        except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.FEATURE_ENGINEERING.value,
-                error=str(e)
-            )
-
-    async def _run_model_training(
-            self,
-            pipeline_id: str,
-            staged_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Execute model training phase"""
-        try:
-            results = await self.analytics_processor.train_model(
-                pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
-            )
-
-            # Store phase results
-            model_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'phase': AnalyticsPhase.MODEL_TRAINING.value,
-                    'pipeline_id': pipeline_id
-                }
-            )
-
-            # Notify about phase completion
-            await self._notify_phase_completion(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.MODEL_TRAINING,
-                results=results,
-                staged_id=model_staged_id
-            )
-
-            # Proceed to model evaluation
-            await self._run_model_evaluation(
-                pipeline_id=pipeline_id,
-                staged_id=model_staged_id,
-                config=config
-            )
-
-        except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.MODEL_TRAINING.value,
-                error=str(e)
-            )
-
-    async def _run_model_evaluation(
-            self,
-            pipeline_id: str,
-            staged_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Execute model evaluation phase"""
-        try:
-            results = await self.analytics_processor.evaluate_model(
-                pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
-            )
-
-            # Store phase results
-            eval_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'phase': AnalyticsPhase.MODEL_EVALUATION.value,
-                    'pipeline_id': pipeline_id
-                }
-            )
-
-            # Notify about phase completion
-            await self._notify_phase_completion(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.MODEL_EVALUATION,
-                results=results,
-                staged_id=eval_staged_id
-            )
-
-            # Proceed to visualization
-            await self._run_visualization(
-                pipeline_id=pipeline_id,
-                staged_id=eval_staged_id,
-                config=config
-            )
-
-        except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.MODEL_EVALUATION.value,
-                error=str(e)
-            )
-
-    async def _run_visualization(
-            self,
-            pipeline_id: str,
-            staged_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Execute visualization generation phase"""
-        try:
-            results = await self.analytics_processor.generate_visualizations(
-                pipeline_id=pipeline_id,
-                staged_id=staged_id,
-                config=config
-            )
-
-            # Store phase results
-            viz_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'phase': AnalyticsPhase.VISUALIZATION.value,
-                    'pipeline_id': pipeline_id
-                }
-            )
-
-            # Notify about process completion
-            await self._notify_process_completion(
-                pipeline_id=pipeline_id,
-                final_results=results,
-                final_staged_id=viz_staged_id
-            )
-
-        except Exception as e:
-            await self._handle_analytics_error(
-                pipeline_id=pipeline_id,
-                phase=AnalyticsPhase.VISUALIZATION.value,
-                error=str(e)
-            )
-
-    async def _notify_phase_completion(
-            self,
-            pipeline_id: str,
-            phase: AnalyticsPhase,
-            results: Dict[str, Any],
-            staged_id: str
-    ) -> None:
-        """Notify about phase completion"""
-        message = ProcessingMessage(
-            message_type=MessageType.ANALYTICS_UPDATE,
-            content={
-                'pipeline_id': pipeline_id,
-                'phase': phase.value,
-                'staged_id': staged_id,
-                'summary': self._get_phase_summary(results)
-            },
-            metadata=MessageMetadata(
-                source_component=self.handler_name,
-                target_component="advanced_analytics_manager"
-            )
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_process_completion(
-            self,
-            pipeline_id: str,
-            final_results: Dict[str, Any],
-            final_staged_id: str
-    ) -> None:
-        """Notify about process completion"""
-        message = ProcessingMessage(
-            message_type=MessageType.ANALYTICS_COMPLETE,
-            content={
-                'pipeline_id': pipeline_id,
-                'staged_id': final_staged_id,
-                'summary': self._get_process_summary(final_results)
-            },
-            metadata=MessageMetadata(
-                source_component=self.handler_name,
-                target_component="advanced_analytics_manager"
-            )
-        )
-        await self.message_broker.publish(message)
-
-    async def _handle_analytics_error(
-            self,
-            pipeline_id: str,
-            phase: str,
-            error: str
-    ) -> None:
-        """Handle analytics processing errors"""
-        try:
-            # Create error message
-            error_message = ProcessingMessage(
-                message_type=MessageType.ANALYTICS_ERROR,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'phase': phase,
-                    'error': error,
-                    'timestamp': datetime.now().isoformat()
-                },
-                metadata=MessageMetadata(
-                    source_component=self.handler_name,
-                    target_component="advanced_analytics_manager"
+    async def _handle_timeout(self, pipeline_id: str) -> None:
+        """Handle task timeout"""
+        context = self._active_contexts.get(pipeline_id)
+        if context:
+            # Attempt recovery if under max attempts
+            if self._recovery_attempts.get(pipeline_id, 0) < self.MAX_RECOVERY_ATTEMPTS:
+                await self._attempt_recovery(pipeline_id, "timeout")
+            else:
+                await self._fail_process(
+                    pipeline_id,
+                    "Maximum recovery attempts exceeded"
                 )
+
+    async def _attempt_recovery(self, pipeline_id: str, reason: str) -> None:
+        """Attempt to recover failed process"""
+        context = self._active_contexts.get(pipeline_id)
+        if not context:
+            return
+
+        self._recovery_attempts[pipeline_id] = \
+            self._recovery_attempts.get(pipeline_id, 0) + 1
+
+        # Determine recovery strategy
+        strategy = self._get_recovery_strategy(context.stage, reason)
+
+        # Execute recovery
+        await self._publish_message(
+            MessageType.ANALYTICS_RECOVERY_REQUEST,
+            {
+                'pipeline_id': pipeline_id,
+                'stage': context.stage.value,
+                'strategy': strategy,
+                'attempt': self._recovery_attempts[pipeline_id]
+            },
+            target_type=ComponentType.ANALYTICS_PROCESSOR
+        )
+
+    def _get_recovery_strategy(
+            self,
+            stage: ProcessingStage,
+            reason: str
+    ) -> Dict[str, Any]:
+        """Determine recovery strategy based on stage and failure reason"""
+        strategies = {
+            (ProcessingStage.DATA_PREPARATION, "timeout"): {
+                "action": "retry",
+                "chunk_size": "reduced"
+            },
+            (ProcessingStage.MODEL_TRAINING, "timeout"): {
+                "action": "simplify",
+                "complexity": "reduced"
+            },
+            (ProcessingStage.MODEL_EVALUATION, "resource_error"): {
+                "action": "redistribute",
+                "batch_size": "reduced"
+            }
+        }
+        return strategies.get(
+            (stage, reason),
+            {"action": "retry", "backoff": "exponential"}
+        )
+
+    async def _handle_stage_failed(self, message: ProcessingMessage) -> None:
+        """Handle stage failure"""
+        pipeline_id = message.content['pipeline_id']
+        error = message.content.get('error', 'Unknown error')
+
+        # Attempt recovery if under max attempts
+        if self._recovery_attempts.get(pipeline_id, 0) < self.MAX_RECOVERY_ATTEMPTS:
+            await self._attempt_recovery(pipeline_id, error)
+        else:
+            await self._fail_process(pipeline_id, error)
+
+    async def _fail_process(self, pipeline_id: str, reason: str) -> None:
+        """Handle final process failure"""
+        context = self._active_contexts.get(pipeline_id)
+        if context:
+            context.status = ProcessingStatus.FAILED
+            context.metadata['failure_reason'] = reason
+
+            # Notify manager
+            await self._publish_message(
+                MessageType.ANALYTICS_ERROR,
+                {
+                    'pipeline_id': pipeline_id,
+                    'error': reason,
+                    'context': context.to_dict()
+                },
+                target_type=ComponentType.ANALYTICS_MANAGER
             )
 
-            # Publish error
-            await self.message_broker.publish(error_message)
+            # Cleanup
+            await self._cleanup_process(pipeline_id)
 
-            # Cleanup task
-            if pipeline_id in self._active_tasks:
-                del self._active_tasks[pipeline_id]
-
-        except Exception as e:
-            self.logger.error(f"Error handling failed: {str(e)}")
-
-    def _get_config_summary(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Get summary of configuration settings"""
-        return {
-            'data_config': list(config.get('data_config', {}).keys()),
-            'model_config': list(config.get('model_config', {}).keys())
-        }
-
-    def _get_phase_summary(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Get summary of phase results"""
-        return {
-            'result_types': list(results.keys()),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    def _get_process_summary(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Get summary of complete process results"""
-        return {
-            'charts_generated': len(results.get('charts', [])),
-            'plots_generated': len(results.get('plots', [])),
-            'completion_time': datetime.now().isoformat()
-        }
-
-    async def cleanup(self) -> None:
-        """Cleanup handler resources"""
-        try:
-            # Cleanup processor
-            await self.analytics_processor.cleanup()
-
-            # Cleanup base handler
-            await super().cleanup()
-
-        except Exception as e:
-            self.logger.error(f"Cleanup failed: {str(e)}")
-            raise
+    async def _cleanup_process(self, pipeline_id: str) -> None:
+        """Clean up process resources"""
+        if pipeline_id in self._active_contexts:
+            del self._active_contexts[pipeline_id]
+        if pipeline_id in self._task_timeouts:
+            del self._task_timeouts[pipeline_id]
+        if pipeline_id in self._recovery_attempts:
+            del self._recovery_attempts[pipeline_id]

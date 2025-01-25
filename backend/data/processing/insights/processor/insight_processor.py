@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 class InsightProcessor:
     """
-    Processor for insight generation and analysis.
+    Processor for insight generation and insight.
     Coordinates between different insight modules and manages results.
     """
 
@@ -201,7 +201,7 @@ class InsightProcessor:
             return context
 
         except Exception as e:
-            self.logger.error(f"Context analysis failed: {str(e)}")
+            self.logger.error(f"Context insight failed: {str(e)}")
             raise
 
     async def generate_insights(

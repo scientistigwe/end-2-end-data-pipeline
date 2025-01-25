@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 
 import aiohttp
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.messaging.types import (
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
+from core.messaging.event_types import (
     MessageType, ProcessingMessage, ModuleIdentifier, ComponentType
 )
 from .api_validator import APIValidator, APIValidationConfig

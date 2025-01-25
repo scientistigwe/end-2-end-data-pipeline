@@ -9,7 +9,7 @@ import asyncio
 from collections import defaultdict
 import psutil
 import json
-from .collectors import MetricsCollector
+from .collectors.metric_collector import MetricsCollector
 
 
 logger = logging.getLogger(__name__)

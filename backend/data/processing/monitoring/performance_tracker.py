@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from datetime import datetime
 import threading
-from backend.core.messaging.types import (
+from core.messaging.event_types import (
     ProcessingMessage,
     MessageType,
     ProcessingStatus,

@@ -75,7 +75,7 @@ async def get_quality_outputs(
         pipeline_id: str,
         db: AsyncSession = Depends(get_db)
 ):
-    """Get quality analysis outputs"""
+    """Get quality insight outputs"""
     query = select(StagedQualityOutput).where(
         StagedQualityOutput.pipeline_id == pipeline_id
     )
@@ -100,7 +100,7 @@ async def get_insight_outputs(
         pipeline_id: str,
         db: AsyncSession = Depends(get_db)
 ):
-    """Get insight analysis outputs"""
+    """Get insight insight outputs"""
     query = select(StagedInsightOutput).where(
         StagedInsightOutput.pipeline_id == pipeline_id
     )

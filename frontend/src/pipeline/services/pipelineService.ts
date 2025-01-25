@@ -1,4 +1,4 @@
-// src/pipeline/services/pipelineService.ts
+// src/pipeline/pipeline/pipelineService.ts
 import type {
     Pipeline,
     PipelineConfig,

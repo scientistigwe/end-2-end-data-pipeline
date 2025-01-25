@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from ..messaging.broker import MessageBroker
+from ..staging.staging_manager import StagingManager
 from ..messaging.event_types import (
     MessageType,
     ProcessingStage,
@@ -29,10 +30,9 @@ from ..registry.component_registry import ComponentRegistry
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ControlPoint:
-    """Control point representing a decision/transition point in processing"""
+    """Represents a decision/transition point in processing"""
     stage: ProcessingStage
     department: str
     assigned_module: ModuleIdentifier
@@ -49,14 +49,36 @@ class ControlPoint:
     parent_control_point: Optional[str] = None
     timeout_minutes: int = 60
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert control point to dictionary"""
+        return {
+            'id': self.id,
+            'stage': self.stage.value,
+            'department': self.department,
+            'status': self.status.value,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'metadata': self.metadata,
+            'decisions': self.decisions,
+            'requires_decision': self.requires_decision,
+            'staging_reference': self.staging_reference,
+            'pipeline_id': self.pipeline_id,
+            'parent_control_point': self.parent_control_point
+        }
 
 class ControlPointManager:
-    """Enhanced Control Point Manager with complete processing chains"""
+    """Control Point Manager orchestrates the processing flow"""
 
-    def __init__(self, message_broker: MessageBroker):
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            staging_manager: StagingManager
+    ):
         # Core components
         self.message_broker = message_broker
         self.component_registry = ComponentRegistry()
+        self.staging_manager = staging_manager
+
 
         # State management
         self.active_control_points: Dict[str, ControlPoint] = {}
@@ -64,29 +86,71 @@ class ControlPointManager:
         self.department_chains: Dict[str, Dict[str, ModuleIdentifier]] = {}
         self.active_pipelines: Dict[str, PipelineContext] = {}
 
-        # Process flow configuration
-        self.stage_transitions = self._setup_stage_transitions()
-        self.department_sequence = self._setup_department_sequence()
-
         # Module identification
         self.module_identifier = ModuleIdentifier(
             component_name="control_point_manager",
-            component_type=ComponentType.ORCHESTRATOR,
+            component_type=ComponentType.MANAGER,
             department="control",
             role="manager"
         )
 
+        # Process flow configuration
+        self.stage_transitions = self._setup_stage_transitions()
+        self.department_sequence = self._setup_department_sequence()
+
         # Initialize
         self._initialize()
 
+    def initialize(self):
+        """Public method to trigger initialization"""
+        return self._initialize()  # Call the private method
+
+    async def _initialize(self):
+        """Initialize CPM with all processing chains"""
+        try:
+            # Setup message handlers with event loop management
+            loop = asyncio.get_event_loop()
+            if not loop.is_running():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Message patterns to subscribe to
+            # Register message patterns
+            await self.message_broker.subscribe(
+                module_identifier=self.module_identifier,
+                message_patterns = [
+                    "control.*",
+                    "*.complete",
+                    "*.error",
+                    "decision.required",
+                    "quality.issues.detected",
+                    "insight.generated",
+                    "recommendation.ready",
+                    "staging.data.stored",
+                    "staging.output.stored",
+                    "staging.access.granted",
+                    "staging.access.denied"
+                ],
+                callback=self._handle_control_message
+            )
+
+            # Perform other initialization tasks
+            self._register_department_chains()
+
+            logger.info("Control Point Manager initialized successfully")
+
+        except Exception as e:
+            logger.error(f"CPM initialization failed: {str(e)}")
+            raise
+
     def _setup_stage_transitions(self) -> Dict[ProcessingStage, List[ProcessingStage]]:
-        """Define the possible stage transitions"""
+        """Define stage transitions"""
         return {
             ProcessingStage.RECEPTION: [ProcessingStage.VALIDATION],
             ProcessingStage.VALIDATION: [ProcessingStage.QUALITY_CHECK],
             ProcessingStage.QUALITY_CHECK: [
                 ProcessingStage.CONTEXT_ANALYSIS,
-                ProcessingStage.USER_REVIEW  # If quality issues found
+                ProcessingStage.USER_REVIEW
             ],
             ProcessingStage.CONTEXT_ANALYSIS: [
                 ProcessingStage.INSIGHT_GENERATION,
@@ -113,9 +177,9 @@ class ControlPointManager:
                 ProcessingStage.COMPLETION
             ],
             ProcessingStage.USER_REVIEW: [
-                ProcessingStage.QUALITY_CHECK,  # For rework
-                ProcessingStage.INSIGHT_GENERATION,  # For additional analysis
-                ProcessingStage.REPORT_GENERATION,  # For report updates
+                ProcessingStage.QUALITY_CHECK,
+                ProcessingStage.INSIGHT_GENERATION,
+                ProcessingStage.REPORT_GENERATION,
                 ProcessingStage.COMPLETION
             ]
         }
@@ -134,35 +198,6 @@ class ControlPointManager:
             ProcessingStage.REPORT_GENERATION: "report",
             ProcessingStage.USER_REVIEW: "service"
         }
-
-    def _initialize(self):
-        """Initialize CPM with all processing chains"""
-        try:
-            # Register with message broker
-            asyncio.create_task(
-                self.message_broker.subscribe(
-                    self.module_identifier,
-                    [
-                        "control.*",
-                        "*.complete",
-                        "*.error",
-                        "decision.required",
-                        "quality.issues.detected",
-                        "insight.generated",
-                        "recommendation.ready"
-                    ],
-                    self._handle_control_message
-                )
-            )
-
-            # Register department chains
-            self._register_department_chains()
-
-            logger.info("Control Point Manager initialized successfully")
-
-        except Exception as e:
-            logger.error(f"CPM initialization failed: {str(e)}")
-            raise
 
     def _register_department_chains(self):
         """Register all department processing chains"""
@@ -205,6 +240,7 @@ class ControlPointManager:
             )
         }
 
+        loop = asyncio.get_event_loop()
         for dept_name, (manager_type, handler_type, processor_type, context_type) in department_configs.items():
             chain_id = str(uuid.uuid4())
 
@@ -232,34 +268,68 @@ class ControlPointManager:
             }
 
             # Register with broker
-            asyncio.create_task(
+            loop.create_task(
                 self.message_broker.register_processing_chain(
                     chain_id, manager, handler, processor
                 )
             )
+
+    async def _handle_control_message(self, message: ProcessingMessage) -> None:
+        """Handle incoming control messages"""
+        try:
+            handlers = {
+                MessageType.USER_DECISION_SUBMITTED: self._handle_decision_submitted,
+                MessageType.QUALITY_ISSUES_DETECTED: self._handle_quality_issues,
+                MessageType.STAGING_DATA_STORED: self._handle_staged_data,
+                MessageType.STAGING_OUTPUT_STORED: self._handle_staged_output,
+                MessageType.COMPONENT_OUTPUT_READY: self._handle_component_output,
+                MessageType.FLOW_ERROR: self._handle_flow_error
+            }
+
+            handler = handlers.get(message.message_type)
+            if handler:
+                await handler(message)
+            else:
+                logger.warning(f"Unhandled message type: {message.message_type}")
+
+        except Exception as e:
+            logger.error(f"Message handling failed: {str(e)}")
+            await self._handle_flow_error(message, error=e)
 
     async def create_pipeline(
             self,
             pipeline_id: str,
             initial_metadata: Dict[str, Any]
     ) -> str:
-        """Create a new processing pipeline"""
-        context = PipelineContext(
-            pipeline_id=pipeline_id,
-            stage=ProcessingStage.RECEPTION,
-            status=ProcessingStatus.PENDING,
-            current_stage=ProcessingStage.RECEPTION.value,
-            stage_sequence=[stage.value for stage in ProcessingStage],
-            stage_dependencies=self._create_stage_dependencies(),
-            stage_configs={},
-            component_states={},
-            progress={},
-            error_handling_rules={},
-            metadata=initial_metadata
-        )
+        """Create new processing pipeline"""
+        try:
+            context = PipelineContext(
+                pipeline_id=pipeline_id,
+                stage=ProcessingStage.RECEPTION,
+                status=ProcessingStatus.PENDING,
+                current_stage=ProcessingStage.RECEPTION.value,
+                stage_sequence=[stage.value for stage in ProcessingStage],
+                stage_dependencies=self._create_stage_dependencies(),
+                stage_configs={},
+                component_states={},
+                progress={},
+                metadata=initial_metadata
+            )
 
-        self.active_pipelines[pipeline_id] = context
-        return pipeline_id
+            self.active_pipelines[pipeline_id] = context
+
+            # Create initial control point
+            await self.create_control_point(
+                stage=ProcessingStage.RECEPTION,
+                pipeline_id=pipeline_id,
+                metadata=initial_metadata
+            )
+
+            return pipeline_id
+
+        except Exception as e:
+            logger.error(f"Pipeline creation failed: {str(e)}")
+            raise
 
     def _create_stage_dependencies(self) -> Dict[str, List[str]]:
         """Create stage dependencies map"""
@@ -280,7 +350,7 @@ class ControlPointManager:
             requires_decision: bool = True,
             parent_control_point: Optional[str] = None
     ) -> str:
-        """Create a new control point"""
+        """Create new control point"""
         try:
             department = self.department_sequence[stage]
             chain = self.department_chains.get(department)
@@ -322,30 +392,281 @@ class ControlPointManager:
             control_point: ControlPoint
     ) -> None:
         """Notify about new control point creation"""
-        message = ProcessingMessage(
-            message_type=MessageType.CONTROL_POINT_REACHED,
-            content={
-                'control_point_id': control_point.id,
-                'pipeline_id': control_point.pipeline_id,
-                'stage': control_point.stage.value,
-                'requires_decision': control_point.requires_decision,
-                'metadata': control_point.metadata,
-                'staging_reference': control_point.staging_reference
-            },
-            source_identifier=self.module_identifier,
-            target_identifier=control_point.assigned_module,
-            metadata=MessageMetadata(
-                source_component="control_point_manager",
-                target_component=control_point.assigned_module.component_name,
-                domain_type=control_point.department,
-                processing_stage=control_point.stage,
-                correlation_id=control_point.pipeline_id
+        try:
+            message = ProcessingMessage(
+                message_type=MessageType.CONTROL_POINT_REACHED,
+                content={
+                    'control_point_id': control_point.id,
+                    'pipeline_id': control_point.pipeline_id,
+                    'stage': control_point.stage.value,
+                    'requires_decision': control_point.requires_decision,
+                    'metadata': control_point.metadata,
+                    'staging_reference': control_point.staging_reference
+                },
+                source_identifier=self.module_identifier,
+                target_identifier=control_point.assigned_module,
+                metadata=MessageMetadata(
+                    source_component="control_point_manager",
+                    target_component=control_point.assigned_module.component_name,
+                    domain_type=control_point.department,
+                    processing_stage=control_point.stage,
+                    correlation_id=control_point.pipeline_id
+                )
             )
-        )
 
-        await self.message_broker.publish(message)
+            await self.message_broker.publish(message)
 
-    # backend/core/control/cpm.py [continued]
+        except Exception as e:
+            logger.error(f"Control point notification failed: {str(e)}")
+            raise
+
+    async def _handle_staged_data(self, message: ProcessingMessage) -> None:
+        """Handle notification of newly staged data"""
+        try:
+            content = message.content
+            reference_id = content.get('reference_id')
+            pipeline_id = content.get('pipeline_id')
+            component_type = content.get('component_type')
+
+            # Update relevant control point
+            active_cp = next(
+                (cp for cp in self.active_control_points.values()
+                 if cp.pipeline_id == pipeline_id and
+                 cp.stage.value == content.get('stage')),
+                None
+            )
+
+            if active_cp:
+                active_cp.staging_reference = reference_id
+                active_cp.metadata.update({
+                    'staged_data': {
+                        'reference_id': reference_id,
+                        'component_type': component_type,
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
+                })
+                await self._check_stage_readiness(active_cp)
+
+        except Exception as e:
+            logger.error(f"Staged data handling error: {str(e)}")
+
+    async def _handle_component_output(self, message: ProcessingMessage) -> None:
+        """Handle component output notification"""
+        try:
+            content = message.content
+            reference_id = content.get('reference_id')
+            component_type = content.get('component_type')
+            output_data = content.get('output_data')
+
+            # Find control point by staging reference
+            control_point = next(
+                (cp for cp in self.active_control_points.values()
+                 if cp.staging_reference == reference_id),
+                None
+            )
+
+            if control_point:
+                # Update control point with output information
+                output_key = f"{component_type.lower()}_output"
+                control_point.metadata[output_key] = output_data
+                await self._check_stage_completion(control_point)
+
+        except Exception as e:
+            logger.error(f"Component output handling error: {str(e)}")
+
+    async def _check_stage_readiness(self, control_point: ControlPoint) -> None:
+        """Check if stage is ready to begin processing"""
+        try:
+            stage_requirements = {
+                ProcessingStage.QUALITY_CHECK: {'staged_data'},
+                ProcessingStage.CONTEXT_ANALYSIS: {'quality_output'},
+                ProcessingStage.INSIGHT_GENERATION: {'context_analysis_output'},
+                # Add other stage requirements
+            }
+
+            required = stage_requirements.get(control_point.stage, set())
+            available = set(control_point.metadata.keys())
+
+            if required.issubset(available):
+                await self._start_stage_processing(control_point)
+
+        except Exception as e:
+            logger.error(f"Stage readiness check error: {str(e)}")
+
+    async def _start_stage_processing(self, control_point: ControlPoint) -> None:
+        """Start processing for a stage"""
+        try:
+            # Get department chain
+            chain = self.department_chains.get(control_point.department)
+            if not chain:
+                raise ValueError(f"No chain for department: {control_point.department}")
+
+            # Create processing message
+            message = ProcessingMessage(
+                message_type=MessageType.STAGE_PROCESSING_START,
+                content={
+                    'control_point_id': control_point.id,
+                    'pipeline_id': control_point.pipeline_id,
+                    'stage': control_point.stage.value,
+                    'staging_reference': control_point.staging_reference,
+                    'metadata': control_point.metadata
+                },
+                source_identifier=self.module_identifier,
+                target_identifier=chain['manager']
+            )
+
+            # Update status
+            control_point.status = ProcessingStatus.IN_PROGRESS
+
+            # Notify processing start
+            await self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Stage processing start error: {str(e)}")
+            await self._handle_stage_error(control_point, str(e))
+
+    async def _check_stage_completion(self, control_point: ControlPoint) -> None:
+        """Check if stage processing is complete"""
+        try:
+            stage_outputs = {
+                ProcessingStage.QUALITY_CHECK: {'quality_output'},
+                ProcessingStage.CONTEXT_ANALYSIS: {'context_output'},
+                ProcessingStage.INSIGHT_GENERATION: {'insight_output'},
+                ProcessingStage.ADVANCED_ANALYTICS: {'analytics_output'},
+                ProcessingStage.DECISION_MAKING: {'decision_output'},
+                ProcessingStage.RECOMMENDATION: {'recommendation_output'},
+                ProcessingStage.REPORT_GENERATION: {'report_output'}
+            }
+
+            required_outputs = stage_outputs.get(control_point.stage, set())
+            available_outputs = {
+                key for key in control_point.metadata.keys()
+                if key.endswith('_output')
+            }
+
+            if required_outputs.issubset(available_outputs):
+                await self._handle_stage_completion(control_point)
+
+        except Exception as e:
+            logger.error(f"Stage completion check error: {str(e)}")
+
+    async def _handle_stage_completion(self, control_point: ControlPoint) -> None:
+        """Handle stage completion"""
+        try:
+            # Update status
+            control_point.status = ProcessingStatus.COMPLETED
+            control_point.updated_at = datetime.utcnow()
+
+            # Determine next action
+            if control_point.requires_decision:
+                await self._request_stage_decision(control_point)
+            else:
+                # Auto-proceed to next stage
+                next_stage = self._determine_next_stage(control_point)
+                if next_stage:
+                    await self._proceed_to_stage(
+                        control_point,
+                        next_stage,
+                        {'auto_transition': True}
+                    )
+                else:
+                    await self._handle_pipeline_completion(control_point)
+
+        except Exception as e:
+            logger.error(f"Stage completion handling error: {str(e)}")
+
+    async def _request_stage_decision(self, control_point: ControlPoint) -> None:
+        """Request decision for stage completion"""
+        try:
+            # Prepare decision options based on stage
+            options = self._prepare_decision_options(control_point)
+
+            # Create decision request message
+            message = ProcessingMessage(
+                message_type=MessageType.DECISION_REQUEST,
+                content={
+                    'control_point_id': control_point.id,
+                    'pipeline_id': control_point.pipeline_id,
+                    'stage': control_point.stage.value,
+                    'options': options,
+                    'metadata': control_point.metadata,
+                    'stage_outputs': {
+                        k: v for k, v in control_point.metadata.items()
+                        if k.endswith('_output')
+                    }
+                },
+                source_identifier=self.module_identifier,
+                target_identifier=None  # Broadcast to decision handlers
+            )
+
+            # Update status
+            control_point.status = ProcessingStatus.AWAITING_DECISION
+
+            # Send request
+            await self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Decision request failed: {str(e)}")
+            await self._handle_stage_error(control_point, str(e))
+
+    def _prepare_decision_options(self, control_point: ControlPoint) -> List[Dict[str, Any]]:
+        """Prepare decision options based on stage and context"""
+        base_options = [
+            {
+                'type': 'approve',
+                'label': 'Approve and Continue',
+                'requires_comment': False
+            },
+            {
+                'type': 'reject',
+                'label': 'Reject',
+                'requires_comment': True
+            }
+        ]
+
+        # Add stage-specific options
+        if control_point.stage == ProcessingStage.QUALITY_CHECK:
+            base_options.append({
+                'type': 'rework',
+                'label': 'Request Rework',
+                'requires_comment': True,
+                'target_stage': ProcessingStage.VALIDATION
+            })
+
+        elif control_point.stage == ProcessingStage.INSIGHT_GENERATION:
+            base_options.append({
+                'type': 'more_analysis',
+                'label': 'Request Additional Analysis',
+                'requires_comment': True,
+                'target_stage': ProcessingStage.ADVANCED_ANALYTICS
+            })
+
+        return base_options
+
+    async def _handle_decision_submitted(self, message: ProcessingMessage) -> None:
+        """Handle submitted decision"""
+        try:
+            content = message.content
+            control_point_id = content.get('control_point_id')
+            decision = content.get('decision')
+
+            control_point = self.active_control_points.get(control_point_id)
+            if not control_point:
+                logger.warning(f"Control point not found: {control_point_id}")
+                return
+
+            # Record decision
+            control_point.decisions.append({
+                **decision,
+                'timestamp': datetime.utcnow().isoformat(),
+                'decision_maker': message.source_identifier.component_name
+            })
+
+            # Process decision
+            await self.process_decision(control_point_id, decision)
+
+        except Exception as e:
+            logger.error(f"Decision handling error: {str(e)}")
 
     async def process_decision(
             self,
@@ -358,10 +679,6 @@ class ControlPointManager:
             if not control_point:
                 logger.warning(f"Control point not found: {control_point_id}")
                 return False
-
-            # Record decision
-            control_point.decisions.append(decision)
-            control_point.updated_at = datetime.now()
 
             # Determine next action
             next_action = self._determine_next_action(control_point, decision)
@@ -405,6 +722,11 @@ class ControlPointManager:
             action['type'] = 'reject'
             action['metadata']['rejection_reason'] = decision.get('reason')
 
+        elif decision_type == 'more_analysis':
+            action['type'] = 'proceed'
+            action['target_stage'] = ProcessingStage.ADVANCED_ANALYTICS
+            action['metadata']['analysis_request'] = decision.get('reason')
+
         return action
 
     async def _execute_action(
@@ -438,138 +760,151 @@ class ControlPointManager:
             logger.error(f"Action execution failed: {str(e)}")
             raise
 
-    async def _proceed_to_stage(
-            self,
-            control_point: ControlPoint,
-            target_stage: ProcessingStage,
-            metadata: Dict[str, Any]
-    ) -> None:
-        """Handle progression to next stage"""
-        # Archive current control point
-        self._archive_control_point(control_point)
-
-        # Update pipeline status
-        if control_point.pipeline_id in self.active_pipelines:
-            pipeline = self.active_pipelines[control_point.pipeline_id]
-            pipeline.current_stage = target_stage.value
-
-        # Create new control point for next stage
-        new_cp_id = await self.create_control_point(
-            stage=target_stage,
-            pipeline_id=control_point.pipeline_id,
-            metadata={
-                **control_point.metadata,
-                **metadata,
-                'previous_control_point': control_point.id
-            },
-            staging_reference=control_point.staging_reference,
-            parent_control_point=control_point.id
-        )
-
-        # Notify about stage progression
-        await self._notify_stage_progression(control_point, new_cp_id, target_stage)
-
-    async def _retry_stage(
-            self,
-            control_point: ControlPoint,
-            target_stage: ProcessingStage,
-            metadata: Dict[str, Any]
-    ) -> None:
-        """Handle stage retry"""
-        # Archive current control point
-        self._archive_control_point(control_point)
-
-        # Create new control point for retry
-        await self.create_control_point(
-            stage=target_stage,
-            pipeline_id=control_point.pipeline_id,
-            metadata={
-                **control_point.metadata,
-                **metadata,
-                'retry_of': control_point.id,
-                'retry_count': len([
-                    cp for cp in self.control_point_history.get(control_point.pipeline_id, [])
-                    if cp.stage == target_stage
-                ]) + 1
-            },
-            staging_reference=control_point.staging_reference,
-            parent_control_point=control_point.id
-        )
-
-    async def _handle_rejection(
-            self,
-            control_point: ControlPoint,
-            metadata: Dict[str, Any]
-    ) -> None:
-        """Handle rejected processing"""
-        # Update control point status
-        control_point.status = ProcessingStatus.REJECTED
-
-        # Update pipeline status
-        if control_point.pipeline_id in self.active_pipelines:
-            pipeline = self.active_pipelines[control_point.pipeline_id]
-            pipeline.status = ProcessingStatus.REJECTED
-
-        # Notify about rejection
-        await self._notify_rejection(control_point, metadata)
-
-    def _archive_control_point(self, control_point: ControlPoint) -> None:
-        """Archive a completed control point"""
-        if control_point.pipeline_id:
-            history = self.control_point_history.setdefault(
-                control_point.pipeline_id, []
-            )
-            history.append(control_point)
-
-        if control_point.id in self.active_control_points:
-            del self.active_control_points[control_point.id]
-
-    async def _handle_control_message(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle incoming control messages"""
+    async def _handle_pipeline_completion(self, control_point: ControlPoint) -> None:
+        """Handle pipeline completion"""
         try:
-            if message.message_type == MessageType.USER_DECISION_SUBMITTED:
-                await self.process_decision(
-                    message.content['control_point_id'],
-                    message.content['decision']
-                )
+            pipeline = self.active_pipelines.get(control_point.pipeline_id)
+            if not pipeline:
+                return
 
-            elif message.message_type == MessageType.QUALITY_ISSUES_DETECTED:
-                await self._handle_quality_issues(message)
+            # Update pipeline status
+            pipeline.status = ProcessingStatus.COMPLETED
 
-            elif message.message_type == MessageType.FLOW_ERROR:
-                await self._handle_flow_error(message)
+            # Create completion message
+            message = ProcessingMessage(
+                message_type=MessageType.PIPELINE_COMPLETE,
+                content={
+                    'pipeline_id': control_point.pipeline_id,
+                    'final_stage': control_point.stage.value,
+                    'completion_time': datetime.utcnow().isoformat(),
+                    'summary': self._create_pipeline_summary(pipeline)
+                },
+                source_identifier=self.module_identifier
+            )
 
-            # Handle other message types...
+            # Notify completion
+            await self.message_broker.publish(message)
+
+            # Cleanup
+            await self._cleanup_pipeline(control_point.pipeline_id)
 
         except Exception as e:
-            logger.error(f"Message handling failed: {str(e)}")
+            logger.error(f"Pipeline completion handling error: {str(e)}")
 
-    async def _handle_quality_issues(
+    def _create_pipeline_summary(self, pipeline: PipelineContext) -> Dict[str, Any]:
+        """Create pipeline execution summary"""
+        return {
+            'pipeline_id': pipeline.pipeline_id,
+            'status': pipeline.status.value,
+            'stages_completed': pipeline.stage_sequence,
+            'total_time': (datetime.utcnow() - pipeline.created_at).total_seconds(),
+            'component_states': pipeline.component_states,
+            'progress': pipeline.progress
+        }
+
+    async def _handle_stage_error(
             self,
-            message: ProcessingMessage
+            control_point: ControlPoint,
+            error: str,
+            error_context: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Handle detected quality issues"""
-        control_point_id = message.content.get('control_point_id')
-        if not control_point_id or control_point_id not in self.active_control_points:
-            return
+        """Handle stage processing errors"""
+        try:
+            # Update control point status
+            control_point.status = ProcessingStatus.FAILED
+            control_point.metadata['error'] = {
+                'message': error,
+                'context': error_context or {},
+                'timestamp': datetime.utcnow().isoformat()
+            }
 
-        control_point = self.active_control_points[control_point_id]
+            # Update pipeline status
+            pipeline = self.active_pipelines.get(control_point.pipeline_id)
+            if pipeline:
+                pipeline.status = ProcessingStatus.FAILED
+                pipeline.component_states[control_point.department] = ProcessingStatus.FAILED.value
 
-        # Create user review control point
-        await self.create_control_point(
-            stage=ProcessingStage.USER_REVIEW,
-            pipeline_id=control_point.pipeline_id,
-            metadata={
-                **control_point.metadata,
-                'quality_issues': message.content.get('issues', []),
-                'review_type': 'quality_review'
-            },
-            staging_reference=control_point.staging_reference,
-            parent_control_point=control_point.id
-        )
+            # Create error message
+            message = ProcessingMessage(
+                message_type=MessageType.FLOW_ERROR,
+                content={
+                    'control_point_id': control_point.id,
+                    'pipeline_id': control_point.pipeline_id,
+                    'stage': control_point.stage.value,
+                    'department': control_point.department,
+                    'error': error,
+                    'error_context': error_context,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+
+            # Notify error
+            await self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Error handling failed: {str(e)}")
+
+    async def _handle_flow_error(
+            self,
+            message: ProcessingMessage,
+            error: Optional[Exception] = None
+    ) -> None:
+        """Handle flow-level errors"""
+        try:
+            content = message.content
+            pipeline_id = content.get('pipeline_id')
+            control_point_id = content.get('control_point_id')
+
+            # Find affected control point
+            control_point = None
+            if control_point_id:
+                control_point = self.active_control_points.get(control_point_id)
+            elif pipeline_id:
+                control_point = next(
+                    (cp for cp in self.active_control_points.values()
+                     if cp.pipeline_id == pipeline_id),
+                    None
+                )
+
+            if control_point:
+                await self._handle_stage_error(
+                    control_point,
+                    str(error) if error else "Flow error",
+                    content.get('error_context')
+                )
+
+        except Exception as e:
+            logger.error(f"Flow error handling failed: {str(e)}")
+
+    async def _cleanup_pipeline(self, pipeline_id: str) -> None:
+        """Clean up pipeline resources"""
+        try:
+            # Archive control points
+            control_points = [
+                cp for cp in self.active_control_points.values()
+                if cp.pipeline_id == pipeline_id
+            ]
+            for cp in control_points:
+                self._archive_control_point(cp)
+
+            # Remove from active pipelines
+            if pipeline_id in self.active_pipelines:
+                del self.active_pipelines[pipeline_id]
+
+            # Notify cleanup
+            message = ProcessingMessage(
+                message_type=MessageType.PIPELINE_CLEANUP,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+            await self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Pipeline cleanup failed: {str(e)}")
 
     def get_pipeline_status(
             self,
@@ -581,7 +916,7 @@ class ControlPointManager:
             return None
 
         history = self.control_point_history.get(pipeline_id, [])
-        active = [
+        active_points = [
             cp for cp in self.active_control_points.values()
             if cp.pipeline_id == pipeline_id
         ]
@@ -602,15 +937,83 @@ class ControlPointManager:
                 for cp in history
             ],
             'active_control_points': [
-                {
-                    'control_point_id': cp.id,
-                    'stage': cp.stage.value,
-                    'department': cp.department,
-                    'status': cp.status.value,
-                    'created_at': cp.created_at.isoformat()
-                }
-                for cp in active
+                cp.to_dict() for cp in active_points
             ],
             'component_states': pipeline.component_states,
             'progress': pipeline.progress
         }
+
+    async def _update_pipeline_progress(
+            self,
+            pipeline_id: str,
+            stage: ProcessingStage,
+            progress: float
+    ) -> None:
+        """Update pipeline progress"""
+        try:
+            pipeline = self.active_pipelines.get(pipeline_id)
+            if not pipeline:
+                return
+
+            # Update stage progress
+            pipeline.progress[stage.value] = progress
+
+            # Calculate overall progress
+            total_stages = len(ProcessingStage)
+            completed_stages = len([
+                s for s in pipeline.stage_sequence
+                if s in pipeline.progress
+            ])
+            current_progress = pipeline.progress.get(stage.value, 0)
+
+            overall_progress = (
+                (completed_stages - 1 + current_progress) / total_stages
+                if total_stages > 0 else 0
+            )
+
+            pipeline.progress['overall'] = overall_progress
+
+            # Notify progress update
+            await self._notify_progress_update(pipeline_id, overall_progress)
+
+        except Exception as e:
+            logger.error(f"Progress update failed: {str(e)}")
+
+    async def _notify_progress_update(
+            self,
+            pipeline_id: str,
+            progress: float
+    ) -> None:
+        """Notify about pipeline progress update"""
+        try:
+            message = ProcessingMessage(
+                message_type=MessageType.PIPELINE_PROGRESS,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'progress': progress,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+            await self.message_broker.publish(message)
+
+        except Exception as e:
+            logger.error(f"Progress notification failed: {str(e)}")
+
+    async def cleanup(self) -> None:
+        """Cleanup CPM resources"""
+        try:
+            # Cleanup active pipelines
+            for pipeline_id in list(self.active_pipelines.keys()):
+                await self._cleanup_pipeline(pipeline_id)
+
+            # Clear all state
+            self.active_control_points.clear()
+            self.control_point_history.clear()
+            self.active_pipelines.clear()
+            self.department_chains.clear()
+
+            logger.info("CPM cleanup completed successfully")
+
+        except Exception as e:
+            logger.error(f"CPM cleanup failed: {str(e)}")

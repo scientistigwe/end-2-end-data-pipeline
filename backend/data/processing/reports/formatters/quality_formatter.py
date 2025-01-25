@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class QualityReportFormatter(BaseFormatter):
     """
-    Formatter for data quality analysis reports.
+    Formatter for data quality insight reports.
     Handles formatting of quality metrics, issues, and recommendations.
     """
 

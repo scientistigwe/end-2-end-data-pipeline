@@ -157,7 +157,7 @@
 #     def find_duplicates(self, df: pd.DataFrame) -> Dict[str, List[DuplicateResult]]:
 #         """Find both exact and near duplicates in the dataframe"""
 #         start_time = time.time()
-#         self.logger.info(f"Starting fast duplicate analysis on {len(df):,} rows")
+#         self.logger.info(f"Starting fast duplicate insight on {len(df):,} rows")
 
 #         # Find exact duplicates
 #         exact_duplicates, exact_duplicate_indices = self._find_exact_duplicates(df)
@@ -301,16 +301,16 @@
 
 #     def run_analysis(self, data: pd.DataFrame) -> str:
 #         """
-#         Run duplicate analysis on provided DataFrame and return formatted report
+#         Run duplicate insight on provided DataFrame and return formatted report
 
 #         Args:
 #             data: pandas DataFrame to analyze
 
 #         Returns:
-#             str: Formatted report of duplicate analysis results
+#             str: Formatted report of duplicate insight results
 #         """
 #         start_time = time.time()
-#         self.logger.info(f"Starting duplicate analysis on {len(data):,} rows")
+#         self.logger.info(f"Starting duplicate insight on {len(data):,} rows")
 
 #         # Find duplicates
 #         results = self.find_duplicates(data)

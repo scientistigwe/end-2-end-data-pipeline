@@ -1,4 +1,4 @@
-  // src/pipeline/services/index.ts
+  // src/pipeline/pipeline/index.ts
   export * from './pipelineService';
   
   // Create and export singleton instance

@@ -1,642 +1,382 @@
-# backend/core/staging/staging_manager.py
+# staging_manager.py
 
 import logging
 import asyncio
+import json
+import shutil
 import uuid
-from typing import Dict, Any, Optional, List, Tuple
+import random
+from typing import Dict, Any, Optional, Set
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from pathlib import Path
+from contextlib import contextmanager
 
-from ..messaging.broker import MessageBroker
-from ..messaging.event_types import (
-    MessageType, ProcessingStage, ProcessingStatus,
-    MessageMetadata, ModuleIdentifier, ComponentType, ReportSectionType
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
+    MessageType,
+    ProcessingMessage,
+    MessageMetadata,
+    StagingContext,
+    StagingState,
+    StagingMetrics
 )
-
-# Import all staging models
-from db.models.staging.base_staging_model import BaseStagedOutput
-from db.models.staging.quality_output_model import StagedQualityOutput
-from db.models.staging.insight_output_model import StagedInsightOutput
-from db.models.staging.advanced_analytics_output_model import StagedAnalyticsOutput
-from db.models.staging.report_output_model import StagedReportOutput
-from db.models.staging.staging_history_model import StagingProcessingHistory
-from db.models.staging.staging_control_model import StagingControlPoint
-
-# Import data source and pipeline models
-from db.models.data_source import (
-    DataSource, FileSourceInfo, APISourceConfig,
-    DatabaseSourceConfig, S3SourceConfig, StreamSourceConfig
-)
-from db.models.pipeline import (
-    Pipeline, PipelineStep, PipelineRun, PipelineStepRun,
-    QualityGate, PipelineLog
-)
-
-from db.models.auth import (
-    User, UserSession, UserActivityLog, TeamMember, ServiceAccount
-)
+from core.monitoring.collectors import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
 
+class StagingError(Exception):
+    """Base exception for staging-related errors"""
+    pass
+
+
+@contextmanager
+def staging_operation(operation_name: str):
+    """Context manager for staging operations with error handling"""
+    try:
+        logger.debug(f"Starting staging operation: {operation_name}")
+        yield
+        logger.debug(f"Completed staging operation: {operation_name}")
+    except Exception as e:
+        logger.error(f"Staging operation '{operation_name}' failed: {str(e)}")
+        raise StagingError(f"Operation '{operation_name}' failed: {str(e)}")
+
+
 class StagingManager:
     """
-    Comprehensive Staging Manager handling all aspects of data staging
-    Including storage, tracking, versioning, and cleanup
+    Message-based staging manager for data pipeline operations.
+    Handles temporary data storage and retrieval through message broker communication.
     """
 
-    def __init__(self, message_broker: MessageBroker, db_session):
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            base_path: Optional[str] = None,
+            cleanup_interval: int = 3600,
+            max_age_hours: int = 24,
+            max_size_bytes: int = 10_737_418_240,  # 10GB
+            metrics_collector: Optional[MetricsCollector] = None
+    ):
         self.message_broker = message_broker
-        self.db_session = db_session
+        self.base_path = Path(base_path or Path.cwd() / 'staged_data')
+        self.metrics_collector = metrics_collector or MetricsCollector()
 
-        # Module identification
-        self.module_identifier = ModuleIdentifier(
-            component_name="staging_manager",
-            component_type=ComponentType.MANAGER,
-            department="staging",
-            role="manager"
-        )
+        # Configuration
+        self.cleanup_interval = cleanup_interval
+        self.max_age = timedelta(hours=max_age_hours)
+        self.max_size_bytes = max_size_bytes
 
-        # Model mappings
-        self._output_model_map = {
-            ComponentType.QUALITY: StagedQualityOutput,
-            ComponentType.INSIGHT: StagedInsightOutput,
-            ComponentType.ANALYTICS: StagedAnalyticsOutput,
-            ComponentType.REPORT: StagedReportOutput
+        # State tracking
+        self.active_stages: Dict[str, StagingContext] = {}
+        self.global_metrics = StagingMetrics()
+        self._running = True
+
+        # Component identification
+        self.component_name = "staging_manager"
+
+        # Initialize system
+        self._ensure_storage_path()
+        self._setup_message_handlers()
+        self._start_cleanup_task()
+
+        logger.info(f"Staging manager initialized at {self.base_path}")
+
+    def _ensure_storage_path(self) -> None:
+        """Ensure base storage path exists"""
+        self.base_path.mkdir(parents=True, exist_ok=True)
+
+    def _setup_message_handlers(self) -> None:
+        """Initialize message handlers for staging operations"""
+        handlers = {
+            MessageType.STAGING_STORE_REQUEST: self._handle_store_request,
+            MessageType.STAGING_RETRIEVE_REQUEST: self._handle_retrieve_request,
+            MessageType.STAGING_ACCESS_REQUEST: self._handle_access_request,
+            MessageType.STAGING_DELETE_REQUEST: self._handle_delete_request,
+            MessageType.STAGING_ACCESS_GRANT: self._handle_access_grant,
+            MessageType.STAGING_METRICS_REQUEST: self._handle_metrics_request
         }
 
-        self._source_config_map = {
-            'file': FileSourceInfo,
-            'api': APISourceConfig,
-            'db': DatabaseSourceConfig,
-            's3': S3SourceConfig,
-            'stream': StreamSourceConfig
-        }
-
-        # Initialize
-        self._initialize()
-
-    def _initialize(self):
-        """Initialize staging manager and start background tasks"""
-        try:
-            # Subscribe to messages
-            asyncio.create_task(
-                self.message_broker.subscribe(
-                    self.module_identifier,
-                    [
-                        "data.storage",
-                        "stage.*",
-                        "*.complete",
-                        "cleanup.request"
-                    ],
-                    self._handle_staging_message
-                )
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                self.component_name,
+                f"staging.{message_type.value}.#",
+                handler
             )
 
-            # Start cleanup task
-            asyncio.create_task(self._periodic_cleanup())
+    async def _handle_store_request(self, message: ProcessingMessage) -> None:
+        """Handle data storage requests"""
+        stage_id = message.content['stage_id']
+        pipeline_id = message.content['pipeline_id']
+        data = message.content['data']
+        metadata = message.content.get('metadata', {})
 
-            logger.info("Staging Manager initialized successfully")
-
-        except Exception as e:
-            logger.error(f"Staging Manager initialization failed: {str(e)}")
-            raise
-
-    # DATA INGESTION AND STORAGE
-
-    async def store_incoming_data(
-            self,
-            pipeline_id: str,
-            data: Any,
-            metadata: Dict[str, Any],
-            source_type: str,
-            user_id: Optional[str] = None
-    ) -> str:
-        """Store incoming data with complete tracking"""
-        try:
-            # Validate pipeline and source
-            pipeline = await self.db_session.query(Pipeline).get(pipeline_id)
-            if not pipeline:
-                raise ValueError(f"Pipeline not found: {pipeline_id}")
-
-            if user_id and pipeline.owner_id != user_id:
-                raise ValueError("Unauthorized access to pipeline")
-
-            source = await self.db_session.query(DataSource).get(pipeline.source_id)
-            if not source:
-                raise ValueError(f"Data source not found for pipeline: {pipeline_id}")
-
-            # Create staged output
-            output_id = str(uuid.uuid4())
-            staged_output = BaseStagedOutput(
-                id=output_id,
-                pipeline_id=pipeline_id,
-                component_type=ComponentType.QUALITY_MANAGER,
-                output_type=ReportSectionType.DATA,
-                status=ProcessingStatus.PENDING,
-                metadata={
-                    **metadata,
-                    'source_id': str(source.id),
-                    'source_type': source.type,
-                    'source_name': source.name,
-                    'ingestion_time': datetime.utcnow().isoformat()
-                },
-                storage_path=f"data/{pipeline_id}/{output_id}",
-                data_size=len(str(data))
-            )
-
-            self.db_session.add(staged_output)
-
-            # Create pipeline run
-            pipeline_run = PipelineRun(
-                pipeline_id=pipeline_id,
-                version=pipeline.version,
-                status='running',
-                start_time=datetime.utcnow(),
-                trigger_type='data_received',
-                inputs={
-                    'staged_id': output_id,
-                    'source_type': source.type
-                }
-            )
-            self.db_session.add(pipeline_run)
-
-            # Track processing history
-            history = StagingProcessingHistory(
-                staged_output_id=output_id,
-                event_type="data_received",
-                status=ProcessingStatus.PENDING,
-                details={
-                    "source_type": source_type,
-                    "pipeline_run_id": pipeline_run.id,
-                    "user_id": user_id
-                }
-            )
-            self.db_session.add(history)
-
-            # Log pipeline event
-            pipeline_log = PipelineLog(
-                pipeline_id=pipeline_id,
-                event_type='data_staged',
-                message=f"Data received from source {source.name}",
-                details={
-                    'staged_id': output_id,
-                    'source_type': source.type,
-                    'user_id': user_id
-                },
-                timestamp=datetime.utcnow()
-            )
-            self.db_session.add(pipeline_log)
-
-            await self.db_session.commit()
-
-            # Notify CPM
-            await self._notify_data_staged(
-                output_id,
-                staged_output.metadata,
-                pipeline_id,
-                pipeline_run.id
-            )
-
-            return output_id
-
-        except Exception as e:
-            await self.db_session.rollback()
-            logger.error(f"Data staging failed: {str(e)}")
-            raise
-
-    async def store_component_output(
-            self,
-            staged_id: str,
-            component_type: ComponentType,
-            output: Dict[str, Any],
-            output_type: ReportSectionType,
-            user_id: Optional[str] = None
-    ) -> bool:
-        """Store processing output from a component"""
-        try:
-            # Validate access if user_id provided
-            if user_id and not await self.check_access_permission(
-                    staged_id, user_id, 'write'
-            ):
-                raise ValueError("Unauthorized access")
-
-            # Get output model
-            output_model = self._output_model_map.get(component_type)
-            if not output_model:
-                raise ValueError(f"Unknown component type: {component_type}")
-
-            # Create component output
-            component_output = output_model(
-                id=staged_id,
-                **output
-            )
-            self.db_session.add(component_output)
-
-            # Update base output
-            base_output = await self.db_session.query(BaseStagedOutput).get(staged_id)
-            if base_output:
-                base_output.status = ProcessingStatus.COMPLETED
-                base_output.updated_at = datetime.utcnow()
-
-            # Add history entry
-            history = StagingProcessingHistory(
-                staged_output_id=staged_id,
-                event_type=f"{component_type.value}_complete",
-                status=ProcessingStatus.COMPLETED,
-                details={
-                    "output_type": output_type.value,
-                    "user_id": user_id
-                }
-            )
-            self.db_session.add(history)
-
-            await self.db_session.commit()
-            return True
-
-        except Exception as e:
-            await self.db_session.rollback()
-            logger.error(f"Output storage failed: {str(e)}")
-            return False
-
-    # DATA RETRIEVAL AND ACCESS
-
-    async def retrieve_data(
-            self,
-            staged_id: str,
-            component_type: ComponentType,
-            user_id: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Retrieve data for component processing with access control"""
-        try:
-            # Validate access
-            if user_id and not await self.check_access_permission(
-                    staged_id, user_id, 'read'
-            ):
-                return None
-
-            # Get base output
-            base_output = await self.db_session.query(BaseStagedOutput).get(staged_id)
-            if not base_output:
-                return None
-
-            # Update status
-            base_output.status = ProcessingStatus.PROCESSING
-            base_output.updated_at = datetime.utcnow()
-
-            # Add history
-            history = StagingProcessingHistory(
-                staged_output_id=staged_id,
-                event_type="data_retrieved",
-                status=ProcessingStatus.IN_PROGRESS,
-                details={
-                    "component_type": component_type.value,
-                    "user_id": user_id
-                }
-            )
-            self.db_session.add(history)
-
-            await self.db_session.commit()
-
-            # Get component-specific output if exists
-            component_output = None
-            if component_type in self._output_model_map:
-                component_output = await self.db_session.query(
-                    self._output_model_map[component_type]
-                ).get(staged_id)
-
-            return {
-                "metadata": base_output.metadata,
-                "storage_path": base_output.storage_path,
-                "pipeline_id": base_output.pipeline_id,
-                "created_at": base_output.created_at.isoformat(),
-                "component_output": component_output.__dict__ if component_output else None
-            }
-
-        except Exception as e:
-            await self.db_session.rollback()
-            logger.error(f"Data retrieval failed: {str(e)}")
-            return None
-
-    # VERSION CONTROL AND RECOVERY
-
-    async def create_output_version(
-            self,
-            staged_id: str,
-            version_note: str,
-            user_id: Optional[str] = None
-    ) -> Optional[str]:
-        """Create new version of staged output"""
-        try:
-            # Validate access
-            if user_id and not await self.check_access_permission(
-                    staged_id, user_id, 'write'
-            ):
-                return None
-
-            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
-            if not output:
-                return None
-
-            # Create new version
-            new_version = BaseStagedOutput(
-                pipeline_id=output.pipeline_id,
-                component_type=output.component_type,
-                output_type=output.output_type,
-                metadata={
-                    **output.metadata,
-                    'previous_version': staged_id,
-                    'version_note': version_note,
-                    'created_by': user_id
-                }
-            )
-            self.db_session.add(new_version)
-
-            # Track versioning in history
-            history = StagingProcessingHistory(
-                staged_output_id=staged_id,
-                event_type="version_created",
-                status=output.status,
-                details={
-                    "new_version_id": new_version.id,
-                    "version_note": version_note,
-                    "user_id": user_id
-                }
-            )
-            self.db_session.add(history)
-
-            await self.db_session.commit()
-            return new_version.id
-
-        except Exception as e:
-            await self.db_session.rollback()
-            logger.error(f"Version creation failed: {str(e)}")
-            return None
-
-    async def recover_failed_output(
-            self,
-            staged_id: str,
-            user_id: Optional[str] = None
-    ) -> Optional[str]:
-        """Recover failed staged output"""
-        try:
-            # Validate access
-            if user_id and not await self.check_access_permission(
-                    staged_id, user_id, 'write'
-            ):
-                return None
-
-            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
-            if not output or output.status != ProcessingStatus.FAILED:
-                return None
-
-            # Create recovery point
-            recovery_id = await self.create_output_version(
-                staged_id,
-                "Recovery point",
-                user_id
-            )
-
-            if recovery_id:
-                # Reset status for retry
-                output.status = ProcessingStatus.PENDING
-                output.updated_at = datetime.utcnow()
-
-                # Track recovery attempt
-                history = StagingProcessingHistory(
-                    staged_output_id=staged_id,
-                    event_type="recovery_attempted",
-                    status=ProcessingStatus.PENDING,
-                    details={
-                        "recovery_point": recovery_id,
-                        "user_id": user_id
-                    }
-                )
-                self.db_session.add(history)
-
-                await self.db_session.commit()
-
-            return recovery_id
-
-        except Exception as e:
-            await self.db_session.rollback()
-            logger.error(f"Recovery failed: {str(e)}")
-            return None
-
-    # CLEANUP AND MAINTENANCE
-
-    async def _periodic_cleanup(self):
-        """Run periodic cleanup tasks"""
-        while True:
+        async with staging_operation("store_data"):
             try:
-                await self.cleanup_expired_data()
-                await asyncio.sleep(3600)  # Run every hour
+                context = StagingContext(
+                    stage_id=stage_id,
+                    pipeline_id=pipeline_id,
+                    metadata=metadata
+                )
+                self.active_stages[stage_id] = context
+
+                # Store data
+                storage_path = self.base_path / stage_id
+                storage_path.mkdir(parents=True, exist_ok=True)
+                context.storage_path = storage_path
+
+                data_file = storage_path / 'data.json'
+                with open(data_file, 'w') as f:
+                    json.dump(data, f)
+
+                context.state = StagingState.STORED
+                context.size_bytes = data_file.stat().st_size
+                context.update_metrics("store", context.size_bytes)
+
+                await self._notify_store_complete(stage_id, message)
+
             except Exception as e:
-                logger.error(f"Periodic cleanup failed: {str(e)}")
-                await asyncio.sleep(300)  # Retry after 5 minutes
+                context.state = StagingState.ERROR
+                context.error = str(e)
+                await self._notify_error(stage_id, str(e), message)
 
-    async def cleanup_expired_data(self) -> None:
-        """Clean up expired staged data"""
-        try:
-            # Find expired outputs
-            expired_outputs = await self.db_session.query(BaseStagedOutput).filter(
-                BaseStagedOutput.expires_at <= datetime.utcnow(),
-                BaseStagedOutput.status != ProcessingStatus.ARCHIVED
-            ).all()
+    async def _handle_retrieve_request(self, message: ProcessingMessage) -> None:
+        """Handle data retrieval requests"""
+        stage_id = message.content['stage_id']
+        requester = message.metadata.source_component
 
-            for output in expired_outputs:
-                await self.archive_output(output.id)
+        async with staging_operation("retrieve_data"):
+            context = self.active_stages.get(stage_id)
+            if not context or not context.has_access(requester):
+                await self._notify_access_denied(stage_id, requester, message)
+                return
 
-        except Exception as e:
-            logger.error(f"Cleanup failed: {str(e)}")
+            try:
+                data_file = context.storage_path / 'data.json'
+                with open(data_file, 'r') as f:
+                    data = json.load(f)
 
-    # MONITORING AND METRICS
+                context.update_metrics("retrieve")
+                await self._notify_retrieve_complete(stage_id, data, message)
 
-    async def get_storage_metrics(self) -> Dict[str, Any]:
-        """Get comprehensive storage usage metrics"""
-        try:
-            # Get total size
-            total_size = await self.db_session.query(
-                func.sum(BaseStagedOutput.data_size)
-            ).scalar()
+            except Exception as e:
+                await self._notify_error(stage_id, str(e), message)
 
-            # Get status distribution
-            status_counts = await self.db_session.query(
-                BaseStagedOutput.status,
-                func.count(BaseStagedOutput.id)
-            ).group_by(BaseStagedOutput.status).all()
+    async def _handle_access_request(self, message: ProcessingMessage) -> None:
+        """Handle access request messages"""
+        stage_id = message.content['stage_id']
+        requester = message.metadata.source_component
 
-            # Get component distribution
-            component_counts = await self.db_session.query(
-                BaseStagedOutput.component_type,
-                func.count(BaseStagedOutput.id)
-            ).group_by(BaseStagedOutput.component_type).all()
+        context = self.active_stages.get(stage_id)
+        if not context:
+            await self._notify_error(stage_id, "Stage not found", message)
+            return
 
-            # Get pipeline metrics
-            pipeline_metrics = await self.db_session.query(
-                BaseStagedOutput.pipeline_id,
-                func.count(BaseStagedOutput.id).label('output_count'),
-                func.sum(BaseStagedOutput.data_size).label('total_size')
-            ).group_by(BaseStagedOutput.pipeline_id).all()
+        context.grant_access(requester)
+        await self._notify_access_granted(stage_id, requester, message)
 
-            return {
-                'total_size_bytes': total_size or 0,
-                'status_distribution': dict(status_counts),
-                'component_distribution': dict(component_counts),
-                'pipeline_metrics': {
-                    p[0]: {'count': p[1], 'size': p[2]}
-                    for p in pipeline_metrics
-                },
-                'timestamp': datetime.utcnow().isoformat()
-            }
+    async def _handle_access_grant(self, message: ProcessingMessage) -> None:
+        """Handle access grant messages"""
+        stage_id = message.content['stage_id']
+        granted_to = message.content['component_id']
 
-        except Exception as e:
-            logger.error(f"Failed to get storage metrics: {str(e)}")
-            return {}
+        context = self.active_stages.get(stage_id)
+        if context:
+            context.grant_access(granted_to)
 
-    async def get_pipeline_staging_status(
+    async def _handle_delete_request(self, message: ProcessingMessage) -> None:
+        """Handle deletion requests"""
+        stage_id = message.content['stage_id']
+
+        async with staging_operation("delete_data"):
+            context = self.active_stages.get(stage_id)
+            if not context:
+                await self._notify_error(stage_id, "Stage not found", message)
+                return
+
+            try:
+                if context.storage_path and context.storage_path.exists():
+                    shutil.rmtree(context.storage_path)
+
+                context.state = StagingState.DELETED
+                del self.active_stages[stage_id]
+
+                await self._notify_delete_complete(stage_id, message)
+
+            except Exception as e:
+                await self._notify_error(stage_id, str(e), message)
+
+    async def _handle_metrics_request(self, message: ProcessingMessage) -> None:
+        """Handle metrics request messages"""
+        await self._publish_metrics(message.metadata.source_component)
+
+    async def _notify_store_complete(self, stage_id: str, original_message: ProcessingMessage) -> None:
+        """Notify about successful storage"""
+        context = self.active_stages[stage_id]
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_STORE_COMPLETE,
+            content={
+                'stage_id': stage_id,
+                'size_bytes': context.size_bytes,
+                'metadata': context.metadata
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=original_message.metadata.source_component
+            )
+        ))
+
+    async def _notify_retrieve_complete(
             self,
-            pipeline_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get staging status for all components in a pipeline"""
-        try:
-            # Get latest output for each component
-            status_by_component = {}
-            for comp_type in ComponentType:
-                latest = await self.db_session.query(BaseStagedOutput).filter(
-                    BaseStagedOutput.pipeline_id == pipeline_id,
-                    BaseStagedOutput.component_type == comp_type
-                ).order_by(BaseStagedOutput.created_at.desc()).first()
-
-                if latest:
-                    status_by_component[comp_type.value] = {
-                        'status': latest.status.value,
-                        'last_updated': latest.updated_at.isoformat(),
-                        'output_id': latest.id,
-                        'metadata': latest.metadata
-                    }
-                else:
-                    status_by_component[comp_type.value] = {
-                        'status': 'not_started',
-                        'last_updated': None,
-                        'output_id': None
-                    }
-
-            return status_by_component
-
-        except Exception as e:
-            logger.error(f"Failed to get pipeline staging status: {str(e)}")
-            return None
-
-    # ACCESS CONTROL
-
-    async def check_access_permission(
-            self,
-            staged_id: str,
-            user_id: str,
-            action: str
-    ) -> bool:
-        """Check if user has permission to access staged data"""
-        try:
-            output = await self.db_session.query(BaseStagedOutput).get(staged_id)
-            if not output:
-                return False
-
-            pipeline = await self.db_session.query(Pipeline).get(output.pipeline_id)
-            if not pipeline:
-                return False
-
-            # Direct ownership
-            if pipeline.owner_id == user_id:
-                return True
-
-            # Team access
-            if pipeline.team_id:
-                team_member = await self.db_session.query(TeamMember).filter(
-                    TeamMember.team_id == pipeline.team_id,
-                    TeamMember.user_id == user_id
-                ).first()
-
-                if team_member:
-                    if action == 'read':
-                        return True
-                    if action == 'write' and team_member.role in ['admin', 'editor']:
-                        return True
-
-            # Service account access
-            service_account = await self.db_session.query(ServiceAccount).filter(
-                ServiceAccount.user_id == user_id,
-                ServiceAccount.scope.contains([f"pipeline:{pipeline.id}:{action}"])
-            ).first()
-
-            if service_account:
-                return True
-
-            return False
-
-        except Exception as e:
-            logger.error(f"Permission check failed: {str(e)}")
-            return False
-
-    # MESSAGE HANDLING
-
-    async def _handle_staging_message(self, message: Dict[str, Any]) -> None:
-        """Handle incoming staging-related messages"""
-        try:
-            message_type = message.get('message_type')
-            content = message.get('content', {})
-
-            if message_type == MessageType.STAGING_CLEANUP_START:
-                await self.cleanup_expired_data()
-
-            elif message_type == MessageType.COMPONENT_OUTPUT_READY:
-                await self.store_component_output(
-                    content['staged_id'],
-                    content['component_type'],
-                    content['output'],
-                    content['output_type']
-                )
-
-            elif message_type == MessageType.DATA_ACCESS_REQUEST:
-                data = await self.retrieve_data(
-                    content['staged_id'],
-                    content['component_type'],
-                    content.get('user_id')
-                )
-                # Send response if required
-
-            # Handle other message types...
-
-        except Exception as e:
-            logger.error(f"Message handling failed: {str(e)}")
-
-    # UTILITY METHODS
-
-    async def _notify_data_staged(
-            self,
-            staged_id: str,
-            metadata: Dict[str, Any],
-            pipeline_id: str,
-            run_id: str
+            stage_id: str,
+            data: Any,
+            original_message: ProcessingMessage
     ) -> None:
-        """Notify about newly staged data"""
-        try:
-            message = {
-                'message_type': MessageType.DATA_STORAGE,
-                'content': {
-                    'staged_id': staged_id,
-                    'pipeline_id': pipeline_id,
-                    'run_id': run_id,
-                    'metadata': metadata
-                },
-                'source_identifier': self.module_identifier,
-                'metadata': MessageMetadata(
-                    source_component="staging_manager",
-                    target_component="control_point_manager"
-                )
-            }
+        """Notify about successful retrieval"""
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_RETRIEVE_COMPLETE,
+            content={
+                'stage_id': stage_id,
+                'data': data
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=original_message.metadata.source_component
+            )
+        ))
 
-            await self.message_broker.publish(message)
+    async def _notify_delete_complete(self, stage_id: str, original_message: ProcessingMessage) -> None:
+        """Notify about successful deletion"""
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_DELETE_COMPLETE,
+            content={'stage_id': stage_id},
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=original_message.metadata.source_component
+            )
+        ))
 
-        except Exception as e:
-            logger.error(f"Notification failed: {str(e)}")
+    async def _notify_error(
+            self,
+            stage_id: str,
+            error: str,
+            original_message: ProcessingMessage
+    ) -> None:
+        """Notify about operation error"""
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_ERROR,
+            content={
+                'stage_id': stage_id,
+                'error': error
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=original_message.metadata.source_component
+            )
+        ))
+
+    async def _notify_access_denied(
+            self,
+            stage_id: str,
+            requester: str,
+            original_message: ProcessingMessage
+    ) -> None:
+        """Notify about access denial"""
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_ACCESS_DENIED,
+            content={
+                'stage_id': stage_id,
+                'reason': 'Access not authorized'
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=requester
+            )
+        ))
+
+    async def _notify_access_granted(
+            self,
+            stage_id: str,
+            requester: str,
+            original_message: ProcessingMessage
+    ) -> None:
+        """Notify about access grant"""
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_ACCESS_GRANTED,
+            content={
+                'stage_id': stage_id,
+                'granted_to': requester
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=requester
+            )
+        ))
+
+    async def _publish_metrics(self, target_component: str) -> None:
+        """Publish current metrics"""
+        self.global_metrics.active_stages = len(self.active_stages)
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_METRICS_UPDATE,
+            content={
+                'metrics': self.global_metrics.__dict__,
+                'timestamp': datetime.now().isoformat()
+            },
+            metadata=MessageMetadata(
+                source_component=self.component_name,
+                target_component=target_component
+            )
+        ))
+
+    def _start_cleanup_task(self) -> None:
+        """Start periodic cleanup task"""
+        asyncio.create_task(self._periodic_cleanup())
+
+    async def _periodic_cleanup(self) -> None:
+        """Run periodic cleanup with error handling and backoff"""
+        base_interval = self.cleanup_interval
+        max_interval = base_interval * 10
+        current_interval = base_interval
+
+        while self._running:
+            try:
+                await self._cleanup_expired_stages()
+                current_interval = base_interval
+
+            except Exception as e:
+                logger.error(f"Cleanup error: {str(e)}")
+                current_interval = min(current_interval * 2, max_interval)
+
+            await asyncio.sleep(current_interval)
+
+    async def _cleanup_expired_stages(self) -> None:
+        """Clean up expired stages"""
+        current_time = datetime.now()
+
+        for stage_id, context in list(self.active_stages.items()):
+            age = current_time - context.created_at
+            if age > self.max_age:
+                await self._handle_delete_request(ProcessingMessage(
+                    message_type=MessageType.STAGING_DELETE_REQUEST,
+                    content={'stage_id': stage_id},
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component=self.component_name
+                    )
+                ))
+
+    async def cleanup(self) -> None:
+        """Perform complete cleanup"""
+        self._running = False
+
+        for stage_id in list(self.active_stages.keys()):
+            try:
+                await self._handle_delete_request(ProcessingMessage(
+                    message_type=MessageType.STAGING_DELETE_REQUEST,
+                    content={'stage_id': stage_id},
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component=self.component_name
+                    )
+                ))
+            except Exception as e:
+                logger.error(f"Error cleaning up stage {stage_id}: {str(e)}")

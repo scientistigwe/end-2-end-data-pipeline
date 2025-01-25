@@ -79,11 +79,11 @@
 #             'statistical': 20
 #         }
 
-#         # Column name analysis
+#         # Column name insight
 #         if any(re.search(pattern, column_lower) for pattern in self.column_patterns):
 #             score += weights['column_name']
 
-#         # Value format analysis
+#         # Value format insight
 #         valid_values = sum(self._is_address_format(val) for val in values if pd.notna(val))
 #         if len(values) > 0:
 #             format_score = (valid_values / len(values)) * weights['value_format']
@@ -97,7 +97,7 @@
 #             geocoding_score = (geocoded / sample_size) * weights['geocoding']
 #             score += geocoding_score
 
-#         # Statistical analysis
+#         # Statistical insight
 #         stats = self._calculate_statistics(values)
 #         if stats:
 #             avg_word_count = stats.get("avg_word_count", 0)
@@ -295,10 +295,10 @@
 #         )
 
 #     def run(self) -> Dict[str, AddressAnalysis]:
-#         """Run analysis on all columns."""
+#         """Run insight on all columns."""
 #         all_results = {column: self.analyze_column(column) for column in self.data.columns}
-#         return {col: analysis for col, analysis in all_results.items()
-#                 if analysis.identified_as == "ADDRESS"}
+#         return {col: insight for col, insight in all_results.items()
+#                 if insight.identified_as == "ADDRESS"}
 
 
 # def format_time(seconds):
@@ -349,28 +349,28 @@
 #     report = detector.run()
 
 #     # Display detailed results for address columns only
-#     for column, analysis in report.items():
+#     for column, insight in report.items():
 #         print(f"\nColumn: {column}")
-#         print(f"Classification: {analysis.identified_as}")
-#         print(f"Confidence: {analysis.confidence:.2f}%")
-#         print(f"Sample Values: {analysis.sample_values}")
+#         print(f"Classification: {insight.identified_as}")
+#         print(f"Confidence: {insight.confidence:.2f}%")
+#         print(f"Sample Values: {insight.sample_values}")
 
-#         if analysis.detected_countries:
-#             print(f"Detected Countries: {analysis.detected_countries}")
+#         if insight.detected_countries:
+#             print(f"Detected Countries: {insight.detected_countries}")
 
-#         if analysis.issues:
+#         if insight.issues:
 #             print("\nIssues Detected:")
-#             for issue, count in analysis.issues.items():
+#             for issue, count in insight.issues.items():
 #                 print(f"- {issue}: {count} occurrences")
 
-#         if analysis.recommendations:
+#         if insight.recommendations:
 #             print("\nRecommendations:")
-#             for rec in analysis.recommendations:
+#             for rec in insight.recommendations:
 #                 print(f"- {rec}")
 
-#         if analysis.statistics:
+#         if insight.statistics:
 #             print("\nStatistics:")
-#             for stat, value in analysis.statistics.items():
+#             for stat, value in insight.statistics.items():
 #                 print(f"- {stat}: {value}")
 
 #         print("-" * 50)

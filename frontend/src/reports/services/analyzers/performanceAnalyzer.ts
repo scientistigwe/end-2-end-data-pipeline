@@ -1,4 +1,4 @@
-// src/report/services/analyzers/performanceAnalyzer.ts
+// src/report/pipeline/analyzers/performanceAnalyzer.ts
 import { BaseAnalyzer } from './baseAnalyzer';
 import type { Report, ReportMetric } from '../../types/models';
 

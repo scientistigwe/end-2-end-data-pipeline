@@ -1,16 +1,16 @@
 # backend/db/models/staging/advanced_analytics_output_model.py
-
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
-
-
+from core.messaging.event_types import ComponentType
 from .base_staging_model import BaseStagedOutput
 
 
 class StagedAnalyticsOutput(BaseStagedOutput):
     """Advanced analytics specific output model"""
     __tablename__ = 'staged_analytics_outputs'
+    base_id = Column(UUID(as_uuid=True), ForeignKey('staged_outputs.id'), primary_key=True)
 
-    id = Column(String, ForeignKey('staged_outputs.id'), primary_key=True)
     model_type = Column(String)
     training_duration = Column(Float)
     iteration_count = Column(Integer)
@@ -23,3 +23,7 @@ class StagedAnalyticsOutput(BaseStagedOutput):
     evaluation_results = Column(JSON)
     model_artifacts = Column(JSON)
 
+    __mapper_args__ = {
+        "polymorphic_identity": ComponentType.ANALYTICS_MANAGER,
+        "inherit_condition": base_id == BaseStagedOutput.id
+    }

@@ -22,13 +22,13 @@ async def create_dashboard(evaluation_data: Dict[str, Any]) -> Dict[str, Any]:
                 _create_performance_section(evaluation_data)
             )
 
-        # Error analysis section
+        # Error insight section
         if 'error_analysis' in evaluation_data:
             dashboard_components.append(
                 _create_error_section(evaluation_data['error_analysis'])
             )
 
-        # Feature analysis section
+        # Feature insight section
         if 'feature_importance' in evaluation_data:
             dashboard_components.append(
                 _create_feature_section(evaluation_data['feature_importance'])
@@ -87,7 +87,7 @@ def _create_performance_section(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_error_section(error_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Create error analysis section"""
+    """Create error insight section"""
     return {
         'type': 'error_analysis',
         'title': 'Error Analysis',
@@ -107,7 +107,7 @@ def _create_error_section(error_data: Dict[str, Any]) -> Dict[str, Any]:
 def _create_feature_section(
         feature_importance: Dict[str, float]
 ) -> Dict[str, Any]:
-    """Create feature analysis section"""
+    """Create feature insight section"""
     return {
         'type': 'feature_analysis',
         'title': 'Feature Analysis',

@@ -1,46 +1,77 @@
-# backend/config/db.py
+# backend/config/database.py
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 import logging
 import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def init_db(app):
-    """Initialize db connection and session management."""
-    try:
-        # Get credentials from environment variables
-        db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+class DatabaseConfig:
+    """Database configuration and initialization."""
 
-        # Create engine with connection pooling
-        engine = create_engine(
-            db_url,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_pre_ping=True
-        )
+    def __init__(self, app_config=None):
+        self.app_config = app_config
+        self.engine = None
+        self.SessionLocal = None
 
-        # Create session factory
-        session_factory = sessionmaker(
-            bind=engine,
-            autocommit=False,
-            autoflush=False
-        )
-        SessionLocal = scoped_session(session_factory)
+    def init_db(self) -> Tuple[any, scoped_session]:
+        """Initialize database connection and session management."""
+        try:
+            # Construct database URL with strict validation
+            db_user = os.getenv('DB_USER')
+            db_password = os.getenv('DB_PASSWORD')
+            db_host = os.getenv('DB_HOST', 'localhost')
+            db_port = int(os.getenv('DB_PORT', '5432'))  # Default PostgreSQL port
+            db_name = os.getenv('DB_NAME')
 
-        # Import and create tables
-        from backend.db.models import Base
-        Base.metadata.create_all(bind=engine)
+            # Validate required parameters
+            if not all([db_user, db_password, db_name]):
+                raise ValueError("Missing required database configuration parameters")
 
-        logger.info("Database initialized successfully")
-        return engine, SessionLocal
+            db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-    except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
-        raise
+            # Create engine with connection pooling
+            self.engine = create_engine(
+                db_url,
+                pool_size=5,
+                max_overflow=10,
+                pool_timeout=30,
+                pool_pre_ping=True
+            )
+
+            # Create session factory
+            session_factory = sessionmaker(
+                bind=self.engine,
+                autocommit=False,
+                autoflush=False
+            )
+            self.SessionLocal = scoped_session(session_factory)
+
+            # Import and create tables
+            from db.models import Base
+            Base.metadata.create_all(bind=self.engine)
+
+            logger.info("Database initialized successfully")
+            return self.engine, self.SessionLocal
+
+        except ValueError as ve:
+            logger.error(f"Database configuration error: {str(ve)}")
+            raise
+
+        except Exception as e:
+            logger.error(f"Database initialization error: {str(e)}")
+            raise
+
+    def get_session(self):
+        """Get a database session."""
+        if not self.SessionLocal:
+            raise RuntimeError("Database not initialized. Call init_db() first.")
+        return self.SessionLocal()
+
+    def cleanup(self):
+        """Cleanup database resources."""
+        if self.SessionLocal:
+            self.SessionLocal.remove()

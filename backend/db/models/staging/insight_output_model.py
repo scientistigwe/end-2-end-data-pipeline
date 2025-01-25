@@ -1,14 +1,16 @@
 # backend/db/models/staging/insight_output_model.py
-
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
 from .base_staging_model import BaseStagedOutput
 
+from core.messaging.event_types import ComponentType
 
 class StagedInsightOutput(BaseStagedOutput):
-    """Insight analysis specific output model"""
+    """Insight insight specific output model"""
     __tablename__ = 'staged_insight_outputs'
 
-    id = Column(String, ForeignKey('staged_outputs.id'), primary_key=True)
+    base_id = Column(UUID(as_uuid=True), ForeignKey('staged_outputs.id'), primary_key=True)
     insight_count = Column(Integer)
     goal_alignment_score = Column(Float)
     business_impact_score = Column(Float)
@@ -21,3 +23,8 @@ class StagedInsightOutput(BaseStagedOutput):
     patterns_discovered = Column(JSON)
     correlations = Column(JSON)
     recommendations = Column(JSON)
+
+    __mapper_args__ = {
+        "polymorphic_identity": ComponentType.INSIGHT_MANAGER,
+        "inherit_condition": base_id == BaseStagedOutput.id
+    }

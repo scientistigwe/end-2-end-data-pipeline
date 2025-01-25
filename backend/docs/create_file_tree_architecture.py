@@ -26,25 +26,25 @@ def create_project_structure(base_path):
         "analyst_pa/backend/monitoring/collectors",
         "analyst_pa/backend/monitoring/alerts",
         "analyst_pa/backend/monitoring/dashboards",
-        "analyst_pa/backend/subscription/managers",
+        "analyst_pa/backend/subscription/sub_managers",
         "analyst_pa/backend/subscription/payment",
         "analyst_pa/backend/utils",
 
         # Frontend structure
-        "analyst_pa/frontend/src/components/analysis",
+        "analyst_pa/frontend/src/components/insight",
         "analyst_pa/frontend/src/components/common",
         "analyst_pa/frontend/src/components/dashboard",
         "analyst_pa/frontend/src/pages",
-        "analyst_pa/frontend/src/services",
+        "analyst_pa/frontend/src/pipeline",
         "analyst_pa/frontend/src/utils",
         "analyst_pa/frontend/public/assets",
 
         # Tests structure
         "analyst_pa/tests/unit/core",
         "analyst_pa/tests/unit/processing",
-        "analyst_pa/tests/unit/services",
+        "analyst_pa/tests/unit/pipeline",
         "analyst_pa/tests/integration/workflows",
-        "analyst_pa/tests/integration/services",
+        "analyst_pa/tests/integration/pipeline",
         "analyst_pa/tests/e2e/features"
     ]
 
@@ -80,7 +80,7 @@ def create_project_structure(base_path):
         "analyst_pa/backend/infrastructure/docker/Dockerfile",
         "analyst_pa/backend/infrastructure/docker/docker-compose.yml",
         "analyst_pa/backend/infrastructure/celery/tasks.py",
-        "analyst_pa/backend/infrastructure/celery/config.py",
+        "analyst_pa/backend/infrastructure/celery/celery_config.py",
         "analyst_pa/backend/infrastructure/prometheus/config.yml",
         "analyst_pa/backend/infrastructure/prometheus/alerts.yml",
         "analyst_pa/backend/source_handlers/api/api_handler.py",
@@ -93,8 +93,8 @@ def create_project_structure(base_path):
         "analyst_pa/backend/monitoring/collectors/log_collector.py",
         "analyst_pa/backend/monitoring/alerts/alert_manager.py",
         "analyst_pa/backend/monitoring/dashboards/grafana_config.json",
-        "analyst_pa/backend/subscription/managers/subscription_manager.py",
-        "analyst_pa/backend/subscription/managers/usage_tracker.py",
+        "analyst_pa/backend/subscription/sub_managers/subscription_manager.py",
+        "analyst_pa/backend/subscription/sub_managers/usage_tracker.py",
         "analyst_pa/backend/subscription/payment/payment_processor.py",
         "analyst_pa/backend/subscription/payment/payment_validator.py",
         "analyst_pa/backend/utils/encryption.py",
@@ -102,8 +102,8 @@ def create_project_structure(base_path):
         "analyst_pa/backend/utils/formatters.py",
 
         # Frontend files
-        "analyst_pa/frontend/src/components/analysis/QualityReview.tsx",
-        "analyst_pa/frontend/src/components/analysis/InsightDisplay.tsx",
+        "analyst_pa/frontend/src/components/insight/QualityReview.tsx",
+        "analyst_pa/frontend/src/components/insight/InsightDisplay.tsx",
         "analyst_pa/frontend/src/components/common/Navigation.tsx",
         "analyst_pa/frontend/src/components/common/Controls.tsx",
         "analyst_pa/frontend/src/components/dashboard/MetricsDisplay.tsx",
@@ -111,8 +111,8 @@ def create_project_structure(base_path):
         "analyst_pa/frontend/src/pages/Analysis.tsx",
         "analyst_pa/frontend/src/pages/Dashboard.tsx",
         "analyst_pa/frontend/src/pages/Settings.tsx",
-        "analyst_pa/frontend/src/services/api.ts",
-        "analyst_pa/frontend/src/services/auth.ts",
+        "analyst_pa/frontend/src/pipeline/api.ts",
+        "analyst_pa/frontend/src/pipeline/auth.ts",
         "analyst_pa/frontend/src/utils/formatters.ts",
         "analyst_pa/frontend/src/utils/validation.ts",
         "analyst_pa/frontend/public/index.html",

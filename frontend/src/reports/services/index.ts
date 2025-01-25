@@ -1,3 +1,3 @@
-// src/report/services/index.ts
+// src/report/pipeline/index.ts
 export * from './reportService';
   

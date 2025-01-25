@@ -1,2 +1,2 @@
-// src/auth/services/index.ts
+// src/auth/pipeline/index.ts
 export * from './authService';

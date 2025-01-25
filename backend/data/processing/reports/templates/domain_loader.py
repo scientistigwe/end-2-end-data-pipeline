@@ -68,7 +68,7 @@ class DomainLoader:
         return suggestions
 
     def get_required_columns_for_analysis(self, domain_id: str, analysis_type: str) -> List[str]:
-        """Get required columns for specific analysis type"""
+        """Get required columns for specific insight type"""
         domain = self.domains.get(domain_id, {})
         analysis_types = {
             at['id']: at['required_columns']
@@ -99,7 +99,7 @@ class DomainLoader:
         return domain.get('common_metrics', [])
 
     def get_analysis_types(self, domain_id: str) -> List[Dict[str, Any]]:
-        """Get analysis types for domain"""
+        """Get insight types for domain"""
         domain = self.domains.get(domain_id, {})
         return domain.get('analysis_types', [])
 

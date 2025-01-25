@@ -1,4 +1,4 @@
-// src/analysis/constants.ts
+// src/insight/constants.ts
 
 export const ANALYSIS_CONSTANTS = {
     POLLING_INTERVAL: 2000, // 2 seconds

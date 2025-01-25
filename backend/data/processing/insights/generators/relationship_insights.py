@@ -18,7 +18,7 @@ async def detect_relationships(data: pd.DataFrame) -> List[Dict[str, Any]]:
     # Get numeric columns
     numeric_cols = data.select_dtypes(include=[np.number]).columns
 
-    # Correlation analysis
+    # Correlation insight
     if len(numeric_cols) > 1:
         corr_matrix = data[numeric_cols].corr()
 
@@ -38,7 +38,7 @@ async def detect_relationships(data: pd.DataFrame) -> List[Dict[str, Any]]:
                             }
                         })
 
-    # Categorical relationship analysis
+    # Categorical relationship insight
     categorical_cols = data.select_dtypes(include=['object', 'category']).columns
     for col1 in categorical_cols:
         for col2 in categorical_cols:

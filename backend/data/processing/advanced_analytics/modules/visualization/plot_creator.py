@@ -12,7 +12,7 @@ async def create_plots(evaluation_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         plots = []
 
-        # Residuals analysis plots
+        # Residuals insight plots
         if all(k in evaluation_data for k in ['actual', 'predicted']):
             plots.extend(_create_residual_plots(evaluation_data))
 
@@ -20,7 +20,7 @@ async def create_plots(evaluation_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         if 'predictions' in evaluation_data:
             plots.append(_create_distribution_plots(evaluation_data['predictions']))
 
-        # Error analysis plots
+        # Error insight plots
         if 'error_analysis' in evaluation_data:
             plots.append(_create_error_analysis_plots(evaluation_data['error_analysis']))
 
@@ -38,7 +38,7 @@ async def create_plots(evaluation_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _create_residual_plots(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Create residual analysis plots"""
+    """Create residual insight plots"""
     residuals = np.array(data['predicted']) - np.array(data['actual'])
 
     # Residuals vs Predicted
@@ -132,7 +132,7 @@ def _create_distribution_plots(predictions: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_error_analysis_plots(error_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Create error analysis plots"""
+    """Create error insight plots"""
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=[
@@ -192,7 +192,7 @@ def _create_error_analysis_plots(error_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_stability_plots(stability_metrics: Dict[str, Any]) -> Dict[str, Any]:
-    """Create model stability analysis plots"""
+    """Create model stability insight plots"""
     fig = make_subplots(rows=2, cols=2)
 
     # CV stability

@@ -1,4 +1,4 @@
-// src/analysis/store/selectors.ts
+// src/insight/store/selectors.ts
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@/store/rootReducer';
 import { AnalysisStatus, AnalysisType } from '../types/analysis';
@@ -9,7 +9,7 @@ import type {
   Pattern,
   Anomaly, 
   Correlation
-} from '../types/analysis';
+} from '../types/insight';
 import type { AnalysisState } from './analysisSlice';
 
 // Base selectors

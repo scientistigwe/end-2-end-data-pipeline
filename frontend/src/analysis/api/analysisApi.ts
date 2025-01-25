@@ -9,7 +9,7 @@ import type {
   InsightReport,
   ExportOptions,
   AnalysisStatus
-} from '../types/analysis';
+} from '../types/insight';
 
 class AnalysisApi {
   private client = baseAxiosClient;

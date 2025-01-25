@@ -1,4 +1,4 @@
-// src/decisions/services/decisionService.ts
+// src/decisions/pipeline/decisionService.ts
 import { decisionsApi } from '../api/decisionsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { dateUtils } from '../../common/utils/date/dateUtils';

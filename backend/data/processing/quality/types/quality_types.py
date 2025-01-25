@@ -40,7 +40,7 @@ class ResolutionType(Enum):
 class QualityPhase(Enum):
     """Phases of quality processing"""
     DETECTION = "detection"
-    ANALYSIS = "analysis"
+    ANALYSIS = "insight"
     RESOLUTION = "resolution"
     VALIDATION = "validation"
 

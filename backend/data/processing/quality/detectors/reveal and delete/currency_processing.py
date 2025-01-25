@@ -97,7 +97,7 @@
 #             if re.search(pattern, column_lower)
 #         )
 
-#         # Value format analysis
+#         # Value format insight
 #         valid_values = sum(
 #             self._is_currency_value(val)
 #             for val in values
@@ -348,12 +348,12 @@
 #         )
 
 #     def run(self) -> Dict[str, ColumnClassification]:
-#         """Run analysis on all columns with currency potential."""
+#         """Run insight on all columns with currency potential."""
 #         results = {}
 #         for column in self.data.columns:
-#             analysis = self.analyze_column(column)
-#             if analysis is not None:
-#                 results[column] = analysis
+#             insight = self.analyze_column(column)
+#             if insight is not None:
+#                 results[column] = insight
 
 #         return results
 
@@ -367,22 +367,22 @@
 #     report = detector.run()
 
 #     # Detailed reporting
-#     for column, analysis in report.items():
+#     for column, insight in report.items():
 #         print(f"\nColumn: {column}")
-#         print(f"Confidence Level: {analysis.confidence_level}")
-#         print(f"Confidence Score: {analysis.confidence_score:.2f}%")
+#         print(f"Confidence Level: {insight.confidence_level}")
+#         print(f"Confidence Score: {insight.confidence_score:.2f}%")
 
-#         if analysis.detected_currencies:
-#             print(f"Detected Currencies: {analysis.detected_currencies}")
+#         if insight.detected_currencies:
+#             print(f"Detected Currencies: {insight.detected_currencies}")
 
-#         if analysis.issues:
+#         if insight.issues:
 #             print("\nIssues Detected:")
-#             for issue, count in analysis.issues.items():
+#             for issue, count in insight.issues.items():
 #                 print(f"- {issue}: {count} occurrences")
 
-#         if analysis.recommendations:
+#         if insight.recommendations:
 #             print("\nRecommendations:")
-#             for rec in analysis.recommendations:
+#             for rec in insight.recommendations:
 #                 print(f"- {rec}")
 
 #         print("-" * 50)

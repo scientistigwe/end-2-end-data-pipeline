@@ -201,7 +201,7 @@ class BusinessGoalValidator:
             analysis_types: List[str],
             columns: List[Dict[str, Any]]
     ) -> List[ValidationError]:
-        """Validate analysis type selections"""
+        """Validate insight type selections"""
         errors = []
 
         column_names = {col['name'] for col in columns}
@@ -302,7 +302,7 @@ class BusinessGoalValidator:
                     }
                 })
 
-        # Suggest relevant analysis types
+        # Suggest relevant insight types
         selected_analyses = set(form_data.get('analysisTypes', []))
         available_analyses = self.domain_loader.get_analysis_types(domain_id)
 
@@ -310,7 +310,7 @@ class BusinessGoalValidator:
             if analysis['id'] not in selected_analyses:
                 suggestions.append({
                     'type': 'analysis_suggestion',
-                    'message': f"Consider including {analysis['name']} in your analysis",
+                    'message': f"Consider including {analysis['name']} in your insight",
                     'details': {
                         'analysis_id': analysis['id'],
                         'description': analysis['description']

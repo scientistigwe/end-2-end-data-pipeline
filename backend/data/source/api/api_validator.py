@@ -27,6 +27,8 @@ class APIValidationConfig:
     # Security settings
     require_ssl: bool = True
 
+    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
+
     # Header validation
     required_headers: Dict[str, set[str]] = field(default_factory=lambda: {
         'GET': {'Accept'},

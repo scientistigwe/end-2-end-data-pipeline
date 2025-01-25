@@ -89,7 +89,7 @@ class Report:
 
 @dataclass
 class QualityReport(Report):
-    """Quality analysis specific report"""
+    """Quality insight specific report"""
     quality_score: float = 0.0
     issues_found: int = 0
     recommendations: List[Dict[str, Any]] = field(default_factory=list)
@@ -98,7 +98,7 @@ class QualityReport(Report):
 
 @dataclass
 class InsightReport(Report):
-    """Insight analysis specific report"""
+    """Insight insight specific report"""
     business_goals: List[str] = field(default_factory=list)
     insights_found: int = 0
     goal_alignment_score: float = 0.0

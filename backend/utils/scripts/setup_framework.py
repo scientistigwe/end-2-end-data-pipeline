@@ -127,7 +127,7 @@
 #
 #
 # class AnalysisFrameworkGenerator(BaseFrameworkGenerator):
-#     """Generator for analysis framework"""
+#     """Generator for insight framework"""
 #
 #     def create_module_content(self, module_name: str, class_name: str) -> str:
 #         return f'''
@@ -138,7 +138,7 @@
 #
 # @dataclass
 # class AnalysisResult:
-#     """Data class for storing analysis results"""
+#     """Data class for storing insight results"""
 #     detected_issues: Dict[str, List[str]]
 #     pattern_analysis: Dict[str, List[Any]]
 #     recommendations: List[Dict[str, Any]]
@@ -213,7 +213,7 @@
 #
 #     def get_analysis_report(self) -> Dict[str, Any]:
 #         if not self.analysis_results:
-#             return {{'error': 'No analysis results available'}}
+#             return {{'error': 'No insight results available'}}
 #
 #         return {{
 #             'summary': {{}},
@@ -334,7 +334,7 @@
 #
 #
 # def create_framework():
-#     """Create both analysis and resolution frameworks"""
+#     """Create both insight and resolution frameworks"""
 #     generators = [
 #         AnalysisFrameworkGenerator('data_issue_analysis_framework'),
 #         ResolutionFrameworkGenerator('data_issue_resolution_framework')

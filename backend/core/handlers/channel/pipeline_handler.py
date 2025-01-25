@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class PipelineHandler(BaseChannelHandler):
     """
     Dedicated handler for orchestrating pipeline workflows
-    Coordinates processing across different domain-specific managers
+    Coordinates processing across different domain-specific sub_managers
     """
 
     def __init__(
@@ -40,11 +40,11 @@ class PipelineHandler(BaseChannelHandler):
             report_manager: ReportManager
     ):
         """
-        Initialize pipeline handler with domain-specific managers
+        Initialize pipeline handler with domain-specific sub_managers
 
         Args:
             message_broker: Message communication system
-            quality_manager: Quality analysis manager
+            quality_manager: Quality insight manager
             insight_manager: Insight generation manager
             decision_manager: Decision processing manager
             recommendation_manager: Recommendation generation manager
@@ -52,7 +52,7 @@ class PipelineHandler(BaseChannelHandler):
         """
         super().__init__(message_broker, "pipeline_handler")
 
-        # Domain-specific managers
+        # Domain-specific sub_managers
         self.managers = {
             ProcessingStage.QUALITY_CHECK: quality_manager,
             ProcessingStage.INSIGHT_GENERATION: insight_manager,

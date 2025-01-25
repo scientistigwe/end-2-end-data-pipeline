@@ -5,15 +5,14 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from uuid import uuid4
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.control.control_point_manager import ControlPointManager
-from backend.core.messaging.types import (
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
+from core.control.cpm import ControlPointManager
+from core.messaging.event_types import (
     MessageType, ProcessingStage, ModuleIdentifier, ComponentType
 )
 from .api_handler import APIHandler
-from .api_validator import APIValidator
-from .api_config import Config
+from .api_validator import APIValidator, APIValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,12 @@ class APIService:
             message_broker: MessageBroker,
             staging_manager: StagingManager,
             cpm: ControlPointManager,
-            config: Optional[Config] = None
+            config: Optional[APIValidationConfig] = None
     ):
         self.message_broker = message_broker
         self.staging_manager = staging_manager
         self.cpm = cpm
-        self.config = config or Config()
+        self.config = config or APIValidationConfig()
 
         # Initialize components
         self.handler = APIHandler(

@@ -80,7 +80,7 @@ class MessageBroker:
             self,
             module_identifier: ModuleIdentifier,
             message_patterns: Union[str, List[str]],
-            callback: Union[Callable, Coroutine]
+            callback: Union[Callable, Coroutine],
     ) -> None:
         """Enhanced subscribe with module identification"""
         async with self._lock:
@@ -228,16 +228,84 @@ class MessageBroker:
                 processor.get_routing_key()
             ])
 
-
     def _start_background_tasks(self):
-        """Initialize background tasks"""
+        """Initialize background tasks with more robust management"""
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        self._cleanup_task = loop.create_task(self._periodic_cleanup())
+        self._cleanup_task = loop.create_task(self._manage_periodic_cleanup())
+
+    async def _manage_periodic_cleanup(self):
+        """
+        Managed periodic cleanup for message broker with enhanced error handling.
+
+        Provides a robust wrapper around cleanup methods with:
+        - Continuous running while _is_running is True
+        - Exponential backoff for error recovery
+        - Logging of cleanup attempts and failures
+        """
+        base_interval = 300  # 5 minutes
+        max_interval = base_interval * 10
+        current_interval = base_interval
+
+        while self._is_running:
+            try:
+                # Perform individual cleanup tasks
+                await self._cleanup_expired_messages()
+                await self._cleanup_inactive_subscriptions()
+
+                # Reset interval on successful cleanup
+                current_interval = base_interval
+                await asyncio.sleep(current_interval)
+
+            except asyncio.CancelledError:
+                # Handle task cancellation gracefully
+                logger.info("Periodic message broker cleanup task was cancelled")
+                break
+
+            except Exception as e:
+                # Log error and implement exponential backoff
+                logger.error(f"Cleanup error: {str(e)}")
+
+                # Exponential backoff with jitter
+                current_interval = min(current_interval * 2, max_interval)
+                jitter = current_interval * 0.1  # Add 10% jitter
+                await asyncio.sleep(current_interval + random.uniform(-jitter, jitter))
+
+    async def cleanup(self) -> None:
+        """
+        Enhanced asynchronous cleanup of message broker resources.
+        Ensures orderly shutdown of all broker components.
+        """
+        try:
+            logger.info("Starting message broker cleanup")
+
+            # Stop background processing
+            self._is_running = False
+
+            # Cancel cleanup task if running
+            if self._cleanup_task and not self._cleanup_task.done():
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Process any remaining messages
+            await self._process_remaining_messages()
+
+            # Clear all registrations and storage
+            await self._clear_subscriptions()
+            self._clear_storage()
+
+            logger.info("Message broker cleanup completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error during message broker cleanup: {str(e)}")
+            raise
 
     async def _deliver_message(
             self,
@@ -304,18 +372,6 @@ class MessageBroker:
         except Exception as e:
             logger.error(f"Error handling failed: {str(e)}")
 
-    async def _periodic_cleanup(self):
-        """Periodic cleanup of expired messages and inactive subscriptions"""
-        while self._is_running:
-            try:
-                await self._cleanup_expired_messages()
-                await self._cleanup_inactive_subscriptions()
-                await asyncio.sleep(300)  # Run every 5 minutes
-
-            except Exception as e:
-                logger.error(f"Cleanup error: {str(e)}")
-                await asyncio.sleep(60)
-
     async def _cleanup_expired_messages(self):
         """Clean up expired messages"""
         current_time = datetime.now()
@@ -345,21 +401,6 @@ class MessageBroker:
             if not self.subscriptions[pattern]:
                 del self.subscriptions[pattern]
 
-    async def cleanup(self):
-        """Clean up broker resources"""
-        self._is_running = False
-
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-
-        # Clear all storage
-        self.subscriptions.clear()
-        self.active_messages.clear()
-        self.message_history.clear()
-        self._message_queues.clear()
-
-        logger.info("Message Broker cleaned up successfully")
-
     def get_stats(self) -> Dict[str, Any]:
         """Get broker statistics"""
         return {
@@ -387,3 +428,132 @@ class MessageBroker:
             'component_id': component_id,
             'subscriptions': subscriptions
         } if subscriptions else None
+
+    def sync_cleanup(self) -> None:
+        """
+        Synchronous wrapper for cleanup method.
+        Ensures cleanup can be called in both async and sync contexts.
+        Handles event loop management internally.
+        """
+        try:
+            # Try to get the current event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # If no loop is running, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Execute cleanup based on loop state
+            if loop.is_running():
+                loop.create_task(self.cleanup())
+                # Give the task a chance to run
+                loop.run_until_complete(asyncio.sleep(0))
+            else:
+                loop.run_until_complete(self.cleanup())
+
+            logger.info("Synchronous message broker cleanup completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error during synchronous message broker cleanup: {str(e)}")
+            raise
+        finally:
+            # Ensure background tasks are properly handled
+            if self._cleanup_task and not self._cleanup_task.done():
+                self._cleanup_task.cancel()
+
+    async def _process_remaining_messages(self) -> None:
+        """Process any messages remaining in queues during cleanup."""
+        try:
+            # Process any remaining messages with a timeout
+            remaining_messages = []
+            for queue in self._message_queues.values():
+                while not queue.empty():
+                    try:
+                        message = queue.get_nowait()
+                        remaining_messages.append(message)
+                    except asyncio.QueueEmpty:
+                        break
+
+            if remaining_messages:
+                logger.info(f"Processing {len(remaining_messages)} remaining messages")
+                await asyncio.gather(*[self._process_message(msg) for msg in remaining_messages])
+
+        except Exception as e:
+            logger.error(f"Error processing remaining messages: {str(e)}")
+
+    async def _clear_subscriptions(self) -> None:
+        """Clear all subscriptions and routes."""
+        try:
+            self.subscriptions.clear()
+            self.department_routes.clear()
+            self.processing_chains.clear()
+            self.stats['active_subscriptions'] = 0
+            self.stats['departments_active'] = 0
+
+            # Clear message queues
+            for queue in self._message_queues.values():
+                while not queue.empty():
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+            self._message_queues.clear()
+
+        except Exception as e:
+            logger.error(f"Error clearing subscriptions: {str(e)}")
+
+    async def unsubscribe(self, module_identifier: ModuleIdentifier, pattern: str) -> None:
+        """
+        Unsubscribe a module from a specific message pattern.
+
+        Args:
+            module_identifier: The identifier of the module unsubscribing
+            pattern: The message pattern to unsubscribe from
+        """
+        async with self._lock:
+            try:
+                # Check if pattern exists in subscriptions
+                if pattern not in self.subscriptions:
+                    logger.warning(f"Pattern {pattern} not found in subscriptions")
+                    return
+
+                # Filter out the specific module's subscription for this pattern
+                self.subscriptions[pattern] = [
+                    sub for sub in self.subscriptions[pattern]
+                    if sub.module_identifier.get_routing_key() != module_identifier.get_routing_key()
+                ]
+
+                # Remove pattern if no subscriptions remain
+                if not self.subscriptions[pattern]:
+                    del self.subscriptions[pattern]
+
+                # Update department routes if applicable
+                if module_identifier.department:
+                    dept_routes = self.department_routes.get(module_identifier.department, set())
+                    dept_routes.discard(module_identifier.get_routing_key())
+                    if not dept_routes:
+                        del self.department_routes[module_identifier.department]
+
+                # Decrement active subscriptions
+                self.stats['active_subscriptions'] = max(0, self.stats['active_subscriptions'] - 1)
+
+                logger.info(
+                    f"Module {module_identifier.component_name} "
+                    f"unsubscribed from pattern: {pattern}"
+                )
+
+            except Exception as e:
+                logger.error(f"Unsubscription failed: {str(e)}")
+                raise
+
+    def _clear_storage(self) -> None:
+        """Clear all internal storage structures."""
+        try:
+            self.active_messages.clear()
+            self.message_history.clear()
+            self.stats['messages_processed'] = 0
+            self.stats['messages_failed'] = 0
+
+        except Exception as e:
+            logger.error(f"Error clearing storage: {str(e)}")

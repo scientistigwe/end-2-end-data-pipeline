@@ -1,11 +1,12 @@
 # backend/data/source/file/file_validator.py
 
 import logging
-import magic
+import mimetypes
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +42,26 @@ class FileValidationConfig:
         r'password', r'secret', r'key', r'token', r'credential'
     ])
 
-    scan_viruses: bool = True
     scan_encoding: bool = True
+
+    # File signature headers for common formats
+    file_signatures: Dict[str, List[bytes]] = field(default_factory=lambda: {
+        'xlsx': [b'PK\x03\x04'],  # XLSX files are ZIP archives
+        'xls': [b'\xD0\xCF\x11\xE0'],  # OLE compound document
+        'csv': [b',', b';'],  # Common CSV delimiters
+        'json': [b'{', b'['],  # JSON start characters
+        'parquet': [b'PAR1'],  # Parquet magic number
+        'txt': []  # No specific signature for text files
+    })
 
 
 class FileValidator:
-    """Enhanced file validator with integrated config"""
+    """Enhanced file validator without magic dependency"""
 
     def __init__(self, config: Optional[FileValidationConfig] = None):
         self.config = config or FileValidationConfig()
+        # Initialize mimetypes database
+        mimetypes.init()
 
     async def validate_file_source(
             self,
@@ -122,7 +134,7 @@ class FileValidator:
             file_path: Path,
             content_type: Optional[str]
     ) -> Dict[str, Any]:
-        """Validate file format and content type"""
+        """Validate file format using file signatures and extension"""
         issues = []
         warnings = []
 
@@ -132,24 +144,81 @@ class FileValidator:
             if ext not in self.config.allowed_formats:
                 issues.append(f"Unsupported file format: {ext}")
 
-            # MIME type check
-            detected_type = magic.from_file(str(file_path), mime=True)
-            if content_type and detected_type != content_type:
+            # Check file signature
+            detected_type = self._detect_file_type(file_path, ext)
+            declared_type = content_type or mimetypes.guess_type(str(file_path))[0]
+
+            if detected_type != ext:
                 warnings.append(
-                    f"Content type mismatch: declared {content_type}, "
-                    f"detected {detected_type}"
+                    f"File signature mismatch: extension is {ext}, "
+                    f"detected format is {detected_type}"
                 )
 
             # Validate against allowed MIME types
-            allowed_mimes = self.config.mime_types.get(ext, [])
-            if detected_type not in allowed_mimes:
-                issues.append(f"Invalid content type for {ext}: {detected_type}")
+            if declared_type:
+                allowed_mimes = self.config.mime_types.get(ext, [])
+                if declared_type not in allowed_mimes:
+                    issues.append(f"Invalid content type for {ext}: {declared_type}")
 
             return {'issues': issues, 'warnings': warnings}
 
         except Exception as e:
             logger.error(f"Format validation error: {str(e)}")
             return {'issues': [str(e)], 'warnings': []}
+
+    def _detect_file_type(self, file_path: Path, extension: str) -> str:
+        """Detect file type using file signatures"""
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(16)  # Read first 16 bytes for signature checking
+
+            # Check against known signatures
+            for fmt, signatures in self.config.file_signatures.items():
+                if not signatures:  # Skip formats without signatures
+                    continue
+                if any(header.startswith(sig) for sig in signatures):
+                    return fmt
+
+            # If no signature match, do basic text file detection
+            if self._is_text_file(file_path):
+                if extension == 'csv' and self._is_csv_file(file_path):
+                    return 'csv'
+                if extension == 'json' and self._is_json_file(file_path):
+                    return 'json'
+                return 'txt'
+
+            return extension
+
+        except Exception as e:
+            logger.error(f"File type detection error: {str(e)}")
+            return extension
+
+    def _is_text_file(self, file_path: Path) -> bool:
+        """Check if file is text based"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                f.read(1024)  # Try to read as text
+            return True
+        except UnicodeDecodeError:
+            return False
+
+    def _is_csv_file(self, file_path: Path) -> bool:
+        """Basic CSV detection"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                first_line = f.readline()
+                return ',' in first_line or ';' in first_line
+        except:
+            return False
+
+    def _is_json_file(self, file_path: Path) -> bool:
+        """Basic JSON detection"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                first_char = f.read(1).strip()
+                return first_char in '{['
+        except:
+            return False
 
     async def _validate_security(
             self,

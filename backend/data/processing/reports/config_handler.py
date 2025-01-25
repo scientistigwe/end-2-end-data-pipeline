@@ -102,7 +102,7 @@ class ConfigurationHandler:
             {
                 'id': 'report',
                 'name': 'Detailed Report',
-                'description': 'Comprehensive PDF report with analysis and recommendations',
+                'description': 'Comprehensive PDF report with insight and recommendations',
                 'icon': '📑'
             },
             {
@@ -114,7 +114,7 @@ class ConfigurationHandler:
             {
                 'id': 'excel',
                 'name': 'Excel Analysis',
-                'description': 'Excel workbook with detailed data analysis and pivot tables',
+                'description': 'Excel workbook with detailed data insight and pivot tables',
                 'icon': '📈'
             },
             {
@@ -189,7 +189,7 @@ class ConfigurationHandler:
         domain_id: str,
         analysis_types: List[str]
     ) -> Dict[str, Any]:
-        """Get requirements for selected analysis types"""
+        """Get requirements for selected insight types"""
         requirements = {
             'required_columns': set(),
             'recommended_metrics': set(),
@@ -204,7 +204,7 @@ class ConfigurationHandler:
             )
             requirements['required_columns'].update(required_cols)
 
-            # Get analysis configuration
+            # Get insight configuration
             domain_config = self.domain_loader.get_domain_config(domain_id)
             if domain_config:
                 analysis_config = next(
@@ -231,7 +231,7 @@ class ConfigurationHandler:
         self,
         form_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Generate analysis plan from form data"""
+        """Generate insight plan from form data"""
         domain_id = form_data.get('domain')
         if not domain_id:
             raise ValueError("Domain ID is required")
@@ -244,7 +244,7 @@ class ConfigurationHandler:
         # Get domain configuration
         domain_config = self.domain_loader.get_domain_config(domain_id)
 
-        # Create analysis plan
+        # Create insight plan
         return {
             'plan_id': str(uuid.uuid4()),
             'domain': domain_config['name'],
@@ -294,7 +294,7 @@ class ConfigurationHandler:
         self,
         form_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Generate implementation phases for analysis plan"""
+        """Generate implementation phases for insight plan"""
         return [
             {
                 'phase': 'data_preparation',
@@ -307,7 +307,7 @@ class ConfigurationHandler:
                 ]
             },
             {
-                'phase': 'analysis',
+                'phase': 'insight',
                 'name': 'Analysis Execution',
                 'tasks': [task for analysis_type in form_data.get('analysisTypes', [])
                          for task in self._get_analysis_tasks(analysis_type)]
@@ -320,10 +320,10 @@ class ConfigurationHandler:
         ]
 
     def _get_analysis_tasks(self, analysis_type: str) -> List[str]:
-        """Get tasks for specific analysis type"""
-        # This would be expanded based on analysis type
+        """Get tasks for specific insight type"""
+        # This would be expanded based on insight type
         return [
-            f"Execute {analysis_type} analysis",
+            f"Execute {analysis_type} insight",
             f"Generate visualizations for {analysis_type}",
             f"Prepare findings for {analysis_type}"
         ]
@@ -332,7 +332,7 @@ class ConfigurationHandler:
         self,
         form_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Identify dependencies between analysis components"""
+        """Identify dependencies between insight components"""
         dependencies = []
         analysis_types = form_data.get('analysisTypes', [])
 
@@ -342,7 +342,7 @@ class ConfigurationHandler:
                 'source': 'trend_analysis',
                 'target': 'forecasting',
                 'type': 'prerequisite',
-                'description': 'Trend analysis should be completed before forecasting'
+                'description': 'Trend insight should be completed before forecasting'
             })
 
         return dependencies

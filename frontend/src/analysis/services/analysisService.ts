@@ -1,4 +1,4 @@
-// src/analysis/services/analysisService.ts
+// src/insight/pipeline/analysisService.ts
 
 import { analysisApi } from '../api/analysisApi';
 import type {
@@ -12,7 +12,7 @@ import type {
   Anomaly,
   Trend,
   ExportOptions
-} from '../types/analysis';
+} from '../types/insight';
 
 class AnalysisService {
   async startQualityAnalysis(config: QualityConfig): Promise<AnalysisResult> {

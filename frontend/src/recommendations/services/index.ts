@@ -1,2 +1,2 @@
-// src/recommendations/services/index.ts
+// src/recommendations/pipeline/index.ts
 export * from './recommendationsService';

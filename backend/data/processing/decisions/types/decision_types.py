@@ -16,7 +16,7 @@ class DecisionSource(Enum):
 class DecisionPhase(Enum):
     """Phases of decision processing"""
     INITIALIZATION = "initialization"
-    ANALYSIS = "analysis"
+    ANALYSIS = "insight"
     RECOMMENDATION = "recommendation"
     VALIDATION = "validation"
     EXECUTION = "execution"

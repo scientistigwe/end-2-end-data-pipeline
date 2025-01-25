@@ -41,7 +41,7 @@
 #
 # @dataclass
 # class DetectionResult:
-#     """Stores detection results for each value pattern analysis"""
+#     """Stores detection results for each value pattern insight"""
 #     column_type: str
 #     match_percentage: float
 #     consistent_samples: List[str]
@@ -903,7 +903,7 @@
 #         'A properly detailed technical explanation of an important system component that requires documentation.',
 #         'The quick brown fox jumps over the lazy dog multiple times creating a lengthy description.',
 #         'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
-#         'Detailed analysis of system performance metrics indicating several areas for potential improvement.',
+#         'Detailed insight of system performance metrics indicating several areas for potential improvement.',
 #         'In-depth review of project milestones and deliverables including timeline and resource allocation.'
 #     ],
 #
@@ -1039,7 +1039,7 @@
 # # Create detector instance
 # detector = DataQualityDetector(df)
 #
-# # Run analysis
+# # Run insight
 # results = detector.analyze()
 #
 # # Record end time

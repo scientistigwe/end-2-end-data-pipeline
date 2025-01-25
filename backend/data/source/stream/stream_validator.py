@@ -44,6 +44,8 @@ class StreamValidationConfig:
         r'password', r'secret', r'key', r'token', r'credential'
     ])
 
+    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
+
     # Required fields per stream type
     required_fields: Dict[StreamType, list[str]] = field(default_factory=lambda: {
         StreamType.KAFKA: ['bootstrap_servers', 'group_id'],

@@ -1,4 +1,4 @@
-// src/analysis/index.ts
+// src/insight/index.ts
 
 // Components
 export { AnalysisForm } from './components/forms/AnalysisForm';
@@ -32,7 +32,7 @@ export type {
   ExportOptions,
   BaseAnalysisOptions,
   CustomRule
-} from './types/analysis';
+} from './types/insight';
 
 export {
   AnalysisStatus as AnalysisStatusType,
@@ -40,7 +40,7 @@ export {
   analysisConfigSchema,
   qualityConfigSchema,
   insightConfigSchema
-} from './types/analysis';
+} from './types/insight';
 
 export type {
   TimeSeriesDataPoint,

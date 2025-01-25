@@ -1,4 +1,4 @@
-# backend/data_pipeline/analysis/quality_report_messenger.py
+# backend/data_pipeline/insight/quality_report_messenger.py
 
 import logging
 import pandas as pd

@@ -1,4 +1,4 @@
-# backend/data_pipeline/analysis/quality_report_generator.py
+# backend/data_pipeline/insight/quality_report_generator.py
 
 import logging
 import pandas as pd
@@ -40,7 +40,7 @@ class QualityReportGenerator:
     def generate_reports(self):
         results = {}
 
-        # Print overall analysis start
+        # Print overall insight start
         self.print_section_header("Data Quality Analysis Report")
         results['analysis_start'] = self.start_time.strftime('%Y-%m-%d %H:%M:%S')
         results['dataset_info'] = {

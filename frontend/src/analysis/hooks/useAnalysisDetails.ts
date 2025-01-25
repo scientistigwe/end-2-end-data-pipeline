@@ -1,4 +1,4 @@
-// src/analysis/hooks/useAnalysisDetails.ts
+// src/insight/hooks/useAnalysisDetails.ts
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import { setError, setLoading } from '../store/analysisSlice';

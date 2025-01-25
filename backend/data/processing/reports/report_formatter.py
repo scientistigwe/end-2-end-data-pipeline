@@ -117,7 +117,7 @@ class FormatStrategy(Protocol[FormatResult]):
 
 class ReportFormatter:
     """
-    Formats and presents analysis and insight results in various output formats
+    Formats and presents insight and insight results in various output formats
     """
 
     def __init__(self,
@@ -305,7 +305,7 @@ class ReportFormatter:
             del self.formatters[format_type]
 
     def _prepare_analysis_summary(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare quality analysis summary"""
+        """Prepare quality insight summary"""
         return {
             'title': 'Data Quality Analysis Summary',
             'sections': [
@@ -736,7 +736,7 @@ class ReportFormatter:
         }
 
     def _prepare_quality_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare quality analysis report data"""
+        """Prepare quality insight report data"""
         return {
             'title': 'Quality Analysis Report',
             'sections': [
@@ -776,7 +776,7 @@ class ReportFormatter:
         }
 
     def _prepare_performance_analysis(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare performance analysis report data"""
+        """Prepare performance insight report data"""
         return {
             'title': 'Performance Analysis Report',
             'sections': [
@@ -850,7 +850,7 @@ class ReportFormatter:
                 },
                 {
                     'title': 'Technical Analysis',
-                    'content': data.get('analysis', {})
+                    'content': data.get('insight', {})
                 },
                 {
                     'title': 'Technical Recommendations',

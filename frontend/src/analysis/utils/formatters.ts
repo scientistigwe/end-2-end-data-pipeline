@@ -1,10 +1,10 @@
-// src/analysis/utils/formatters.ts
+// src/insight/utils/formatters.ts
 import { dateUtils } from "@/common";
 import type { 
   AnalysisStatus, 
   QualityConfig, 
   InsightConfig 
-} from "../types/analysis";
+} from "../types/insight";
 
 export const formatAnalysisConfig = (
   config: QualityConfig | InsightConfig

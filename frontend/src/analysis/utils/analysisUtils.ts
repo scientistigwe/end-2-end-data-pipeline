@@ -1,4 +1,4 @@
-// src/analysis/utils/analysisUtils.ts
+// src/insight/utils/analysisUtils.ts
 
 import { ANALYSIS_CONSTANTS } from '../constants';
 import type { 
@@ -7,7 +7,7 @@ import type {
   InsightConfig,
   Correlation,
   Anomaly 
-} from '../types/analysis';
+} from '../types/insight';
 import { dateUtils } from '@/common';
 
 export const validateAnalysisConfig = (

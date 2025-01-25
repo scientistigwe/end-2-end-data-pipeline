@@ -178,7 +178,7 @@ class QualityProcessor:
             return context
 
         except Exception as e:
-            self.logger.error(f"Context analysis failed: {str(e)}")
+            self.logger.error(f"Context insight failed: {str(e)}")
             raise
 
     def _profile_data(self, data: Any) -> DataContext:
@@ -233,7 +233,7 @@ class QualityProcessor:
         """Identify relationships between columns"""
         relationships = {}
         # Implement relationship detection logic
-        # - Correlation analysis
+        # - Correlation insight
         # - Pattern matching
         # - Domain-specific rules
         return relationships
@@ -353,7 +353,7 @@ class QualityProcessor:
                                 resolution = resolver(analysis)
                                 results[check_name] = {
                                     'issues': detected_issues,
-                                    'analysis': analysis,
+                                    'insight': analysis,
                                     'resolution': resolution
                                 }
 
@@ -383,7 +383,7 @@ class QualityProcessor:
                                 resolution = resolver(analysis)
                                 results[check_name] = {
                                     'issues': detected_issues,
-                                    'analysis': analysis,
+                                    'insight': analysis,
                                     'resolution': resolution
                                 }
 

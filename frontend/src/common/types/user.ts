@@ -8,5 +8,5 @@ export interface User extends BaseAuthUser {
   timezone?: string;
   locale?: string;
   phoneNumber?: string;
-  // ... your app-specific user properties
+  // ... your flask_app-specific user properties
 }

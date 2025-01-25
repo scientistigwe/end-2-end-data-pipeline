@@ -1,2 +1,2 @@
-// src/monitoring/services/index.ts
+// src/monitoring/pipeline/index.ts
 export * from './monitoringService';

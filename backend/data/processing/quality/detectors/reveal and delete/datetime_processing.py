@@ -146,7 +146,7 @@
 #         total_values = len(valid_values)
 #         all_formats = []
 
-#         # Sample up to 100 values for analysis
+#         # Sample up to 100 values for insight
 #         sample_size = min(100, total_values)
 #         sample_values = valid_values.sample(n=sample_size) if total_values > sample_size else valid_values
 
@@ -206,7 +206,7 @@
 
 #     def _calculate_confidence(self, column: str, values: pd.Series) -> float:
 #         """
-#         Calculate confidence score for date identification using multiple analysis methods.
+#         Calculate confidence score for date identification using multiple insight methods.
 
 #         Args:
 #             column (str): Column name to analyze
@@ -221,7 +221,7 @@
 
 #         # Initialize weights for different components
 #         weights = {
-#             'column_name': 20,  # Column name analysis
+#             'column_name': 20,  # Column name insight
 #             'pattern_match': 30,  # Pattern matching
 #             'parse_success': 30,  # Successful parsing
 #             'statistical': 20  # Statistical validation
@@ -231,7 +231,7 @@
 #         sample_size = min(100, len(values))
 #         sample_values = values.dropna().sample(n=sample_size) if len(values) > sample_size else values.dropna()
 
-#         # 1. Column name analysis (20%)
+#         # 1. Column name insight (20%)
 #         column_lower = column.lower()
 #         date_indicators = ['date', 'dt', 'day', 'month', 'year', 'time', 'timestamp']
 #         if any(indicator in column_lower for indicator in date_indicators):
@@ -241,7 +241,7 @@
 #         if 'id' in column_lower or column_lower.endswith('_id'):
 #             return 0
 
-#         # 2. Pattern matching analysis (30%)
+#         # 2. Pattern matching insight (30%)
 #         pattern_matches = 0
 #         total_checked = 0
 
@@ -273,7 +273,7 @@
 #             pattern_score = (pattern_matches / total_checked) * weights['pattern_match']
 #             score += pattern_score
 
-#         # 3. Parse success analysis (30%)
+#         # 3. Parse success insight (30%)
 #         parse_successes = 0
 #         total_attempts = 0
 
@@ -293,7 +293,7 @@
 #         # 4. Statistical validation (20%)
 #         if parse_successes > 0:
 #             try:
-#                 # Convert to datetime for statistical analysis
+#                 # Convert to datetime for statistical insight
 #                 dates = pd.to_datetime(sample_values, errors='coerce')
 #                 valid_dates = dates.dropna()
 
@@ -841,7 +841,7 @@
 #                 "pd.to_datetime(column, format='mixed', errors='coerce')")
 
 #     def generate_report(self) -> str:
-#         """Generate a comprehensive report of datetime quality analysis."""
+#         """Generate a comprehensive report of datetime quality insight."""
 #         if not hasattr(self, 'identification_info'):
 #             return "No identification process has been run yet."
 

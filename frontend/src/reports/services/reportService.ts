@@ -1,4 +1,4 @@
-// src/report/services/reportService.ts
+// src/report/pipeline/reportService.ts
 import type {
   Report,
   ReportConfig,

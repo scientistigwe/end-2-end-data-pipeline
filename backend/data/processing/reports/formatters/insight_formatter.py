@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class InsightReportFormatter(BaseFormatter):
     """
-    Formatter for insight analysis reports.
+    Formatter for insight insight reports.
     Handles formatting of business insights, goal alignments, and analytics recommendations.
     """
 
@@ -137,7 +137,7 @@ class InsightReportFormatter(BaseFormatter):
             goals: List[str],
             alignment_score: float
     ) -> Dict[str, Any]:
-        """Format business goals analysis"""
+        """Format business goals insight"""
         return {
             'type': 'business_goals',
             'goals': [

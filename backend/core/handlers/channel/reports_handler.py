@@ -54,7 +54,7 @@ class ReportHandler:
         )
 
     async def handle_quality_complete(self, message: ProcessingMessage) -> None:
-        """Handle quality analysis completion"""
+        """Handle quality insight completion"""
         try:
             pipeline_id = message.content['pipeline_id']
             quality_data = message.content.get('quality_results', {})
@@ -84,7 +84,7 @@ class ReportHandler:
             await self._notify_error(pipeline_id, str(e))
 
     async def handle_insight_complete(self, message: ProcessingMessage) -> None:
-        """Handle insight analysis completion"""
+        """Handle insight insight completion"""
         try:
             pipeline_id = message.content['pipeline_id']
             insight_data = message.content.get('insight_results', {})

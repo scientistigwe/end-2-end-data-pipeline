@@ -1,4 +1,4 @@
-# backend\backend\db\types\auth.py
+# backend\backend\db\types\base.py
 
 from sqlalchemy import (
    Column, String, DateTime, Boolean, Enum, ForeignKey, Text,

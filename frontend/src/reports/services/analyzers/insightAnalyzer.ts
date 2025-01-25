@@ -1,4 +1,4 @@
-// src/report/services/analyzers/insightAnalyzer.ts
+// src/report/pipeline/analyzers/insightAnalyzer.ts
 import { BaseAnalyzer } from './baseAnalyzer';
 import type { Report, ReportMetric } from '../../types/models';
 

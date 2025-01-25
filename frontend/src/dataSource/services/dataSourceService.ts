@@ -1,4 +1,4 @@
-// src/dataSource/services/dataSourceService.ts - REFACTORED
+// src/dataSource/pipeline/dataSourceService.ts - REFACTORED
 import { dataSourceApi } from '../api/dataSourceApi';
 import { handleApiError } from '@/common/utils/api/apiUtils';
 import type {

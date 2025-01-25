@@ -151,7 +151,7 @@ class PipelineSummaryFormatter(BaseFormatter):
             self,
             quality_summary: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Format quality analysis summary"""
+        """Format quality insight summary"""
         return {
             'type': 'quality_summary',
             'metrics': {
@@ -168,7 +168,7 @@ class PipelineSummaryFormatter(BaseFormatter):
             self,
             insight_summary: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Format insight analysis summary"""
+        """Format insight insight summary"""
         return {
             'type': 'insight_summary',
             'metrics': {
@@ -239,7 +239,7 @@ class PipelineSummaryFormatter(BaseFormatter):
             self,
             quality_summary: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Extract key highlights from quality analysis"""
+        """Extract key highlights from quality insight"""
         highlights = []
 
         # Quality score highlight
@@ -277,7 +277,7 @@ class PipelineSummaryFormatter(BaseFormatter):
             self,
             insight_summary: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Extract key highlights from insight analysis"""
+        """Extract key highlights from insight insight"""
         highlights = []
 
         # Goal alignment highlight
@@ -680,7 +680,7 @@ class PipelineSummaryFormatter(BaseFormatter):
             self,
             visualization: ReportVisualization
     ) -> Dict[str, Any]:
-        """Format impact analysis visualization"""
+        """Format impact insight visualization"""
         return {
             'viz_id': str(visualization.viz_id),
             'type': 'impact_analysis',

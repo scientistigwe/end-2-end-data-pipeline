@@ -1,8 +1,9 @@
-# core/managers/decision_manager.py
+# core/sub_managers/decision_manager.py
 
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
+import uuid
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -13,294 +14,367 @@ from ..messaging.event_types import (
     DecisionContext,
     MessageMetadata
 )
-from ..control.cpm import ControlPointManager
-from .base.base_manager import BaseManager
-from ..staging.staging_manager import StagingManager
-from ..handlers.channel.decision_handler import DecisionHandler
-from data.processing.decisions.types.decision_types import (
-    DecisionSource,
-    DecisionState,
-    DecisionPhase,
-    DecisionStatus,
-    ComponentDecision
-)
+from ..managers.base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
 
 class DecisionManager(BaseManager):
     """
-    Manager for decision orchestration.
-    Coordinates between CPM, Handler, and other components.
+    Decision Manager that coordinates decision making through message broker.
+    Maintains local state but communicates all actions through messages.
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            control_point_manager: ControlPointManager,
-            staging_manager: StagingManager
-    ):
+    def __init__(self, message_broker: MessageBroker):
         super().__init__(
             message_broker=message_broker,
-            control_point_manager=control_point_manager,
             component_name="decision_manager",
             domain_type="decision"
         )
 
-        self.staging_manager = staging_manager
-        self.decision_handler = DecisionHandler(
-            message_broker=message_broker,
-            staging_manager=staging_manager
-        )
+        # Local state tracking
+        self.active_processes: Dict[str, DecisionContext] = {}
 
-        # Active decisions tracking
-        self.active_decisions: Dict[str, DecisionState] = {}
-
-        # Setup message handlers
+        # Register message handlers
         self._setup_message_handlers()
 
     def _setup_message_handlers(self) -> None:
-        """Setup handlers for decision-related messages"""
-        self.register_message_handler(
-            MessageType.DECISION_REQUEST,
-            self._handle_decision_request
-        )
-        self.register_message_handler(
-            MessageType.DECISION_SUBMIT,
-            self._handle_decision_submit
-        )
-        self.register_message_handler(
-            MessageType.DECISION_UPDATE,
-            self._handle_decision_update
-        )
-        self.register_message_handler(
-            MessageType.DECISION_COMPLETE,
-            self._handle_decision_complete
-        )
-
-    async def _handle_decision_request(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle when a decision is required"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            source = message.metadata.source_component
-
-            # Create decision context
-            context = DecisionContext(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING,
-                status=ProcessingStatus.AWAITING_DECISION,
-                source_component=source,
-                decision_type=message.content.get('decision_type'),
-                options=message.content.get('options', []),
-                impacts=message.content.get('impacts', {}),
-                constraints=message.content.get('constraints', {})
-            )
-
-            # Create control point
-            control_point = await self.control_point_manager.create_control_point(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING,
-                metadata={
-                    'source': source,
-                    'context': self._format_context(context)
-                }
-            )
-
-            # Initialize decision state
-            self.active_decisions[pipeline_id] = DecisionState(
-                pipeline_id=pipeline_id,
-                current_requests=[],
-                pending_decisions=[],
-                completed_decisions=[],
-                status=DecisionStatus.AWAITING_INPUT,
-                phase=DecisionPhase.ANALYSIS
-            )
-
-            # Forward to handler
-            await self.decision_handler._handle_decision_request(message)
-
-        except Exception as e:
-            logger.error(f"Failed to handle decision request: {str(e)}")
-            await self._handle_error(message, e)
-
-    async def _handle_decision_submit(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle when a decision is submitted"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            decision_data = message.content['decision']
-
-            state = self.active_decisions.get(pipeline_id)
-            if not state:
-                raise ValueError(f"No active decision state for pipeline: {pipeline_id}")
-
-            # Update control point
-            await self.control_point_manager.update_control_point(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING,
-                status=ProcessingStatus.IN_PROGRESS,
-                metadata={
-                    'decision': decision_data,
-                    'submitted_at': datetime.now().isoformat()
-                }
-            )
-
-            # Forward to handler
-            await self.decision_handler._handle_decision_submit(message)
-
-        except Exception as e:
-            logger.error(f"Failed to handle decision submit: {str(e)}")
-            await self._handle_error(message, e)
-
-    async def _handle_decision_update(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle updates about decision processing"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            update_data = message.content['update']
-
-            state = self.active_decisions.get(pipeline_id)
-            if state:
-                # Update state based on update type
-                if update_data.get('type') == 'validation':
-                    state.status = DecisionStatus.VALIDATING
-                elif update_data.get('type') == 'impact':
-                    state.status = DecisionStatus.ANALYZING
-
-                state.metadata.update(update_data)
-                state.updated_at = datetime.now()
-
-            # Update control point
-            await self.control_point_manager.update_control_point(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING,
-                metadata={
-                    'update': update_data,
-                    'updated_at': datetime.now().isoformat()
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to handle decision update: {str(e)}")
-            await self._handle_error(message, e)
-
-    async def _handle_decision_complete(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle decision completion"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            result = message.content['result']
-
-            state = self.active_decisions.get(pipeline_id)
-            if state:
-                # Update state
-                state.status = DecisionStatus.COMPLETED
-                state.completed_decisions.append(
-                    ComponentDecision(**result['decision'])
-                )
-
-                # Cleanup
-                del self.active_decisions[pipeline_id]
-
-            # Update control point
-            await self.control_point_manager.update_control_point(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING,
-                status=ProcessingStatus.COMPLETED,
-                metadata={
-                    'result': result,
-                    'completed_at': datetime.now().isoformat()
-                }
-            )
-
-            # Notify completion
-            await self._notify_completion(pipeline_id, result)
-
-        except Exception as e:
-            logger.error(f"Failed to handle decision complete: {str(e)}")
-            await self._handle_error(message, e)
-
-    async def _notify_completion(
-            self,
-            pipeline_id: str,
-            result: Dict[str, Any]
-    ) -> None:
-        """Notify about decision completion"""
-        message = ProcessingMessage(
-            message_type=MessageType.DECISION_COMPLETE,
-            content={
-                'pipeline_id': pipeline_id,
-                'result': result,
-                'timestamp': datetime.now().isoformat()
-            },
-            metadata=MessageMetadata(
-                source_component="decision_manager",
-                target_component="pipeline_manager"
-            )
-        )
-        await self.message_broker.publish(message)
-
-    def _format_context(self, context: DecisionContext) -> Dict[str, Any]:
-        """Format context for storage"""
-        return {
-            'stage': context.stage.value,
-            'status': context.status.value,
-            'source_component': context.source_component,
-            'decision_type': context.decision_type,
-            'options': context.options,
-            'impacts': context.impacts,
-            'constraints': context.constraints
+        """Register handlers for all decision-related messages"""
+        handlers = {
+            MessageType.DECISION_REQUEST: self._handle_decision_request,
+            MessageType.DECISION_SUBMIT: self._handle_decision_submit,
+            MessageType.DECISION_VALIDATE_RESULT: self._handle_validation_result,
+            MessageType.DECISION_IMPACT: self._handle_impact_analysis,
+            MessageType.DECISION_COMPLETE: self._handle_decision_complete,
+            MessageType.DECISION_TIMEOUT: self._handle_decision_timeout,
+            MessageType.DECISION_ERROR: self._handle_decision_error,
+            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
+            MessageType.STAGING_CREATED: self._handle_staging_created,
+            MessageType.DECISION_FEEDBACK: self._handle_decision_feedback
         }
 
-    async def get_decision_status(
+        for message_type, handler in handlers.items():
+            self.register_message_handler(message_type, handler)
+
+    async def request_decision(
             self,
-            pipeline_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get current status of decision process"""
-        try:
-            state = self.active_decisions.get(pipeline_id)
-            if not state:
-                return None
+            pipeline_id: str,
+            options: Dict[str, Any]
+    ) -> str:
+        """
+        Initiate decision request through message broker
+        Returns correlation ID for tracking
+        """
+        correlation_id = str(uuid.uuid4())
 
-            control_point = await self.control_point_manager.get_control_point(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.DECISION_MAKING
-            )
-
-            return {
+        # Request control point creation
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.CONTROL_POINT_CREATE_REQUEST,
+            content={
                 'pipeline_id': pipeline_id,
-                'status': state.status.value,
-                'phase': state.phase.value,
-                'pending_decisions': len(state.pending_decisions),
-                'completed_decisions': len(state.completed_decisions),
-                'control_point': control_point,
-                'updated_at': state.updated_at.isoformat()
-            }
+                'stage': ProcessingStage.DECISION_MAKING,
+                'options': options
+            },
+            metadata=MessageMetadata(
+                correlation_id=correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
+            )
+        ))
 
-        except Exception as e:
-            logger.error(f"Failed to get decision status: {str(e)}")
-            return None
+        # Initialize tracking context
+        self.active_processes[pipeline_id] = DecisionContext(
+            pipeline_id=pipeline_id,
+            stage=ProcessingStage.DECISION_MAKING,
+            status=ProcessingStatus.PENDING,
+            options=options,
+            correlation_id=correlation_id
+        )
+
+        return correlation_id
+
+    async def _handle_control_point_created(self, message: ProcessingMessage) -> None:
+        """Handle control point creation confirmation"""
+        pipeline_id = message.content['pipeline_id']
+        control_point_id = message.content['control_point_id']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.control_point_id = control_point_id
+
+        # Request staging area
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGING_CREATE_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'control_point_id': control_point_id,
+                'source_type': 'decision'
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="staging_manager"
+            )
+        ))
+
+    async def _handle_staging_created(self, message: ProcessingMessage) -> None:
+        """Handle staging area creation confirmation"""
+        pipeline_id = message.content['pipeline_id']
+        staged_id = message.content['staged_id']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.staging_reference = staged_id
+
+        # Start decision processing
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.DECISION_START,
+            content={
+                'pipeline_id': pipeline_id,
+                'staged_id': staged_id,
+                'options': context.options
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="decision_handler"
+            )
+        ))
+
+    async def _handle_decision_request(self, message: ProcessingMessage) -> None:
+        """Handle incoming decision request"""
+        pipeline_id = message.content['pipeline_id']
+        context = self.active_processes.get(pipeline_id)
+
+        if context:
+            context.status = ProcessingStatus.AWAITING_DECISION
+            context.requires_confirmation = message.content.get('requires_confirmation', True)
+
+            # Notify about decision needed
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.DECISION_NEEDED,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'options': context.options,
+                    'requires_confirmation': context.requires_confirmation
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
+
+    async def _handle_decision_submit(self, message: ProcessingMessage) -> None:
+        """Handle submitted decision"""
+        pipeline_id = message.content['pipeline_id']
+        decision = message.content['decision']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.status = ProcessingStatus.IN_PROGRESS
+
+        # Request validation
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.DECISION_VALIDATE_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'decision': decision,
+                'constraints': context.constraints
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="decision_handler"
+            )
+        ))
+
+    async def _handle_validation_result(self, message: ProcessingMessage) -> None:
+        """Handle decision validation results"""
+        pipeline_id = message.content['pipeline_id']
+        is_valid = message.content['is_valid']
+        issues = message.content.get('issues', [])
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        if is_valid:
+            # Request impact analysis
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.DECISION_IMPACT_REQUEST,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'decision': context.options
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="decision_handler"
+                )
+            ))
+        else:
+            # Notify about validation failure
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.DECISION_VALIDATION_FAILED,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'issues': issues
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
+
+    async def _handle_impact_analysis(self, message: ProcessingMessage) -> None:
+        """Handle impact analysis results"""
+        pipeline_id = message.content['pipeline_id']
+        impacts = message.content['impacts']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.impacts = impacts
+
+        # Proceed with decision processing
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.DECISION_PROCESS,
+            content={
+                'pipeline_id': pipeline_id,
+                'decision': context.options,
+                'impacts': impacts
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="decision_handler"
+            )
+        ))
+
+    async def _handle_decision_complete(self, message: ProcessingMessage) -> None:
+        """Handle decision process completion"""
+        pipeline_id = message.content['pipeline_id']
+        result = message.content['result']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.status = ProcessingStatus.COMPLETED
+
+        # Notify completion
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGE_COMPLETE,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage': ProcessingStage.DECISION_MAKING,
+                'result': result
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
+            )
+        ))
+
+        # Cleanup
+        del self.active_processes[pipeline_id]
+
+    async def _handle_decision_timeout(self, message: ProcessingMessage) -> None:
+        """Handle decision timeout"""
+        pipeline_id = message.content['pipeline_id']
+
+        context = self.active_processes.get(pipeline_id)
+        if context:
+            context.status = ProcessingStatus.DECISION_TIMEOUT
+
+            # Notify timeout
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.STAGE_ERROR,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': ProcessingStage.DECISION_MAKING,
+                    'error': 'Decision timeout'
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
+
+            del self.active_processes[pipeline_id]
+
+    async def _handle_decision_error(self, message: ProcessingMessage) -> None:
+        """Handle decision processing errors"""
+        pipeline_id = message.content['pipeline_id']
+        error = message.content['error']
+
+        context = self.active_processes.get(pipeline_id)
+        if context:
+            context.status = ProcessingStatus.FAILED
+            context.error = error
+
+            # Notify error
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.STAGE_ERROR,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'stage': ProcessingStage.DECISION_MAKING,
+                    'error': error
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
+
+            del self.active_processes[pipeline_id]
+
+    async def _handle_decision_feedback(self, message: ProcessingMessage) -> None:
+        """Handle decision feedback"""
+        pipeline_id = message.content['pipeline_id']
+        feedback = message.content['feedback']
+
+        context = self.active_processes.get(pipeline_id)
+        if context:
+            # Record feedback
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.DECISION_FEEDBACK_RECORDED,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'feedback': feedback
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="decision_handler"
+                )
+            ))
 
     async def cleanup(self) -> None:
-        """Cleanup manager resources"""
+        """Clean up manager resources"""
         try:
-            # Cleanup active decisions
-            self.active_decisions.clear()
-
-            # Cleanup handler
-            await self.decision_handler.cleanup()
-
-            # Call parent cleanup
-            await super().cleanup()
+            # Notify cleanup for all active processes
+            for pipeline_id in list(self.active_processes.keys()):
+                await self.message_broker.publish(ProcessingMessage(
+                    message_type=MessageType.DECISION_CLEANUP,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'reason': 'Manager cleanup initiated'
+                    }
+                ))
+                del self.active_processes[pipeline_id]
 
         except Exception as e:
             logger.error(f"Cleanup failed: {str(e)}")

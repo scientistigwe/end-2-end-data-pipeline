@@ -1,4 +1,4 @@
-// src/recommendations/services/recommendationService.ts
+// src/recommendations/pipeline/recommendationService.ts
 import { recommendationsApi } from '../api/recommendationsApi';
 import { handleApiError } from '../../common/utils/api/apiUtils';
 import { dateUtils } from '../../common/utils/date/dateUtils';

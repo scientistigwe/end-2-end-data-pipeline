@@ -1,4 +1,4 @@
-// auth/services/authService.ts
+// auth/pipeline/authService.ts
 import { authApi } from '../api';
 import { storageUtils } from '@/common/utils/storage/storageUtils';
 import type { 

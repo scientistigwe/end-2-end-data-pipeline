@@ -3,261 +3,250 @@
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
-from pathlib import Path
+import uuid
 
 from core.messaging.broker import MessageBroker
 from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
-    ProcessingStage
+    ProcessingStage,
+    ProcessingStatus,
+    MessageMetadata,
+    ReportContext,
+    ReportState
 )
 from core.managers.base.base_manager import BaseManager
-from core.handlers.channel.reports_handler import ReportHandler
 
 logger = logging.getLogger(__name__)
 
 
 class ReportManager(BaseManager):
     """
-    Manages report generation and coordination.
-    Integrates with the pipeline and other components.
+    Report Manager that coordinates report generation through message broker.
+    Maintains local state but communicates all actions through messages.
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            template_dir: Optional[Path] = None,
-            config: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, message_broker: MessageBroker):
         super().__init__(
             message_broker=message_broker,
-            component_name="report_manager"
+            component_name="report_manager",
+            domain_type="report"
         )
 
-        # Initialize handler
-        self.report_handler = ReportHandler(
-            message_broker=message_broker,
-            template_dir=template_dir,
-            config=config
-        )
+        # Local state tracking
+        self.active_processes: Dict[str, ReportContext] = {}
 
-        # Set up message handlers
+        # Register message handlers
         self._setup_message_handlers()
 
     def _setup_message_handlers(self) -> None:
-        """Setup message handlers for report-related events"""
-        self.register_handler(
-            MessageType.QUALITY_COMPLETE,
-            self._handle_quality_complete
+        """Register handlers for all report-related messages"""
+        handlers = {
+            MessageType.REPORT_START_REQUEST: self._handle_start_request,
+            MessageType.QUALITY_COMPLETE: self._handle_quality_complete,
+            MessageType.INSIGHT_COMPLETE: self._handle_insight_complete,
+            MessageType.ANALYTICS_COMPLETE: self._handle_analytics_complete,
+            MessageType.REPORT_DATA_READY: self._handle_data_ready,
+            MessageType.REPORT_SECTION_READY: self._handle_section_ready,
+            MessageType.REPORT_REVIEW_COMPLETE: self._handle_review_complete,
+            MessageType.REPORT_ERROR: self._handle_report_error,
+            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
+            MessageType.STAGING_CREATED: self._handle_staging_created
+        }
+
+        for message_type, handler in handlers.items():
+            self.register_message_handler(message_type, handler)
+
+    async def initiate_report_generation(
+            self,
+            pipeline_id: str,
+            config: Dict[str, Any]
+    ) -> str:
+        """
+        Initiate report generation through message broker
+        Returns correlation ID for tracking
+        """
+        correlation_id = str(uuid.uuid4())
+
+        # Request control point creation
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.CONTROL_POINT_CREATE_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage': ProcessingStage.REPORT_GENERATION,
+                'config': config
+            },
+            metadata=MessageMetadata(
+                correlation_id=correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
+            )
+        ))
+
+        # Initialize context
+        self.active_processes[pipeline_id] = ReportContext(
+            pipeline_id=pipeline_id,
+            correlation_id=correlation_id,
+            report_type=config.get('report_type', 'default_report'),
+            format=config.get('format', 'html'),
+            sections=config.get('sections', []),
+            template_name=config.get('template')
         )
-        self.register_handler(
-            MessageType.INSIGHT_COMPLETE,
-            self._handle_insight_complete
-        )
-        self.register_handler(
-            MessageType.ANALYTICS_COMPLETE,
-            self._handle_analytics_complete
-        )
-        self.register_handler(
-            MessageType.PIPELINE_COMPLETE,
-            self._handle_pipeline_complete
-        )
-        self.register_handler(
-            MessageType.REPORT_STATUS_UPDATE,
-            self._handle_report_update
-        )
-        self.register_handler(
-            MessageType.REPORT_ERROR,
-            self._handle_report_error
-        )
+
+        return correlation_id
 
     async def _handle_quality_complete(self, message: ProcessingMessage) -> None:
         """Handle quality analysis completion"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            quality_data = message.content.get('quality_results', {})
+        pipeline_id = message.content['pipeline_id']
+        quality_data = message.content['quality_results']
 
-            # Request quality report generation
-            await self.report_handler.handle_report_request(ProcessingMessage(
-                message_type=MessageType.REPORT_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': 'data_quality',
-                    'data': quality_data,
-                    'format': 'html'  # Default format
-                }
-            ))
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
 
-        except Exception as e:
-            logger.error(f"Error handling quality completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
+        context.add_section_data('quality', quality_data)
+        await self._check_data_completeness(pipeline_id)
 
     async def _handle_insight_complete(self, message: ProcessingMessage) -> None:
         """Handle insight analysis completion"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            insight_data = message.content.get('insight_results', {})
+        pipeline_id = message.content['pipeline_id']
+        insight_data = message.content['insight_results']
 
-            # Request insight report generation
-            await self.report_handler.handle_report_request(ProcessingMessage(
-                message_type=MessageType.REPORT_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': 'insight_analysis',
-                    'data': insight_data,
-                    'format': 'html'
-                }
-            ))
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
 
-        except Exception as e:
-            logger.error(f"Error handling insight completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
+        context.add_section_data('insights', insight_data)
+        await self._check_data_completeness(pipeline_id)
 
     async def _handle_analytics_complete(self, message: ProcessingMessage) -> None:
         """Handle analytics completion"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            analytics_data = message.content.get('analytics_results', {})
+        pipeline_id = message.content['pipeline_id']
+        analytics_data = message.content['analytics_results']
 
-            # Request analytics report generation
-            await self.report_handler.handle_report_request(ProcessingMessage(
-                message_type=MessageType.REPORT_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': 'advanced_analytics',
-                    'data': analytics_data,
-                    'format': 'html'
-                }
-            ))
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
 
-        except Exception as e:
-            logger.error(f"Error handling analytics completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
+        context.add_section_data('analytics', analytics_data)
+        await self._check_data_completeness(pipeline_id)
 
-    async def _handle_pipeline_complete(self, message: ProcessingMessage) -> None:
-        """Handle pipeline completion"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            pipeline_data = message.content.get('pipeline_results', {})
+    async def _check_data_completeness(self, pipeline_id: str) -> None:
+        """Check if all required data is available"""
+        context = self.active_processes[pipeline_id]
+        required_sections = set(context.sections)
+        available_sections = set(context.collected_data.keys())
 
-            # Request summary report generation
-            await self.report_handler.handle_report_request(ProcessingMessage(
-                message_type=MessageType.REPORT_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': 'pipeline_summary',
-                    'data': pipeline_data,
-                    'format': 'html',
-                    'include_components': [
-                        'quality_summary',
-                        'insight_summary',
-                        'analytics_summary'
-                    ]
-                }
-            ))
+        if required_sections.issubset(available_sections):
+            context.state = ReportState.GENERATING
+            await self._start_report_generation(pipeline_id)
 
-        except Exception as e:
-            logger.error(f"Error handling pipeline completion: {str(e)}")
-            await self._handle_error(pipeline_id, e)
+    async def _start_report_generation(self, pipeline_id: str) -> None:
+        """Start report generation process"""
+        context = self.active_processes[pipeline_id]
 
-    async def _handle_report_update(self, message: ProcessingMessage) -> None:
-        """Handle report status updates"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            status = message.content.get('status')
-
-            # Forward status to pipeline manager
-            update_message = ProcessingMessage(
-                message_type=MessageType.STAGE_UPDATE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.REPORT_GENERATION.value,
-                    'status': status,
-                    'timestamp': datetime.now().isoformat()
-                }
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.REPORT_START_REQUEST,
+            content={
+                'pipeline_id': pipeline_id,
+                'sections': context.sections,
+                'format': context.format,
+                'template': context.template_name,
+                'data': context.collected_data
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="report_handler"
             )
+        ))
 
-            await self.message_broker.publish(update_message)
+    async def _handle_section_ready(self, message: ProcessingMessage) -> None:
+        """Handle completion of a report section"""
+        pipeline_id = message.content['pipeline_id']
+        section = message.content['section']
+        content = message.content['content']
 
-        except Exception as e:
-            logger.error(f"Error handling report update: {str(e)}")
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.generated_sections[section] = content
+
+        if len(context.generated_sections) == len(context.sections):
+            context.state = ReportState.REVIEWING
+            await self._request_report_review(pipeline_id)
+
+    async def _handle_review_complete(self, message: ProcessingMessage) -> None:
+        """Handle report review completion"""
+        pipeline_id = message.content['pipeline_id']
+
+        context = self.active_processes.get(pipeline_id)
+        if not context:
+            return
+
+        context.state = ReportState.COMPLETED
+
+        # Notify completion
+        await self.message_broker.publish(ProcessingMessage(
+            message_type=MessageType.STAGE_COMPLETE,
+            content={
+                'pipeline_id': pipeline_id,
+                'stage': ProcessingStage.REPORT_GENERATION,
+                'report': context.generated_sections
+            },
+            metadata=MessageMetadata(
+                correlation_id=context.correlation_id,
+                source_component=self.component_name,
+                target_component="control_point_manager"
+            )
+        ))
+
+        # Cleanup
+        del self.active_processes[pipeline_id]
 
     async def _handle_report_error(self, message: ProcessingMessage) -> None:
         """Handle report generation errors"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            error = message.content.get('error')
+        pipeline_id = message.content['pipeline_id']
+        error = message.content['error']
 
-            # Notify pipeline manager about error
-            error_message = ProcessingMessage(
+        context = self.active_processes.get(pipeline_id)
+        if context:
+            context.state = ReportState.FAILED
+            context.error = error
+
+            # Notify error
+            await self.message_broker.publish(ProcessingMessage(
                 message_type=MessageType.STAGE_ERROR,
                 content={
                     'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.REPORT_GENERATION.value,
-                    'error': error,
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
+                    'stage': ProcessingStage.REPORT_GENERATION,
+                    'error': error
+                },
+                metadata=MessageMetadata(
+                    correlation_id=context.correlation_id,
+                    source_component=self.component_name,
+                    target_component="control_point_manager"
+                )
+            ))
 
-            await self.message_broker.publish(error_message)
-
-        except Exception as e:
-            logger.error(f"Error handling report error: {str(e)}")
-
-    async def generate_report(
-            self,
-            pipeline_id: str,
-            stage: str,
-            data: Dict[str, Any],
-            format: str = 'html'
-    ) -> None:
-        """Generate report for specific stage"""
-        try:
-            # Create report request
-            request = ProcessingMessage(
-                message_type=MessageType.REPORT_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': stage,
-                    'data': data,
-                    'format': format
-                }
-            )
-
-            # Forward request to handler
-            await self.report_handler.handle_report_request(request)
-
-        except Exception as e:
-            logger.error(f"Error initiating report generation: {str(e)}")
-            await self._handle_error(pipeline_id, e)
-
-    async def _handle_error(self, pipeline_id: str, error: Exception) -> None:
-        """Handle errors in report manager"""
-        try:
-            error_message = ProcessingMessage(
-                message_type=MessageType.STAGE_ERROR,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.REPORT_GENERATION.value,
-                    'error': str(error),
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
-
-            await self.message_broker.publish(error_message)
-
-        except Exception as e:
-            logger.error(f"Error in error handling: {str(e)}")
-
-    def get_report_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
-        """Get status of report generation"""
-        return self.report_handler.get_report_status(pipeline_id)
+            # Cleanup
+            del self.active_processes[pipeline_id]
 
     async def cleanup(self) -> None:
-        """Cleanup manager resources"""
+        """Clean up manager resources"""
         try:
-            await self.report_handler.cleanup()
-            await super().cleanup()
+            # Notify cleanup for all active processes
+            for pipeline_id in list(self.active_processes.keys()):
+                await self.message_broker.publish(ProcessingMessage(
+                    message_type=MessageType.REPORT_CLEANUP,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'reason': 'Manager cleanup initiated'
+                    }
+                ))
+                del self.active_processes[pipeline_id]
+
         except Exception as e:
-            logger.error(f"Error during cleanup: {str(e)}")
+            logger.error(f"Cleanup failed: {str(e)}")
             raise

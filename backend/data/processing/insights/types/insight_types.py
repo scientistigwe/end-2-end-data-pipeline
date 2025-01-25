@@ -14,7 +14,7 @@ class InsightType(Enum):
     DISTRIBUTION = "distribution"  # Data distribution insights
     CLUSTER = "cluster"         # Natural groupings
     FORECAST = "forecast"       # Future predictions
-    COMPARATIVE = "comparative"  # Comparative analysis
+    COMPARATIVE = "comparative"  # Comparative insight
     BUSINESS_GOAL = "business_goal"
 
 class InsightCategory(Enum):

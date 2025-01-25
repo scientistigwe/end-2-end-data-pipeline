@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 class DatabaseValidationConfig:
     """Configuration for database source validation"""
 
+    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
+
     # Supported database types with their default ports
     supported_sources: Dict[str, Dict[str, Optional[int]]] = field(default_factory=lambda: {
         'postgresql': {'default_port': 5432},

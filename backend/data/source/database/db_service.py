@@ -5,15 +5,14 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from uuid import uuid4
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.control.control_point_manager import ControlPointManager
-from backend.core.messaging.types import (
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
+from core.control.cpm import ControlPointManager
+from core.messaging.event_types import (
     MessageType, ProcessingStage, ModuleIdentifier, ComponentType
 )
 from .db_handler import DatabaseHandler
-from .db_validator import DatabaseSourceValidator
-from .db_config import DatabaseSourceConfig
+from .db_validator import DatabaseSourceValidator, DatabaseValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,12 @@ class DatabaseService:
             message_broker: MessageBroker,
             staging_manager: StagingManager,
             cpm: ControlPointManager,
-            config: Optional[DatabaseSourceConfig] = None
+            config: Optional[DatabaseValidationConfig] = None
     ):
         self.message_broker = message_broker
         self.staging_manager = staging_manager
         self.cpm = cpm
-        self.config = config or DatabaseSourceConfig()
+        self.config = config or DatabaseValidationConfig()
 
         # Initialize components
         self.handler = DatabaseHandler(

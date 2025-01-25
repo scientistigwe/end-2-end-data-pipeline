@@ -1,9 +1,8 @@
-# backend/db/models/staging/base_staging_model.py
-
-from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from sqlalchemy import Column, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean, String
 from sqlalchemy.orm import relationship
 from datetime import datetime
-import enum
 
 from ..base import Base
 from core.messaging.event_types import ComponentType, ReportSectionType, ProcessingStatus
@@ -13,8 +12,13 @@ class BaseStagedOutput(Base):
     """Base model for all staged outputs"""
     __tablename__ = 'staged_outputs'
 
-    id = Column(String, primary_key=True)
-    pipeline_id = Column(String, ForeignKey('pipelines.id'))
+    # Change id to UUID
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Change pipeline_id to UUID
+    pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'))
+
+    # Rest of the model remains the same
     component_type = Column(Enum(ComponentType))
     output_type = Column(Enum(ReportSectionType))
     status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING)
@@ -31,12 +35,7 @@ class BaseStagedOutput(Base):
     metrics = Column(JSON, default={})
     processing_history = relationship("StagingProcessingHistory", back_populates="staged_output")
 
-
-
-
-
-
-
-
-
-
+    __mapper_args__ = {
+        "polymorphic_identity": "base",
+        "polymorphic_on": component_type
+    }

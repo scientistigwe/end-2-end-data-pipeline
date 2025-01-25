@@ -152,7 +152,7 @@ class AnalyticsReportFormatter(BaseFormatter):
             self,
             feature_importance: Dict[str, float]
     ) -> Dict[str, Any]:
-        """Format feature importance analysis"""
+        """Format feature importance insight"""
         # Sort features by importance
         sorted_features = sorted(
             feature_importance.items(),
@@ -199,7 +199,7 @@ class AnalyticsReportFormatter(BaseFormatter):
         }
 
     def _format_predictions(self, predictions: Dict[str, Any]) -> Dict[str, Any]:
-        """Format prediction analysis"""
+        """Format prediction insight"""
         return {
             'type': 'predictions',
             'summary': {
@@ -240,7 +240,7 @@ class AnalyticsReportFormatter(BaseFormatter):
             return self._format_error_response(e)
 
     def _get_primary_metric(self, performance: Dict[str, float]) -> Dict[str, Any]:
-        """Get primary performance metric based on analysis type"""
+        """Get primary performance metric based on insight type"""
         metric_priorities = {
             'classification': ['accuracy', 'f1_score', 'auc_roc'],
             'regression': ['r2_score', 'rmse', 'mae'],
@@ -278,7 +278,7 @@ class AnalyticsReportFormatter(BaseFormatter):
             self,
             feature_importance: Dict[str, float]
     ) -> Dict[str, Any]:
-        """Summarize feature importance analysis"""
+        """Summarize feature importance insight"""
         if not feature_importance:
             return {'error': 'No feature importance data available'}
 
@@ -409,7 +409,7 @@ class AnalyticsReportFormatter(BaseFormatter):
             self,
             visualization: ReportVisualization
     ) -> Dict[str, Any]:
-        """Format error analysis visualization"""
+        """Format error insight visualization"""
         return {
             'viz_id': str(visualization.viz_id),
             'type': 'error_analysis',

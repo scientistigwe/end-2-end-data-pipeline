@@ -124,7 +124,7 @@ class ReportProcessor:
             return QualityReport(
                 **base_args,
                 title="Data Quality Analysis Report",
-                description="Comprehensive analysis of data quality metrics and issues",
+                description="Comprehensive insight of data quality metrics and issues",
                 sections=[],  # Will be populated during formatting
                 quality_score=data.get('quality_score', 0.0),
                 issues_found=len(data.get('issues', [])),
@@ -238,7 +238,7 @@ class ReportProcessor:
             pipeline_id: str,
             quality_data: Dict[str, Any]
     ) -> QualityReport:
-        """Process quality analysis data into report"""
+        """Process quality insight data into report"""
         try:
             # Extract quality metrics
             metrics = self._extract_quality_metrics(quality_data)
@@ -256,7 +256,7 @@ class ReportProcessor:
                 pipeline_id=pipeline_id,
                 stage=ReportStage.DATA_QUALITY,
                 title="Data Quality Analysis Report",
-                description="Comprehensive analysis of data quality metrics and issues",
+                description="Comprehensive insight of data quality metrics and issues",
                 sections=self._create_quality_sections(metrics, issues, recommendations),
                 metadata=self._create_report_metadata(quality_data),
                 status=ReportStatus.GENERATING,
@@ -277,7 +277,7 @@ class ReportProcessor:
             pipeline_id: str,
             insight_data: Dict[str, Any]
     ) -> InsightReport:
-        """Process insight analysis data into report"""
+        """Process insight insight data into report"""
         try:
             # Process insights
             insights = self._process_insights(insight_data.get('insights', []))

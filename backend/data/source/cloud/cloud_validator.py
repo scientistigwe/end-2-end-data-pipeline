@@ -19,6 +19,8 @@ class S3ValidationConfig:
     max_bucket_name_length: int = 63
     min_bucket_name_length: int = 3
 
+    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
+
     # Key constraints
     max_key_length: int = 1024
 

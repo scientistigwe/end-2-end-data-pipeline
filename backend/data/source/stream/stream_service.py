@@ -5,15 +5,14 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from uuid import uuid4
 
-from backend.core.messaging.broker import MessageBroker
-from backend.core.staging.staging_manager import StagingManager
-from backend.core.control.control_point_manager import ControlPointManager
-from backend.core.messaging.types import (
+from core.messaging.broker import MessageBroker
+from core.staging.staging_manager import StagingManager
+from core.control.cpm import ControlPointManager
+from core.messaging.event_types import (
     MessageType, ProcessingStage, ModuleIdentifier, ComponentType
 )
 from .stream_handler import StreamHandler
-from .stream_validator import StreamSourceValidator
-from .stream_config import Config
+from .stream_validator import StreamSourceValidator, StreamValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,12 @@ class StreamService:
             message_broker: MessageBroker,
             staging_manager: StagingManager,
             cpm: ControlPointManager,
-            config: Optional[Config] = None
+            config: Optional[StreamValidationConfig] = None
     ):
         self.message_broker = message_broker
         self.staging_manager = staging_manager
         self.cpm = cpm
-        self.config = config or Config()
+        self.config = config or StreamValidationConfig()
 
         # Initialize components
         self.handler = StreamHandler(

@@ -89,7 +89,7 @@ class ResolutionParams:
 
 class MissingValueResolver:
     """
-    Resolves missing values based on analysis results and user decisions.
+    Resolves missing values based on insight results and user decisions.
     """
 
     def __init__(self):
@@ -331,12 +331,12 @@ class MissingValueResolver:
             }
 
     def update_strategy_confidence(self, analysis_results: Dict[str, AnalysisResult]) -> None:
-        """Update strategies with confidence and reason from analysis"""
+        """Update strategies with confidence and reason from insight"""
         for field_name, analysis in analysis_results.items():
             strategy_name = analysis.recommendation['action']
             if strategy_name in self.strategy_registry:
                 strategy = self.strategy_registry[strategy_name]
-                # Update from analysis results
+                # Update from insight results
                 strategy.confidence = analysis.recommendation['confidence']
                 strategy.reason = analysis.recommendation['reason']
 
@@ -349,7 +349,7 @@ class MissingValueResolver:
 
             for command in resolution_commands:
                 try:
-                    # Get analysis result
+                    # Get insight result
                     analysis = analysis_results.get(command.field_name)
                     if not analysis:
                         continue
@@ -478,7 +478,7 @@ class MissingValueResolver:
     def _validate_resolution(self, resolved_series: pd.Series, original_series: pd.Series,
                              analysis_result: AnalysisResult) -> Dict[str, bool]:
         """
-        Validate resolution results using analysis information
+        Validate resolution results using insight information
         """
         validation_results = {}
 
@@ -487,12 +487,12 @@ class MissingValueResolver:
         resolved_missing = resolved_series.isna().sum()
         validation_results['reduced_missing'] = resolved_missing < original_missing
 
-        # For numeric data, use analysis results to set appropriate thresholds
+        # For numeric data, use insight results to set appropriate thresholds
         if pd.api.types.is_numeric_dtype(original_series):
             original_stats = original_series.describe()
             resolved_stats = resolved_series.describe()
 
-            # Use analysis confidence to adjust tolerance
+            # Use insight confidence to adjust tolerance
             tolerance = max(0.1, 1 - analysis_result.recommendation['confidence'])
 
             # Check value ranges with dynamic tolerance
@@ -515,7 +515,7 @@ class MissingValueResolver:
 
     def get_available_strategies(self, analysis_results: Dict[str, AnalysisResult]) -> Dict[str, Dict[str, Any]]:
         """
-        Return available resolution strategies with confidence from analysis
+        Return available resolution strategies with confidence from insight
         """
         # First update confidences
         self.update_strategy_confidence(analysis_results)

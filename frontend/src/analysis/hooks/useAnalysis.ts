@@ -1,4 +1,4 @@
-// src/analysis/hooks/useAnalysis.ts
+// src/insight/hooks/useAnalysis.ts
 import { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
@@ -22,7 +22,7 @@ import type {
   AnalysisResult,
   QualityReport,
   InsightReport 
-} from '../types/analysis';
+} from '../types/insight';
 
 export const useAnalysis = () => {
   const dispatch = useDispatch();

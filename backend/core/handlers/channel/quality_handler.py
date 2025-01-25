@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class QualityHandler(BaseChannelHandler):
     """
-    Handler for quality analysis operations.
+    Handler for quality insight operations.
     Coordinates between manager, processor, and staging area.
     """
 
@@ -57,24 +57,24 @@ class QualityHandler(BaseChannelHandler):
     def _setup_message_handlers(self) -> None:
         """Setup handlers for quality-specific messages"""
         self.register_message_handler(
-            MessageType.QUALITY_START,
+            MessageType.QUALITY_START_REQUEST,
             self._handle_quality_start
         )
         self.register_message_handler(
-            MessageType.QUALITY_UPDATE,
+            MessageType.QUALITY_STATE_UPDATE,
             self._handle_quality_update
         )
         self.register_message_handler(
-            MessageType.QUALITY_RESOLUTION,
+            MessageType.QUALITY_RESOLUTION_RESULT,
             self._handle_quality_resolution
         )
         self.register_message_handler(
-            MessageType.QUALITY_VALIDATE,
+            MessageType.QUALITY_VALIDATION_RESULT,
             self._handle_quality_validation
         )
 
     async def _handle_quality_start(self, message: ProcessingMessage) -> None:
-        """Handle start of quality analysis process"""
+        """Handle start of quality insight process"""
         pipeline_id = message.content.get('pipeline_id')
         staged_id = message.content.get('staged_id')
         config = message.content.get('config', {})

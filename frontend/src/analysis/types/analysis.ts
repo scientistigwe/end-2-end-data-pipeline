@@ -1,4 +1,4 @@
-// src/analysis/types/analysis.ts
+// src/insight/types/insight.ts
 import { z } from "zod";
 import { ImpactLevel } from '@/common';
 

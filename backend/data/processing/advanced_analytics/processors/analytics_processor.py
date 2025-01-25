@@ -87,7 +87,7 @@ class AnalyticsProcessor:
             staged_id: str,
             config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Prepare data for analysis"""
+        """Prepare data for insight"""
         try:
             # Create analytics context
             context = AnalyticsContext(
@@ -361,7 +361,7 @@ class AnalyticsProcessor:
             raise
 
     def get_analysis_status(self, pipeline_id: str) -> Optional[Dict[str, Any]]:
-        """Get current status of analysis process"""
+        """Get current status of insight process"""
         context = self.active_analyses.get(pipeline_id)
         if not context:
             return None

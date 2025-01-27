@@ -5,15 +5,15 @@ import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from core.messaging.broker import MessageBroker
-from core.messaging.event_types import (
+from ...messaging.broker import MessageBroker
+from ...messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ComponentType,
     ModuleIdentifier,
     MessageMetadata
 )
-from core.staging.staging_manager import StagingManager
+from ...managers.staging_manager import StagingManager
 
 logger = logging.getLogger(__name__)
 

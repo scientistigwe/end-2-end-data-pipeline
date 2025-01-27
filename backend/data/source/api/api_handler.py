@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from core.messaging.broker import MessageBroker
-from core.staging.staging_manager import StagingManager
+from core.managers.staging_manager import (StagingManager)
 from core.messaging.event_types import (
     MessageType, ProcessingMessage, ModuleIdentifier, ComponentType
 )

@@ -183,7 +183,7 @@
 #                 # Create new pipeline state if not exists
 #                 pipeline_state = PipelineState(
 #                     pipeline_id=pipeline_id,
-#                     current_stage=stage or ProcessingStage.INITIAL_VALIDATION,
+#                     current_stage=stage or ProcessingStage.VALIDATION,
 #                     status=ProcessingStatus.PENDING,
 #                     metadata=kwargs.get('metadata', {})
 #                 )

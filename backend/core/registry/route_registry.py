@@ -1,12 +1,12 @@
 # backend/api/routes/staging.py
 
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..dependencies import get_staging_manager, get_db
-from backend.core.staging.staging_manager import StagingManager
-from backend.db.models.staging import ComponentType, OutputType, StagingStatus
+from backend.core.managers.staging_manager import StagingManager
+from backend.db.models.staging import ComponentType, OutputType
 
 router = APIRouter(prefix="/api/staging", tags=["staging"])
 

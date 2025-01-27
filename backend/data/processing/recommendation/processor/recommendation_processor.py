@@ -1,4 +1,4 @@
-# backend/data_pipeline/recommendation/processor/recommendation_processor.py
+# backend/core/processors/recommendation_processor.py
 
 import logging
 from typing import Dict, Any, Optional, List
@@ -9,400 +9,360 @@ from core.messaging.broker import MessageBroker
 from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
+    ComponentType,
+    ModuleIdentifier,
+    MessageMetadata,
     ProcessingStage,
-    RecommendationContext
+    ProcessingStatus,
+    RecommendationState,
+    RecommendationContext,
+    RecommendationMetrics
 )
-from core.staging.staging_manager import StagingManager
-
-from ..types.recommendation_types import (
-    RecommendationType,
-    RecommendationPhase,
-    RecommendationStatus,
-    RecommendationCandidate,
-    RankedRecommendation,
-    RecommendationResult,
-    RecommendationState
-)
-
-from ..modules.engines import (
+from data.processing.recommendations.engines import (
     content_based,
     collaborative_filtering,
     contextual_engine,
     hybrid_engine
 )
-
-from ..modules.rankers import (
+from data.processing.recommendations.rankers import (
     relevance_ranker,
-    personalization_ranker,
     diversity_ranker,
     business_rules_ranker
 )
 
 logger = logging.getLogger(__name__)
 
-
 class RecommendationProcessor:
     """
-    Coordinates recommendation generation through different engines,
-    ranking, and aggregation phases.
+    Recommendation Processor: Handles actual recommendation generation.
+    - Direct module access
+    - Core processing logic
+    - Message-based coordination
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            staging_manager: StagingManager
-    ):
+    def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
-        self.staging_manager = staging_manager
-        self.logger = logging.getLogger(__name__)
 
-        # Active states
-        self.active_states: Dict[str, RecommendationState] = {}
+        # Processor identification
+        self.module_identifier = ModuleIdentifier(
+            component_name="recommendation_processor",
+            component_type=ComponentType.RECOMMENDATION_PROCESSOR,
+            department="recommendation",
+            role="processor"
+        )
 
-        # Initialize engines and rankers
+        # Active processing contexts
+        self.active_contexts: Dict[str, RecommendationContext] = {}
+
+        # Initialize components
         self._initialize_components()
 
+        # Setup message handlers
+        self._setup_message_handlers()
+
     def _initialize_components(self) -> None:
-        """Initialize recommendation components"""
-        # Recommendation engines
+        """Initialize recommendation engines and rankers"""
         self.engines = {
-            RecommendationType.CONTENT_BASED: content_based,
-            RecommendationType.COLLABORATIVE: collaborative_filtering,
-            RecommendationType.CONTEXTUAL: contextual_engine,
-            RecommendationType.HYBRID: hybrid_engine
+            'content_based': content_based,
+            'collaborative': collaborative_filtering,
+            'contextual': contextual_engine,
+            'hybrid': hybrid_engine
         }
 
-        # Ranking components
         self.rankers = {
             'relevance': relevance_ranker,
-            'personalization': personalization_ranker,
             'diversity': diversity_ranker,
             'business_rules': business_rules_ranker
         }
 
-    async def process_recommendation_request(
+    def _setup_message_handlers(self) -> None:
+        """Setup processor message handlers"""
+        handlers = {
+            # Core Processing
+            MessageType.RECOMMENDATION_PROCESSOR_START: self._handle_processor_start,
+            MessageType.RECOMMENDATION_PROCESSOR_UPDATE: self._handle_processor_update,
+
+            # Engine Processing
+            MessageType.RECOMMENDATION_ENGINE_START: self._handle_engine_start,
+            MessageType.RECOMMENDATION_ENGINE_RESPONSE: self._handle_engine_response,
+
+            # Ranking and Filtering
+            MessageType.RECOMMENDATION_FILTER_REQUEST: self._handle_filter_request,
+            MessageType.RECOMMENDATION_RANK_REQUEST: self._handle_rank_request,
+
+            # Control Messages
+            MessageType.RECOMMENDATION_PROCESSOR_CANCEL: self._handle_cancellation
+        }
+
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                self.module_identifier,
+                f"recommendation.{message_type.value}.#",
+                handler
+            )
+
+    async def _handle_processor_start(self, message: ProcessingMessage) -> None:
+        """Handle start of recommendation generation"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            config = message.content.get('config', {})
+
+            # Initialize context
+            context = RecommendationContext(
+                pipeline_id=pipeline_id,
+                state=RecommendationState.INITIALIZING,
+                config=config
+            )
+            self.active_contexts[pipeline_id] = context
+
+            # Update status
+            await self._publish_status_update(
+                pipeline_id,
+                "Initializing recommendation generation",
+                0.0
+            )
+
+            # Start engine processing
+            await self._start_engine_processing(pipeline_id, config)
+
+        except Exception as e:
+            logger.error(f"Processor start failed: {str(e)}")
+            await self._handle_processing_error(message, str(e))
+
+    async def _start_engine_processing(
             self,
             pipeline_id: str,
-            context: RecommendationContext
-    ) -> RecommendationState:
-        """Process recommendation request through all phases"""
+            config: Dict[str, Any]
+    ) -> None:
+        """Start processing with recommendation engines"""
         try:
-            # Initialize state
-            state = await self._initialize_state(pipeline_id, context)
-            self.active_states[pipeline_id] = state
+            context = self.active_contexts[pipeline_id]
+            context.state = RecommendationState.ENGINE_SELECTION
 
-            # Generate candidates
-            await self._generate_candidates(state, context)
-            if state.status == RecommendationStatus.FAILED:
-                return state
+            enabled_engines = config.get('enabled_engines', list(self.engines.keys()))
 
-            # Filter candidates
-            await self._filter_candidates(state, context)
-            if state.status == RecommendationStatus.FAILED:
-                return state
+            # Process with each enabled engine
+            for engine_name in enabled_engines:
+                if engine_name not in self.engines:
+                    continue
+
+                engine = self.engines[engine_name]
+
+                try:
+                    # Generate recommendations
+                    recommendations = await engine.generate_recommendations(
+                        config.get('data'),
+                        config.get(f'{engine_name}_config', {})
+                    )
+
+                    # Process engine results
+                    await self._handle_engine_results(
+                        pipeline_id,
+                        engine_name,
+                        recommendations
+                    )
+
+                except Exception as engine_error:
+                    logger.error(f"Engine {engine_name} failed: {str(engine_error)}")
+                    await self._publish_engine_error(
+                        pipeline_id,
+                        engine_name,
+                        str(engine_error)
+                    )
+
+            # Check if we should proceed to filtering
+            if context.has_recommendations():
+                await self._start_filtering(pipeline_id)
+            else:
+                raise ValueError("No recommendations generated from any engine")
+
+        except Exception as e:
+            logger.error(f"Engine processing failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
+
+    async def _handle_engine_results(
+            self,
+            pipeline_id: str,
+            engine_name: str,
+            recommendations: List[Dict[str, Any]]
+    ) -> None:
+        """Process results from recommendation engine"""
+        context = self.active_contexts.get(pipeline_id)
+        if not context:
+            return
+
+        # Add engine recommendations to context
+        context.add_engine_results(engine_name, recommendations)
+
+        # Update metrics
+        context.update_metrics({
+            'engine_metrics': {
+                engine_name: {
+                    'recommendations_count': len(recommendations),
+                    'average_confidence': sum(r.get('confidence', 0) for r in recommendations) / len(recommendations)
+                }
+            }
+        })
+
+        # Update status
+        await self._publish_status_update(
+            pipeline_id,
+            f"Completed {engine_name} engine processing",
+            context.calculate_progress()
+        )
+
+    async def _start_filtering(self, pipeline_id: str) -> None:
+        """Start recommendation filtering process"""
+        context = self.active_contexts.get(pipeline_id)
+        if not context:
+            return
+
+        try:
+            context.state = RecommendationState.FILTERING
+
+            # Apply filtering rules
+            filtered_recommendations = []
+            for recommendations in context.engine_results.values():
+                for rec in recommendations:
+                    if await self._apply_filtering_rules(rec, context.config.get('filtering_rules', {})):
+                        filtered_recommendations.append(rec)
+
+            context.filtered_recommendations = filtered_recommendations
+
+            # Update metrics
+            context.update_metrics({
+                'filtering_metrics': {
+                    'total_filtered': len(filtered_recommendations),
+                    'filter_rate': len(filtered_recommendations) / context.total_recommendations
+                }
+            })
+
+            # Move to ranking if we have filtered recommendations
+            if filtered_recommendations:
+                await self._start_ranking(pipeline_id)
+            else:
+                raise ValueError("No recommendations passed filtering")
+
+        except Exception as e:
+            logger.error(f"Filtering failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
+
+    async def _start_ranking(self, pipeline_id: str) -> None:
+        """Start recommendation ranking process"""
+        context = self.active_contexts.get(pipeline_id)
+        if not context:
+            return
+
+        try:
+            context.state = RecommendationState.RANKING
 
             # Rank recommendations
-            await self._rank_recommendations(state, context)
-            if state.status == RecommendationStatus.FAILED:
-                return state
-
-            # Finalize recommendations
-            await self._finalize_recommendations(state, context)
-
-            return state
-
-        except Exception as e:
-            logger.error(f"Failed to process recommendation request: {str(e)}")
-            await self._handle_error(pipeline_id, "process", str(e))
-            raise
-
-    async def _generate_candidates(
-            self,
-            state: RecommendationState,
-            context: RecommendationContext
-    ) -> None:
-        """Generate candidates from enabled engines"""
-        try:
-            state.status = RecommendationStatus.GENERATING
-            state.current_phase = RecommendationPhase.CANDIDATE_GENERATION
-
-            candidates = []
-            for engine_type in context.enabled_engines:
-                if engine_type in self.engines:
-                    engine_candidates = await self._get_engine_candidates(
-                        self.engines[engine_type],
-                        context
-                    )
-                    candidates.extend(engine_candidates)
-
-            state.candidates = candidates
-            await self._notify_phase_complete(
-                state.pipeline_id,
-                RecommendationPhase.CANDIDATE_GENERATION,
-                len(candidates)
-            )
-
-        except Exception as e:
-            state.status = RecommendationStatus.FAILED
-            await self._handle_error(state.pipeline_id, "candidate_generation", str(e))
-
-    async def _filter_candidates(
-            self,
-            state: RecommendationState,
-            context: RecommendationContext
-    ) -> None:
-        """Filter candidates based on rules"""
-        try:
-            state.status = RecommendationStatus.FILTERING
-            state.current_phase = RecommendationPhase.FILTERING
-
-            filtered_candidates = []
-            for candidate in state.candidates:
-                if self._meets_filtering_criteria(candidate, context.filtering_rules):
-                    filtered_candidates.append(candidate)
-
-            state.candidates = filtered_candidates
-            await self._notify_phase_complete(
-                state.pipeline_id,
-                RecommendationPhase.FILTERING,
-                len(filtered_candidates)
-            )
-
-        except Exception as e:
-            state.status = RecommendationStatus.FAILED
-            await self._handle_error(state.pipeline_id, "filtering", str(e))
-
-    async def _rank_recommendations(
-            self,
-            state: RecommendationState,
-            context: RecommendationContext
-    ) -> None:
-        """Rank filtered candidates"""
-        try:
-            state.status = RecommendationStatus.RANKING
-            state.current_phase = RecommendationPhase.RANKING
-
-            ranked_items = []
-            for idx, candidate in enumerate(state.candidates):
+            ranked_recommendations = []
+            for rec in context.filtered_recommendations:
                 ranking_scores = {}
 
                 # Apply each ranker
                 for ranker_name, ranker in self.rankers.items():
-                    if ranker_name in context.ranking_criteria:
-                        score = await ranker.rank(
-                            candidate,
-                            context.ranking_criteria[ranker_name]
+                    if ranker_name in context.config.get('ranking_criteria', {}):
+                        score = await ranker.calculate_score(
+                            rec,
+                            context.config['ranking_criteria'][ranker_name]
                         )
                         ranking_scores[ranker_name] = score
 
                 # Calculate final score
-                final_score = self._calculate_final_score(
-                    ranking_scores,
-                    context.engine_weights
-                )
-
-                ranked_items.append(
-                    RankedRecommendation(
-                        candidate=candidate,
-                        final_score=final_score,
-                        rank=idx + 1,
-                        ranking_factors=ranking_scores,
-                        confidence=self._calculate_confidence(ranking_scores)
-                    )
-                )
+                final_score = self._calculate_final_score(ranking_scores)
+                ranked_recommendations.append({
+                    'recommendation': rec,
+                    'ranking_scores': ranking_scores,
+                    'final_score': final_score
+                })
 
             # Sort by final score
-            state.ranked_items = sorted(
-                ranked_items,
-                key=lambda x: x.final_score,
-                reverse=True
-            )
+            ranked_recommendations.sort(key=lambda x: x['final_score'], reverse=True)
 
-            await self._notify_phase_complete(
-                state.pipeline_id,
-                RecommendationPhase.RANKING,
-                len(state.ranked_items)
-            )
+            # Store results
+            context.final_recommendations = ranked_recommendations[:context.config.get('max_recommendations', 10)]
+
+            # Complete processing
+            await self._complete_processing(pipeline_id)
 
         except Exception as e:
-            state.status = RecommendationStatus.FAILED
-            await self._handle_error(state.pipeline_id, "ranking", str(e))
+            logger.error(f"Ranking failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
 
-    async def _finalize_recommendations(
-            self,
-            state: RecommendationState,
-            context: RecommendationContext
-    ) -> None:
-        """Finalize recommendations applying diversity and limits"""
+    async def _complete_processing(self, pipeline_id: str) -> None:
+        """Complete recommendation processing"""
         try:
-            state.current_phase = RecommendationPhase.FINALIZATION
+            context = self.active_contexts[pipeline_id]
+            context.state = RecommendationState.COMPLETED
 
-            # Apply diversity rules
-            diversified_items = await self.rankers['diversity'].apply_diversity(
-                state.ranked_items,
-                context.diversity_settings
+            # Calculate final metrics
+            final_metrics = self._calculate_final_metrics(context)
+
+            # Publish completion
+            await self._publish_completion(
+                pipeline_id,
+                context.final_recommendations,
+                final_metrics
             )
 
-            # Apply limits
-            final_items = diversified_items[:context.max_recommendations]
-
-            # Create final result
-            result = RecommendationResult(
-                pipeline_id=state.pipeline_id,
-                recommendations=final_items,
-                metadata=self._create_result_metadata(state, context),
-                scores=self._calculate_overall_scores(final_items)
-            )
-
-            # Store result
-            await self._store_result(state.pipeline_id, result)
-
-            # Update state
-            state.status = RecommendationStatus.COMPLETED
-            await self._notify_completion(state.pipeline_id, result)
+            # Cleanup
+            del self.active_contexts[pipeline_id]
 
         except Exception as e:
-            state.status = RecommendationStatus.FAILED
-            await self._handle_error(state.pipeline_id, "finalization", str(e))
+            logger.error(f"Completion failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
 
-    async def _get_engine_candidates(
+    async def _publish_completion(
             self,
-            engine: Any,
-            context: RecommendationContext
-    ) -> List[RecommendationCandidate]:
-        """Get candidates from specific engine"""
+            pipeline_id: str,
+            recommendations: List[Dict[str, Any]],
+            metrics: RecommendationMetrics
+    ) -> None:
+        """Publish completion message"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.RECOMMENDATION_PROCESSOR_COMPLETE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'recommendations': recommendations,
+                    'metrics': metrics.__dict__,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="recommendation_handler",
+                    domain_type="recommendation",
+                    processing_stage=ProcessingStage.RECOMMENDATION
+                ),
+                source_identifier=self.module_identifier
+            )
+        )
+
+    async def cleanup(self) -> None:
+        """Cleanup processor resources"""
         try:
-            raw_candidates = await engine.generate_candidates(context)
-            return [
-                RecommendationCandidate(
-                    item_id=str(uuid.uuid4()),
-                    source=engine.type,
-                    scores=candidate.get('scores', {}),
-                    features=candidate.get('features', {}),
-                    metadata=candidate.get('metadata', {})
-                )
-                for candidate in raw_candidates
-            ]
+            # Calculate final metrics for each active process
+            for pipeline_id, context in self.active_contexts.items():
+                metrics = self._calculate_final_metrics(context)
+                await self._publish_metrics(pipeline_id, metrics)
+
+            # Clear active processes
+            self.active_contexts.clear()
+
         except Exception as e:
-            logger.error(f"Engine candidate generation failed: {str(e)}")
-            return []
-
-    def _meets_filtering_criteria(
-            self,
-            candidate: RecommendationCandidate,
-            rules: Dict[str, Any]
-    ) -> bool:
-        """Check if candidate meets filtering criteria"""
-        # Implement filtering logic
-        return True
-
-    def _calculate_final_score(
-            self,
-            ranking_scores: Dict[str, float],
-            weights: Dict[str, float]
-    ) -> float:
-        """Calculate final score from ranking factors"""
-        final_score = 0.0
-        for ranker_name, score in ranking_scores.items():
-            weight = weights.get(ranker_name, 1.0)
-            final_score += score * weight
-        return final_score / len(ranking_scores) if ranking_scores else 0.0
-
-    def _calculate_confidence(
-            self,
-            ranking_scores: Dict[str, float]
-    ) -> float:
-        """Calculate confidence score"""
-        return sum(ranking_scores.values()) / len(ranking_scores) if ranking_scores else 0.0
-
-    async def _store_result(
-            self,
-            pipeline_id: str,
-            result: RecommendationResult
-    ) -> None:
-        """Store recommendation result"""
-        await self.staging_manager.store_staged_data(
-            pipeline_id,
-            {
-                'type': 'recommendation_result',
-                'data': result.__dict__,
-                'created_at': datetime.now().isoformat()
-            }
-        )
-
-    async def _notify_completion(
-            self,
-            pipeline_id: str,
-            result: RecommendationResult
-    ) -> None:
-        """Notify about recommendation completion"""
-        message = ProcessingMessage(
-            message_type=MessageType.RECOMMENDATION_COMPLETE,
-            content={
-                'pipeline_id': pipeline_id,
-                'recommendations': [r.__dict__ for r in result.recommendations],
-                'metadata': result.metadata,
-                'scores': result.scores
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _notify_phase_complete(
-            self,
-            pipeline_id: str,
-            phase: RecommendationPhase,
-            count: int
-    ) -> None:
-        """Notify about phase completion"""
-        message = ProcessingMessage(
-            message_type=MessageType.RECOMMENDATION_UPDATE,
-            content={
-                'pipeline_id': pipeline_id,
-                'phase': phase.value,
-                'count': count,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    async def _handle_error(
-            self,
-            pipeline_id: str,
-            phase: str,
-            error: str
-    ) -> None:
-        """Handle processing errors"""
-        message = ProcessingMessage(
-            message_type=MessageType.RECOMMENDATION_ERROR,
-            content={
-                'pipeline_id': pipeline_id,
-                'phase': phase,
-                'error': error,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-        await self.message_broker.publish(message)
-
-    def _create_result_metadata(
-            self,
-            state: RecommendationState,
-            context: RecommendationContext
-    ) -> Dict[str, Any]:
-        """Create metadata for recommendation result"""
-        return {
-            'engines_used': context.enabled_engines,
-            'candidates_generated': len(state.candidates),
-            'candidates_ranked': len(state.ranked_items),
-            'processing_time': (datetime.now() - state.created_at).total_seconds(),
-            'context_type': context.request_type
-        }
-
-    def _calculate_overall_scores(
-            self,
-            recommendations: List[RankedRecommendation]
-    ) -> Dict[str, float]:
-        """Calculate overall recommendation scores"""
-        return {
-            'average_confidence': sum(r.confidence for r in recommendations) / len(recommendations),
-            'average_score': sum(r.final_score for r in recommendations) / len(recommendations)
-        }
+            logger.error(f"Processor cleanup failed: {str(e)}")
+            raise

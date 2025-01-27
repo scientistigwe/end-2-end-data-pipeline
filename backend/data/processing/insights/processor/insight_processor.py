@@ -1,498 +1,317 @@
-# backend/data_pipeline/insights/processor/insight_processor.py
+# backend/core/processors/insight_processor.py
 
 import logging
-from typing import Dict, Any, Optional
-import uuid
+from typing import Dict, Any, Optional, List
+from datetime import datetime
 
 from core.messaging.broker import MessageBroker
-from core.staging.staging_manager import StagingManager
-
-from ..types.insight_types import (
-    InsightType,
-    InsightCategory,
-    InsightPriority,
-    InsightPhase,
+from core.messaging.event_types import (
+    MessageType,
+    ProcessingMessage,
+    ComponentType,
+    ModuleIdentifier,
+    MessageMetadata,
+    ProcessingStage,
+    ProcessingStatus,
+    InsightState,
     InsightContext,
-    InsightConfig,
-    InsightResult
+    InsightMetrics
 )
-
-# Import insight modules
-from ..generators import (
+from ...insights.generators import (
     pattern_insights,
     trend_insights,
     relationship_insights,
     anomaly_insights,
     business_goal_insights
 )
-
-from ..validators import (
+from ...insights.validators import (
     pattern_validator,
     trend_validator,
     relationship_validator,
     anomaly_validator,
-business_goal_validator
+    business_goal_validator
 )
 
 logger = logging.getLogger(__name__)
 
+
 class InsightProcessor:
     """
-    Processor for insight generation and insight.
-    Coordinates between different insight modules and manages results.
+    Insight Processor: Handles direct module interaction and insight generation.
+    Maintains message-based coordination while having direct module access.
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            staging_manager: StagingManager
-    ):
+    def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
-        self.staging_manager = staging_manager
-        self.logger = logging.getLogger(__name__)
 
-        # Initialize module registries
-        self._initialize_module_registries()
+        # Processor identification
+        self.module_identifier = ModuleIdentifier(
+            component_name="insight_processor",
+            component_type=ComponentType.INSIGHT_PROCESSOR,
+            department="insight",
+            role="processor"
+        )
 
-    def _initialize_module_registries(self) -> None:
-        """Initialize registries for insight modules"""
-        # Insight generators
+        # Active processing contexts
+        self.active_contexts: Dict[str, InsightContext] = {}
+
+        # Initialize modules
+        self._initialize_modules()
+
+        # Setup handlers
+        self._setup_message_handlers()
+
+    def _initialize_modules(self) -> None:
+        """Initialize insight generation modules"""
         self.generators = {
-            InsightType.PATTERN: {
-                "detect": pattern_insights.detect_patterns,
-                "analyze": pattern_insights.analyze_patterns,
-                "validate": pattern_insights.validate_patterns
-            },
-            InsightType.TREND: {
-                "detect": trend_insights.detect_trends,
-                "analyze": trend_insights.analyze_trends,
-                "validate": trend_insights.validate_trends
-            },
-            InsightType.CORRELATION: {
-                "detect": relationship_insights.detect_relationships,
-                "analyze": relationship_insights.analyze_relationships,
-                "validate": relationship_insights.validate_relationships
-            },
-            InsightType.ANOMALY: {
-                "detect": anomaly_insights.detect_anomalies,
-                "analyze": anomaly_insights.analyze_anomalies,
-                "validate": anomaly_insights.validate_anomalies
-            },
-            InsightType.BUSINESS_GOAL: {  # Add this block
-                "detect": business_goal_insights.detect_business_insights,
-                "analyze": business_goal_insights.analyze_business_insights,
-                "validate": business_goal_insights.validate_business_insights
-            }
+            'pattern': pattern_insights,
+            'trend': trend_insights,
+            'relationship': relationship_insights,
+            'anomaly': anomaly_insights,
+            'business_goal': business_goal_insights
         }
 
-        # Insight validation
         self.validators = {
-            InsightType.PATTERN: pattern_validator.validate_pattern_insight,
-            InsightType.TREND: trend_validator.validate_trend_insight,
-            InsightType.CORRELATION: relationship_validator.validate_relationship_insight,
-            InsightType.ANOMALY: anomaly_validator.validate_anomaly_insight,
-            InsightType.BUSINESS_GOAL: business_goal_validator.validate_business_goal_insight  # Add this
+            'pattern': pattern_validator,
+            'trend': trend_validator,
+            'relationship': relationship_validator,
+            'anomaly': anomaly_validator,
+            'business_goal': business_goal_validator
         }
 
-    def _determine_appropriate_insights(
-            self,
-            characteristics: Dict[str, Any],
-            domain_type: Optional[str]
-    ) -> Dict[InsightType, float]:
-        """Determine which insight types are appropriate"""
-        appropriate = {}
-
-        # Check for patterns
-        if characteristics['size'] > 100:
-            appropriate[InsightType.PATTERN] = 0.8
-
-        # Check for trends
-        if characteristics['temporal']:
-            appropriate[InsightType.TREND] = 0.9
-
-        # Check for correlations
-        if characteristics['numeric'] and characteristics['dimensions'] > 1:
-            appropriate[InsightType.CORRELATION] = 0.85
-
-        # Check for anomalies
-        if characteristics['numeric'] or characteristics['temporal']:
-            appropriate[InsightType.ANOMALY] = 0.7
-
-        # Always include business goal insights if business goals are present
-        if 'business_goals' in characteristics:  # Add this block
-            appropriate[InsightType.BUSINESS_GOAL] = 0.95
-
-        # Add domain-specific weights
-        if domain_type:
-            self._adjust_for_domain(appropriate, domain_type)
-
-        return appropriate
-
-    def _analyze_data_characteristics(self, data: Any) -> Dict[str, Any]:
-        """Analyze characteristics of the data"""
-        characteristics = {
-            'temporal': self._has_temporal_data(data),
-            'numeric': self._has_numeric_data(data),
-            'categorical': self._has_categorical_data(data),
-            'size': len(data),
-            'dimensions': len(data.columns) if hasattr(data, 'columns') else 1,
-            'has_missing': self._has_missing_data(data),
-            'business_goals': self._has_business_goals(data)  # Add this
-        }
-        return characteristics
-
-    def _has_business_goals(self, data: Any) -> bool:
-        """Check if business goals are present in metadata"""
-        # This should check if business goals exist in the metadata
-        return hasattr(data, 'metadata') and 'business_goals' in data.metadata
-
-    def _adjust_for_domain(
-            self,
-            insights: Dict[InsightType, float],
-            domain_type: str
-    ) -> None:
-        """Adjust insight weights based on domain"""
-        domain_adjustments = {
-            'financial': {
-                InsightType.ANOMALY: 0.2,
-                InsightType.TREND: 0.1,
-                InsightType.BUSINESS_GOAL: 0.2  # Add this
-            },
-            'operational': {
-                InsightType.PATTERN: 0.15,
-                InsightType.CORRELATION: 0.1,
-                InsightType.BUSINESS_GOAL: 0.15  # Add this
-            }
+    def _setup_message_handlers(self) -> None:
+        """Setup message handlers for processor"""
+        handlers = {
+            MessageType.INSIGHT_PROCESSOR_START: self._handle_processor_start,
+            MessageType.INSIGHT_PROCESSOR_UPDATE: self._handle_processor_update,
+            MessageType.INSIGHT_PROCESSOR_VALIDATE: self._handle_validation_request,
+            MessageType.INSIGHT_PROCESSOR_CANCEL: self._handle_cancellation
         }
 
-        if domain_type in domain_adjustments:
-            for insight_type, adjustment in domain_adjustments[domain_type].items():
-                if insight_type in insights:
-                    insights[insight_type] += adjustment
+        for message_type, handler in handlers.items():
+            self.message_broker.subscribe(
+                self.module_identifier,
+                f"insight.{message_type.value}.#",
+                handler
+            )
 
-    async def analyze_context(
-            self,
-            data: Any,
-            metadata: Dict[str, Any]
-    ) -> InsightContext:
-        """Analyze data context to determine appropriate insights"""
+    async def _handle_processor_start(self, message: ProcessingMessage) -> None:
+        """Handle start of insight generation"""
         try:
-            # Create initial context
+            pipeline_id = message.content.get('pipeline_id')
+            config = message.content.get('config', {})
+
+            # Initialize context
             context = InsightContext(
-                pipeline_id=metadata['pipeline_id'],
-                staged_id=metadata['staged_id'],
-                current_phase=InsightPhase.INITIALIZATION,
-                metadata=metadata,
-                quality_check_passed=metadata.get('quality_check_passed', False),
-                domain_type=metadata.get('domain_type')
+                pipeline_id=pipeline_id,
+                state=InsightState.INITIALIZING,
+                config=config
             )
+            self.active_contexts[pipeline_id] = context
 
-            # Analyze data characteristics
-            characteristics = self._analyze_data_characteristics(data)
-            context.metadata['data_characteristics'] = characteristics
-
-            # Determine appropriate insight types
-            appropriate_insights = self._determine_appropriate_insights(
-                characteristics,
-                context.domain_type
-            )
-            context.metadata['appropriate_insights'] = appropriate_insights
-
-            return context
+            # Start insight generation process
+            await self._generate_insights(pipeline_id, config)
 
         except Exception as e:
-            self.logger.error(f"Context insight failed: {str(e)}")
-            raise
+            logger.error(f"Processor start failed: {str(e)}")
+            await self._handle_processing_error(message, str(e))
 
-    async def generate_insights(
+    async def _generate_insights(
             self,
             pipeline_id: str,
-            staged_id: str,
-            context: InsightContext,
-            config: InsightConfig
-    ) -> Dict[str, Any]:
-        """Generate insights based on context and configuration"""
+            config: Dict[str, Any]
+    ) -> None:
+        """Generate insights using appropriate modules"""
         try:
-            results = {}
+            context = self.active_contexts[pipeline_id]
+            context.state = InsightState.DETECTION_IN_PROGRESS
+
+            # Update status
+            await self._publish_status_update(
+                pipeline_id,
+                "Generating insights",
+                progress=0.0
+            )
 
             # Get data from staging
-            staged_data = await self.staging_manager.get_staged_data(staged_id)
-            if not staged_data:
-                raise ValueError(f"No data found in staging for ID: {staged_id}")
-
-            data = staged_data.get('data')
+            data = await self._get_staged_data(pipeline_id)
 
             # Generate insights by type
-            for insight_type, confidence in context.metadata['appropriate_insights'].items():
-                if insight_type in config.enabled_types:
-                    # Skip if confidence below threshold
-                    if confidence < config.confidence_threshold:
-                        continue
-
-                    # Generate insights of this type
-                    type_results = await self._generate_type_insights(
-                        insight_type=insight_type,
-                        data=data,
-                        context=context,
-                        config=config
+            insights = {}
+            total_types = len(config.get('enabled_types', self.generators.keys()))
+            for idx, insight_type in enumerate(config.get('enabled_types', self.generators.keys())):
+                if insight_type in self.generators:
+                    # Generate insights
+                    type_insights = await self.generators[insight_type].generate_insights(
+                        data,
+                        config.get(f'{insight_type}_config', {})
                     )
 
-                    if type_results:
-                        results[insight_type.value] = type_results
-
-            # Store results in staging
-            results_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=results,
-                metadata={
-                    'pipeline_id': pipeline_id,
-                    'insight_summary': self._get_insight_summary(results)
-                }
-            )
-
-            return {
-                'staged_id': results_staged_id,
-                'insights': results
-            }
-
-        except Exception as e:
-            self.logger.error(f"Insight generation failed: {str(e)}")
-            raise
-
-    # backend/data_pipeline/insights/processor/insight_processor.py (continued)
-
-    async def _generate_type_insights(
-            self,
-            insight_type: InsightType,
-            data: Any,
-            context: InsightContext,
-            config: InsightConfig
-    ) -> Optional[Dict[str, Any]]:
-        """Generate insights for a specific type"""
-        if insight_type not in self.generators:
-            return None
-
-        generator = self.generators[insight_type]
-        results = {}
-
-        try:
-            # Detect patterns/insights
-            detected = await generator['detect'](data)
-            if not detected:
-                return None
-
-            # Analyze detected patterns
-            analyzed = await generator['analyze'](detected, context.metadata)
-
-            # Validate findings
-            validated = await generator['validate'](analyzed, config.confidence_threshold)
-
-            # Filter and format results
-            insights = []
-            for finding in validated:
-                if finding['confidence'] >= config.confidence_threshold:
-                    insight = InsightResult(
-                        insight_id=str(uuid.uuid4()),
-                        insight_type=insight_type,
-                        category=self._determine_category(finding),
-                        priority=self._calculate_priority(finding),
-                        title=finding['title'],
-                        description=finding['description'],
-                        confidence=finding['confidence'],
-                        supporting_data=finding['supporting_data'],
-                        recommendations=finding.get('recommendations', []),
-                        metadata=finding.get('metadata', {})
+                    # Validate insights
+                    validated_insights = await self.validators[insight_type].validate_insights(
+                        type_insights,
+                        config.get('validation_rules', {})
                     )
-                    insights.append(insight)
 
-            # Sort by priority and confidence
-            insights.sort(
-                key=lambda x: (x.priority.value, x.confidence),
-                reverse=True
-            )
+                    insights[insight_type] = validated_insights
 
-            # Apply max insights limit if configured
-            if config.max_insights:
-                insights = insights[:config.max_insights]
+                    # Update progress
+                    progress = (idx + 1) / total_types * 100
+                    await self._publish_status_update(
+                        pipeline_id,
+                        f"Generated {insight_type} insights",
+                        progress=progress
+                    )
 
-            results = {
-                'insights': [insight.__dict__ for insight in insights],
-                'metadata': {
-                    'total_detected': len(detected),
-                    'total_validated': len(validated),
-                    'total_accepted': len(insights)
-                }
-            }
+            # Store results
+            results_id = await self._store_results(pipeline_id, insights)
 
-            return results
+            # Publish completion
+            await self._publish_completion(pipeline_id, results_id, insights)
+
+            # Cleanup
+            del self.active_contexts[pipeline_id]
 
         except Exception as e:
-            self.logger.error(f"Failed to generate {insight_type.value} insights: {str(e)}")
-            return None
+            logger.error(f"Insight generation failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
 
-    def _determine_category(self, finding: Dict[str, Any]) -> InsightCategory:
-        """Determine category of an insight"""
-        # Implement category determination logic based on finding characteristics
-        if 'temporal' in finding.get('tags', []):
-            return InsightCategory.TEMPORAL
-        elif 'business' in finding.get('tags', []):
-            return InsightCategory.BUSINESS
-        elif 'technical' in finding.get('tags', []):
-            return InsightCategory.TECHNICAL
-        elif 'operational' in finding.get('tags', []):
-            return InsightCategory.OPERATIONAL
-        return InsightCategory.STATISTICAL
-
-    def _calculate_priority(self, finding: Dict[str, Any]) -> InsightPriority:
-        """Calculate priority of an insight"""
-        confidence = finding['confidence']
-        impact = finding.get('impact', 0.5)
-        urgency = finding.get('urgency', 0.5)
-
-        score = (confidence * 0.4) + (impact * 0.4) + (urgency * 0.2)
-
-        if score >= 0.8:
-            return InsightPriority.CRITICAL
-        elif score >= 0.6:
-            return InsightPriority.HIGH
-        elif score >= 0.4:
-            return InsightPriority.MEDIUM
-        elif score >= 0.2:
-            return InsightPriority.LOW
-        return InsightPriority.INFORMATIONAL
-
-    async def validate_insights(
+    async def _validate_insights(
             self,
             pipeline_id: str,
-            staged_id: str,
             insights: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Validate generated insights"""
         try:
             validation_results = {}
+            for insight_type, type_insights in insights.items():
+                if insight_type in self.validators:
+                    validation = await self.validators[insight_type].validate(
+                        type_insights,
+                        self.active_contexts[pipeline_id].config.get('validation_rules', {})
+                    )
+                    validation_results[insight_type] = validation
 
-            for insight_type_str, type_insights in insights.items():
-                insight_type = InsightType(insight_type_str)
-                if insight_type not in self.validators:
-                    continue
-
-                validator = self.validators[insight_type]
-                type_validations = []
-
-                for insight in type_insights['insights']:
-                    validation = await validator(insight)
-                    type_validations.append({
-                        'insight_id': insight['insight_id'],
-                        'validation_status': validation['status'],
-                        'validation_score': validation['score'],
-                        'validation_details': validation['details']
-                    })
-
-                validation_results[insight_type_str] = {
-                    'validations': type_validations,
-                    'summary': {
-                        'total': len(type_validations),
-                        'passed': sum(1 for v in type_validations if v['validation_status']),
-                        'failed': sum(1 for v in type_validations if not v['validation_status'])
-                    }
-                }
-
-            # Store validation results in staging
-            validation_staged_id = await self.staging_manager.store_staged_data(
-                staged_id=staged_id,
-                data=validation_results,
-                metadata={
-                    'pipeline_id': pipeline_id,
-                    'validation_summary': self._get_validation_summary(validation_results)
-                }
-            )
-
-            return {
-                'staged_id': validation_staged_id,
-                'validations': validation_results
-            }
+            return validation_results
 
         except Exception as e:
-            self.logger.error(f"Insight validation failed: {str(e)}")
+            logger.error(f"Insight validation failed: {str(e)}")
             raise
 
-    def _get_insight_summary(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate summary of insight generation results"""
-        summary = {
-            'total_insights': 0,
-            'insights_by_type': {},
-            'insights_by_priority': {
-                priority.value: 0 for priority in InsightPriority
-            },
-            'average_confidence': 0.0
-        }
+    async def _store_results(
+            self,
+            pipeline_id: str,
+            insights: Dict[str, Any]
+    ) -> str:
+        """Store generated insights"""
+        # Implementation would store results in your storage system
+        # Return storage reference/ID
+        return f"insights_{pipeline_id}"
 
-        total_confidence = 0.0
+    async def _publish_status_update(
+            self,
+            pipeline_id: str,
+            status: str,
+            progress: float
+    ) -> None:
+        """Publish status update"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.INSIGHT_PROCESSOR_STATUS,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'status': status,
+                    'progress': progress,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="insight_handler",
+                    domain_type="insight",
+                    processing_stage=ProcessingStage.INSIGHT_GENERATION
+                ),
+                source_identifier=self.module_identifier
+            )
+        )
 
-        for insight_type, type_results in results.items():
-            insights = type_results.get('insights', [])
-            summary['insights_by_type'][insight_type] = len(insights)
-            summary['total_insights'] += len(insights)
+    async def _publish_completion(
+            self,
+            pipeline_id: str,
+            results_id: str,
+            insights: Dict[str, Any]
+    ) -> None:
+        """Publish completion message"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.INSIGHT_PROCESSOR_COMPLETE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'results_id': results_id,
+                    'insights': insights,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="insight_handler",
+                    domain_type="insight",
+                    processing_stage=ProcessingStage.INSIGHT_GENERATION
+                ),
+                source_identifier=self.module_identifier
+            )
+        )
 
-            for insight in insights:
-                summary['insights_by_priority'][insight['priority']] += 1
-                total_confidence += insight['confidence']
+    async def _handle_processing_error(
+            self,
+            message: ProcessingMessage,
+            error: str
+    ) -> None:
+        """Handle processing errors"""
+        pipeline_id = message.content.get('pipeline_id')
 
-        if summary['total_insights'] > 0:
-            summary['average_confidence'] = total_confidence / summary['total_insights']
+        if pipeline_id in self.active_contexts:
+            context = self.active_contexts[pipeline_id]
+            context.state = InsightState.ERROR
 
-        return summary
-
-    def _get_validation_summary(self, validation_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate summary of validation results"""
-        summary = {
-            'total_validations': 0,
-            'passed_validations': 0,
-            'failed_validations': 0,
-            'validation_rate': 0.0,
-            'validations_by_type': {}
-        }
-
-        for insight_type, type_results in validation_results.items():
-            type_summary = type_results['summary']
-            summary['total_validations'] += type_summary['total']
-            summary['passed_validations'] += type_summary['passed']
-            summary['failed_validations'] += type_summary['failed']
-            summary['validations_by_type'][insight_type] = type_summary
-
-        if summary['total_validations'] > 0:
-            summary['validation_rate'] = (
-                    summary['passed_validations'] / summary['total_validations']
+            # Publish error
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_PROCESSOR_ERROR,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error': error,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="insight_handler",
+                        domain_type="insight",
+                        processing_stage=ProcessingStage.INSIGHT_GENERATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
             )
 
-        return summary
-
-    def _has_temporal_data(self, data: Any) -> bool:
-        """Check if data contains temporal elements"""
-        if hasattr(data, 'dtypes'):
-            return any(str(dtype).startswith('datetime') for dtype in data.dtypes)
-        return False
-
-    def _has_numeric_data(self, data: Any) -> bool:
-        """Check if data contains numeric elements"""
-        if hasattr(data, 'dtypes'):
-            return any(str(dtype).startswith(('int', 'float')) for dtype in data.dtypes)
-        return False
-
-    def _has_categorical_data(self, data: Any) -> bool:
-        """Check if data contains categorical elements"""
-        if hasattr(data, 'dtypes'):
-            return any(str(dtype) == 'object' or str(dtype) == 'category'
-                       for dtype in data.dtypes)
-        return False
-
-    def _has_missing_data(self, data: Any) -> bool:
-        """Check if data contains missing values"""
-        if hasattr(data, 'isna'):
-            return data.isna().any().any()
-        return False
+            # Cleanup
+            del self.active_contexts[pipeline_id]
 
     async def cleanup(self) -> None:
         """Cleanup processor resources"""
-        # Cleanup any resources if needed
-        pass
+        try:
+            # Cancel all active processing
+            for pipeline_id in list(self.active_contexts.keys()):
+                await self._handle_processing_error(
+                    ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                    "Processor cleanup initiated"
+                )
+
+            # Unsubscribe from messages
+            await self.message_broker.unsubscribe_all(
+                self.module_identifier.component_name
+            )
+
+        except Exception as e:
+            logger.error(f"Cleanup failed: {str(e)}")
+            raise

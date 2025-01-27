@@ -2,13 +2,13 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
 from dataclasses import dataclass, field
 
 from ..messaging.broker import MessageBroker
-from ..staging.staging_manager import StagingManager
+from ..managers.staging_manager import StagingManager
 from ..messaging.event_types import (
     MessageType,
     ProcessingStage,
@@ -17,7 +17,6 @@ from ..messaging.event_types import (
     MessageMetadata,
     ModuleIdentifier,
     ComponentType,
-    BaseContext,
     QualityContext,
     InsightContext,
     AnalyticsContext,

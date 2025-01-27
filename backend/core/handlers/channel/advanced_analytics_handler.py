@@ -1,206 +1,238 @@
 # backend/core/handlers/channel/analytics_handler.py
 
 import logging
-import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
-    ProcessingStage,
-    ProcessingStatus,
     ProcessingMessage,
     MessageMetadata,
     ModuleIdentifier,
     ComponentType,
+    ProcessingStage,
     AnalyticsContext
 )
 from ..base.base_handler import BaseChannelHandler
 
+logger = logging.getLogger(__name__)
 
-class AdvancedAnalyticsHandler(BaseChannelHandler):
+class AnalyticsHandler(BaseChannelHandler):
+    """
+    Analytics Handler responsible for message routing and transformations.
+    Routes messages between service and processor layers.
+    """
     def __init__(self, message_broker: MessageBroker):
-        module_identifier = ModuleIdentifier(
-            component_name="advanced_analytics_handler",
+        self.message_broker = message_broker
+        self.module_identifier = ModuleIdentifier(
+            component_name="analytics_handler",
             component_type=ComponentType.ANALYTICS_HANDLER,
             department="analytics",
             role="handler"
         )
-        super().__init__(message_broker=message_broker, module_identifier=module_identifier)
 
-        # State tracking
-        self._active_contexts: Dict[str, AnalyticsContext] = {}
-        self._task_timeouts: Dict[str, datetime] = {}
-        self._recovery_attempts: Dict[str, int] = {}
+        # Message routing configuration
+        self.route_map = self._initialize_route_map()
+        self._setup_message_handlers()
 
-        # Start monitoring tasks
-        asyncio.create_task(self._monitor_tasks())
+    def _initialize_route_map(self) -> Dict[MessageType, tuple]:
+        """Initialize message routing configuration"""
+        return {
+            # Service → Processor routes
+            MessageType.ANALYTICS_HANDLER_START: (
+                ComponentType.ANALYTICS_PROCESSOR,
+                MessageType.ANALYTICS_PROCESS_START
+            ),
+            MessageType.ANALYTICS_HANDLER_PAUSE: (
+                ComponentType.ANALYTICS_PROCESSOR,
+                MessageType.ANALYTICS_PROCESS_PAUSE
+            ),
+            MessageType.ANALYTICS_HANDLER_RESUME: (
+                ComponentType.ANALYTICS_PROCESSOR,
+                MessageType.ANALYTICS_PROCESS_RESUME
+            ),
+            MessageType.ANALYTICS_HANDLER_CANCEL: (
+                ComponentType.ANALYTICS_PROCESSOR,
+                MessageType.ANALYTICS_PROCESS_CANCEL
+            ),
+
+            # Processor → Service routes
+            MessageType.ANALYTICS_PROCESS_COMPLETE: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_COMPLETE
+            ),
+            MessageType.ANALYTICS_PROCESS_ERROR: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_ERROR
+            ),
+            MessageType.ANALYTICS_PROCESS_STATUS: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_UPDATE
+            ),
+
+            # Stage completion routes
+            MessageType.ANALYTICS_DATA_PREPARE_COMPLETE: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_UPDATE
+            ),
+            MessageType.ANALYTICS_FEATURE_ENGINEER_COMPLETE: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_UPDATE
+            ),
+            MessageType.ANALYTICS_MODEL_TRAIN_COMPLETE: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_UPDATE
+            ),
+            MessageType.ANALYTICS_MODEL_EVALUATE_COMPLETE: (
+                ComponentType.ANALYTICS_SERVICE,
+                MessageType.ANALYTICS_HANDLER_UPDATE
+            )
+        }
 
     def _setup_message_handlers(self) -> None:
-        handlers = {
-            # Process flow messages
-            MessageType.ANALYTICS_PROCESS_REQUEST: self._handle_process_request,
-            MessageType.ANALYTICS_PROCESS_COMPLETE: self._handle_process_complete,
-
-            # Stage control messages
-            MessageType.ANALYTICS_STAGE_START: self._handle_stage_start,
-            MessageType.ANALYTICS_STAGE_COMPLETE: self._handle_stage_complete,
-            MessageType.ANALYTICS_STAGE_FAILED: self._handle_stage_failed,
-
-            # Control messages
-            MessageType.ANALYTICS_PAUSE_REQUEST: self._handle_pause_request,
-            MessageType.ANALYTICS_RESUME_REQUEST: self._handle_resume_request,
-            MessageType.ANALYTICS_CANCEL_REQUEST: self._handle_cancel_request,
-
-            # Status messages
-            MessageType.ANALYTICS_STATUS_REQUEST: self._handle_status_request,
-            MessageType.ANALYTICS_STATUS_UPDATE: self._handle_status_update,
-
-            # Error handling
-            MessageType.ANALYTICS_ERROR: self._handle_error,
-            MessageType.ANALYTICS_RECOVERY_REQUEST: self._handle_recovery_request
-        }
-
-        for message_type, handler in handlers.items():
-            self.register_message_handler(message_type, handler)
-
-    async def _handle_process_request(self, message: ProcessingMessage) -> None:
-        """Handle new analytics process request"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            context = AnalyticsContext(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.ADVANCED_ANALYTICS,
-                status=ProcessingStatus.IN_PROGRESS,
-                metadata=message.content
+        """Setup message handlers based on route map"""
+        for source_type in self.route_map.keys():
+            self.message_broker.subscribe(
+                self.module_identifier,
+                source_type.value,
+                self._handle_message
             )
 
-            # Initialize tracking
-            self._active_contexts[pipeline_id] = context
-            self._task_timeouts[pipeline_id] = datetime.now()
+    async def _handle_message(self, message: ProcessingMessage) -> None:
+        """Route message based on message type"""
+        try:
+            route = self.route_map.get(message.message_type)
+            if not route:
+                logger.warning(f"No route found for message type: {message.message_type}")
+                return
 
-            # Request first stage
-            await self._request_next_stage(pipeline_id)
+            target_component, target_message_type = route
+            await self._route_message(message, target_component, target_message_type)
 
         except Exception as e:
-            await self._handle_error(message, str(e))
+            logger.error(f"Message handling failed: {str(e)}")
+            await self._handle_routing_error(message, str(e))
 
-    async def _monitor_tasks(self) -> None:
-        """Monitor active tasks for timeouts"""
-        while True:
-            try:
-                await self._check_timeouts()
-                await asyncio.sleep(self.TIMEOUT_CHECK_INTERVAL)
-            except Exception as e:
-                self.logger.error(f"Task monitoring error: {str(e)}")
-
-    async def _check_timeouts(self) -> None:
-        """Check for timed out tasks"""
-        current_time = datetime.now()
-        for pipeline_id, start_time in self._task_timeouts.items():
-            if (current_time - start_time) > self.TASK_TIMEOUT:
-                await self._handle_timeout(pipeline_id)
-
-    async def _handle_timeout(self, pipeline_id: str) -> None:
-        """Handle task timeout"""
-        context = self._active_contexts.get(pipeline_id)
-        if context:
-            # Attempt recovery if under max attempts
-            if self._recovery_attempts.get(pipeline_id, 0) < self.MAX_RECOVERY_ATTEMPTS:
-                await self._attempt_recovery(pipeline_id, "timeout")
-            else:
-                await self._fail_process(
-                    pipeline_id,
-                    "Maximum recovery attempts exceeded"
-                )
-
-    async def _attempt_recovery(self, pipeline_id: str, reason: str) -> None:
-        """Attempt to recover failed process"""
-        context = self._active_contexts.get(pipeline_id)
-        if not context:
-            return
-
-        self._recovery_attempts[pipeline_id] = \
-            self._recovery_attempts.get(pipeline_id, 0) + 1
-
-        # Determine recovery strategy
-        strategy = self._get_recovery_strategy(context.stage, reason)
-
-        # Execute recovery
-        await self._publish_message(
-            MessageType.ANALYTICS_RECOVERY_REQUEST,
-            {
-                'pipeline_id': pipeline_id,
-                'stage': context.stage.value,
-                'strategy': strategy,
-                'attempt': self._recovery_attempts[pipeline_id]
-            },
-            target_type=ComponentType.ANALYTICS_PROCESSOR
-        )
-
-    def _get_recovery_strategy(
-            self,
-            stage: ProcessingStage,
-            reason: str
-    ) -> Dict[str, Any]:
-        """Determine recovery strategy based on stage and failure reason"""
-        strategies = {
-            (ProcessingStage.DATA_PREPARATION, "timeout"): {
-                "action": "retry",
-                "chunk_size": "reduced"
-            },
-            (ProcessingStage.MODEL_TRAINING, "timeout"): {
-                "action": "simplify",
-                "complexity": "reduced"
-            },
-            (ProcessingStage.MODEL_EVALUATION, "resource_error"): {
-                "action": "redistribute",
-                "batch_size": "reduced"
-            }
-        }
-        return strategies.get(
-            (stage, reason),
-            {"action": "retry", "backoff": "exponential"}
-        )
-
-    async def _handle_stage_failed(self, message: ProcessingMessage) -> None:
-        """Handle stage failure"""
-        pipeline_id = message.content['pipeline_id']
-        error = message.content.get('error', 'Unknown error')
-
-        # Attempt recovery if under max attempts
-        if self._recovery_attempts.get(pipeline_id, 0) < self.MAX_RECOVERY_ATTEMPTS:
-            await self._attempt_recovery(pipeline_id, error)
-        else:
-            await self._fail_process(pipeline_id, error)
-
-    async def _fail_process(self, pipeline_id: str, reason: str) -> None:
-        """Handle final process failure"""
-        context = self._active_contexts.get(pipeline_id)
-        if context:
-            context.status = ProcessingStatus.FAILED
-            context.metadata['failure_reason'] = reason
-
-            # Notify manager
-            await self._publish_message(
-                MessageType.ANALYTICS_ERROR,
-                {
-                    'pipeline_id': pipeline_id,
-                    'error': reason,
-                    'context': context.to_dict()
-                },
-                target_type=ComponentType.ANALYTICS_MANAGER
+    async def _route_message(
+        self,
+        message: ProcessingMessage,
+        target_component: ComponentType,
+        target_message_type: MessageType
+    ) -> None:
+        """Route message to target component with transformation"""
+        try:
+            # Transform message for target
+            transformed_content = self._transform_content(
+                message.content,
+                message.message_type,
+                target_message_type
             )
 
-            # Cleanup
-            await self._cleanup_process(pipeline_id)
+            # Create routed message
+            routed_message = ProcessingMessage(
+                message_type=target_message_type,
+                content=transformed_content,
+                metadata=MessageMetadata(
+                    correlation_id=message.metadata.correlation_id,
+                    source_component=self.module_identifier.component_name,
+                    target_component=target_component.value,
+                    domain_type="analytics",
+                    processing_stage=message.metadata.processing_stage
+                ),
+                source_identifier=self.module_identifier
+            )
 
-    async def _cleanup_process(self, pipeline_id: str) -> None:
-        """Clean up process resources"""
-        if pipeline_id in self._active_contexts:
-            del self._active_contexts[pipeline_id]
-        if pipeline_id in self._task_timeouts:
-            del self._task_timeouts[pipeline_id]
-        if pipeline_id in self._recovery_attempts:
-            del self._recovery_attempts[pipeline_id]
+            # Send to target
+            await self.message_broker.publish(routed_message)
+
+        except Exception as e:
+            logger.error(f"Message routing failed: {str(e)}")
+            await self._handle_routing_error(message, str(e))
+
+    def _transform_content(
+        self,
+        content: Dict[str, Any],
+        source_type: MessageType,
+        target_type: MessageType
+    ) -> Dict[str, Any]:
+        """Transform message content based on source and target types"""
+        transformations = {
+            # Service → Processor transformations
+            (MessageType.ANALYTICS_HANDLER_START, MessageType.ANALYTICS_PROCESS_START):
+                self._transform_start_request,
+
+            # Processor → Service transformations
+            (MessageType.ANALYTICS_PROCESS_COMPLETE, MessageType.ANALYTICS_HANDLER_COMPLETE):
+                self._transform_completion_result,
+
+            # Status update transformations
+            (MessageType.ANALYTICS_PROCESS_STATUS, MessageType.ANALYTICS_HANDLER_UPDATE):
+                self._transform_status_update
+        }
+
+        transformer = transformations.get((source_type, target_type))
+        if transformer:
+            return transformer(content)
+        return content  # Default: pass through unchanged
+
+    def _transform_start_request(self, content: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform start request for processor"""
+        return {
+            "pipeline_id": content["pipeline_id"],
+            "parameters": content.get("config", {}).get("parameters", {}),
+            "data_config": content.get("config", {}).get("data_config", {}),
+            "model_config": content.get("config", {}).get("model_config", {}),
+            "context": content.get("context", {})
+        }
+
+    def _transform_completion_result(self, content: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform completion result for service"""
+        return {
+            "pipeline_id": content["pipeline_id"],
+            "results": content.get("results", {}),
+            "metrics": content.get("metrics", {}),
+            "artifacts": content.get("artifacts", {}),
+            "completion_time": datetime.now().isoformat()
+        }
+
+    def _transform_status_update(self, content: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform status update for service"""
+        return {
+            "pipeline_id": content["pipeline_id"],
+            "stage": content.get("stage"),
+            "progress": content.get("progress"),
+            "metrics": content.get("metrics", {}),
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _handle_routing_error(
+        self,
+        original_message: ProcessingMessage,
+        error: str
+    ) -> None:
+        """Handle message routing errors"""
+        error_message = ProcessingMessage(
+            message_type=MessageType.ANALYTICS_HANDLER_ERROR,
+            content={
+                "pipeline_id": original_message.content.get("pipeline_id"),
+                "error": f"Message routing failed: {error}",
+                "original_message_type": original_message.message_type.value,
+                "timestamp": datetime.now().isoformat()
+            },
+            metadata=MessageMetadata(
+                correlation_id=original_message.metadata.correlation_id,
+                source_component=self.module_identifier.component_name,
+                target_component="analytics_service"
+            ),
+            source_identifier=self.module_identifier
+        )
+
+        await self.message_broker.publish(error_message)
+
+    async def cleanup(self) -> None:
+        """Clean up handler resources"""
+        try:
+            await self.message_broker.unsubscribe_all(self.module_identifier)
+        except Exception as e:
+            logger.error(f"Handler cleanup failed: {str(e)}")

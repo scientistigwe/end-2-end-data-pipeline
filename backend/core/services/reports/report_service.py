@@ -1,19 +1,14 @@
 # backend/core/services/report_service.py
 
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
 
-from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ComponentType,
     ModuleIdentifier,
-    MessageMetadata,
-    ProcessingStage
+    MessageMetadata
 )
-from ...staging.staging_manager import StagingManager
 
 logger = logging.getLogger(__name__)
 

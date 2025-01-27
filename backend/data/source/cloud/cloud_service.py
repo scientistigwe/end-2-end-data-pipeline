@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from core.messaging.broker import MessageBroker
-from core.staging.staging_manager import StagingManager
+from core.managers.staging_manager import StagingManager
 from core.control.cpm import ControlPointManager
 from core.messaging.event_types import (
     MessageType, ProcessingStage, ModuleIdentifier, ComponentType

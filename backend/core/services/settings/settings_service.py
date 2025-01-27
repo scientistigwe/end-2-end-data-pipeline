@@ -12,26 +12,20 @@ from core.messaging.event_types import (
     ProcessingMessage,
     ComponentType,
     ModuleIdentifier,
-    MessageMetadata
+    MessageMetadata,
+    ProcessingStage,
+    ProcessingStatus
 )
-from core.staging.staging_manager import StagingManager
 
 logger = logging.getLogger(__name__)
 
-
 class SettingsService:
     """
-    Service layer for settings management.
-    Uses staging system for settings data persistence and versioning.
+    Settings Service managing settings through message-driven, unidirectional communication
+    Responsible for processing settings-related messages without direct dependencies
     """
 
-    def __init__(
-            self,
-            staging_manager: StagingManager,
-            message_broker: MessageBroker,
-            initialize_async: bool = False
-    ):
-        self.staging_manager = staging_manager
+    def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
 
         self.module_identifier = ModuleIdentifier(
@@ -41,215 +35,204 @@ class SettingsService:
             role="service"
         )
 
-        self.logger = logger
+        # Track processing requests
+        self.active_requests: Dict[str, Dict[str, Any]] = {}
 
-        if initialize_async:
-            asyncio.run(self._initialize_async())
+        # Initialize message handlers
+        self._setup_message_handlers()
 
-    async def _initialize_async(self):
-        await self._initialize_message_handlers()
-
-    async def _initialize_message_handlers(self) -> None:
+    def _setup_message_handlers(self) -> None:
+        """Setup subscriptions for settings-related messages"""
         handlers = {
             MessageType.SETTINGS_REQUEST: self._handle_settings_request,
             MessageType.SETTINGS_UPDATE: self._handle_settings_update,
             MessageType.SETTINGS_RESET: self._handle_settings_reset,
             MessageType.SYSTEM_SETTINGS_REQUEST: self._handle_system_settings_request,
-            MessageType.SETTINGS_ERROR: self._handle_error
+            MessageType.SETTINGS_CONFIG_UPDATE: self._handle_config_update
         }
 
         for message_type, handler in handlers.items():
-            await self.message_broker.subscribe(
-                module_identifier=self.module_identifier,
-                message_patterns=f"settings.{message_type.value}.#",
-                callback=handler
+            self.message_broker.subscribe(
+                self.module_identifier,
+                message_type.value,
+                handler
             )
 
     async def _handle_settings_request(self, message: ProcessingMessage) -> None:
-        """Handle settings request"""
+        """
+        Handle settings request through message-driven approach
+        No direct interaction with staging or other components
+        """
         try:
+            pipeline_id = message.content.get('pipeline_id') or str(UUID())
             user_id = message.content.get('user_id')
             settings_type = message.content.get('settings_type', 'all')
 
-            # Retrieve latest settings from staging
-            staged_settings = await self._get_latest_settings(user_id)
-
-            # Filter settings based on type if needed
-            settings_data = self._filter_settings(staged_settings, settings_type)
-
-            # Create new staging reference for this request
-            reference_id = await self.staging_manager.stage_data(
-                data=settings_data,
-                component_type=ComponentType.SETTINGS_SERVICE,
-                pipeline_id=message.content.get('pipeline_id'),
-                metadata={
+            # Prepare response message
+            response_message = ProcessingMessage(
+                message_type=MessageType.SETTINGS_RESPONSE,
+                content={
+                    'pipeline_id': pipeline_id,
                     'user_id': user_id,
                     'settings_type': settings_type,
-                    'request_timestamp': datetime.utcnow().isoformat()
-                }
-            )
-
-            # Send response
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.SETTINGS_RESPONSE,
-                    content={
-                        'user_id': user_id,
-                        'reference_id': reference_id,
-                        'settings': settings_data,
-                        'timestamp': datetime.utcnow().isoformat()
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component=message.metadata.source_component,
-                        correlation_id=message.metadata.correlation_id
-                    )
+                    'settings': self._get_default_settings(),
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier,
+                target_identifier=message.source_identifier,
+                metadata=MessageMetadata(
+                    correlation_id=message.metadata.correlation_id,
+                    source_component=self.module_identifier.component_name,
+                    processing_stage=ProcessingStage.SETTINGS_MANAGEMENT
                 )
             )
 
+            # Publish response through message broker
+            await self.message_broker.publish(response_message)
+
         except Exception as e:
-            self.logger.error(f"Failed to handle settings request: {str(e)}")
-            await self._notify_error(message, str(e))
+            await self._publish_error(
+                pipeline_id=message.content.get('pipeline_id'),
+                error=str(e),
+                original_message=message
+            )
 
     async def _handle_settings_update(self, message: ProcessingMessage) -> None:
-        """Handle settings update request"""
+        """
+        Handle settings update through message-driven approach
+        """
         try:
+            pipeline_id = message.content.get('pipeline_id') or str(UUID())
             user_id = message.content.get('user_id')
             update_data = message.content.get('settings', {})
 
-            # Get current settings
-            current_settings = await self._get_latest_settings(user_id)
-
-            # Apply updates
-            updated_settings = self._merge_settings(current_settings, update_data)
-
-            # Store updated settings in staging
-            reference_id = await self.staging_manager.stage_data(
-                data=updated_settings,
-                component_type=ComponentType.SETTINGS_SERVICE,
-                pipeline_id=message.content.get('pipeline_id'),
-                metadata={
+            # Prepare update response message
+            response_message = ProcessingMessage(
+                message_type=MessageType.SETTINGS_UPDATE_COMPLETE,
+                content={
+                    'pipeline_id': pipeline_id,
                     'user_id': user_id,
-                    'update_type': 'settings_update',
-                    'previous_version': current_settings.get('version_info', {}).get('settings_version'),
-                    'update_timestamp': datetime.utcnow().isoformat()
-                }
-            )
-
-            # Send response
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.SETTINGS_UPDATE_COMPLETE,
-                    content={
-                        'user_id': user_id,
-                        'reference_id': reference_id,
-                        'settings': updated_settings,
-                        'timestamp': datetime.utcnow().isoformat()
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component=message.metadata.source_component,
-                        correlation_id=message.metadata.correlation_id
-                    )
+                    'settings': self._merge_settings(
+                        self._get_default_settings(),
+                        update_data
+                    ),
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier,
+                target_identifier=message.source_identifier,
+                metadata=MessageMetadata(
+                    correlation_id=message.metadata.correlation_id,
+                    source_component=self.module_identifier.component_name,
+                    processing_stage=ProcessingStage.SETTINGS_MANAGEMENT
                 )
             )
 
-        except Exception as e:
-            self.logger.error(f"Failed to handle settings update: {str(e)}")
-            await self._notify_error(message, str(e))
+            # Publish response through message broker
+            await self.message_broker.publish(response_message)
 
-    async def _get_latest_settings(self, user_id: str) -> Dict[str, Any]:
-        """Retrieve latest settings from staging"""
-        # Get latest settings output for user
-        outputs = await self.staging_manager.get_component_outputs(
-            ComponentType.SETTINGS_SERVICE,
-            metadata_filter={'user_id': user_id}
+        except Exception as e:
+            await self._publish_error(
+                pipeline_id=message.content.get('pipeline_id'),
+                error=str(e),
+                original_message=message
+            )
+
+    async def _publish_error(
+        self,
+        pipeline_id: Optional[str],
+        error: str,
+        original_message: Optional[ProcessingMessage] = None
+    ) -> None:
+        """
+        Publish error message through message broker
+        """
+        error_message = ProcessingMessage(
+            message_type=MessageType.SERVICE_ERROR,
+            content={
+                'pipeline_id': pipeline_id,
+                'service': self.module_identifier.component_name,
+                'error': error,
+                'original_message': original_message.content if original_message else {}
+            },
+            source_identifier=self.module_identifier,
+            metadata=MessageMetadata(
+                processing_stage=ProcessingStage.ERROR_HANDLING
+            )
         )
 
-        if not outputs:
-            return self._get_default_settings()
-
-        latest_output = max(outputs, key=lambda x: x.created_at)
-        return latest_output.to_dict()
-
-    def _filter_settings(self, settings: Dict[str, Any], settings_type: str) -> Dict[str, Any]:
-        """Filter settings based on requested type"""
-        if settings_type == 'all':
-            return settings
-
-        return {settings_type: settings.get('settings', {}).get(settings_type, {})}
-
-    def _merge_settings(self, current: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
-        """Merge current settings with updates"""
-        settings = current.copy()
-        for category, values in updates.items():
-            if category in settings['settings']:
-                settings['settings'][category].update(values)
-            else:
-                settings['settings'][category] = values
-
-        # Update version info
-        settings['version_info'] = {
-            'settings_version': str(UUID()),
-            'previous_version': settings['version_info'].get('settings_version'),
-            'change_history': settings['version_info'].get('change_history', []) + [{
-                'timestamp': datetime.utcnow().isoformat(),
-                'changes': updates
-            }]
-        }
-
-        return settings
+        await self.message_broker.publish(error_message)
 
     def _get_default_settings(self) -> Dict[str, Any]:
-        """Get default settings structure"""
+        """
+        Generate default settings
+        In production, this might fetch from a configuration service
+        """
         return {
-            'settings': {
-                'preferences': {},
-                'appearance': {},
-                'notifications': {},
-                'privacy': {},
-                'security': {}
-            },
-            'system_settings': {},
+            'preferences': {},
+            'appearance': {},
+            'notifications': {},
+            'privacy': {},
+            'security': {},
             'version_info': {
-                'settings_version': str(UUID()),
-                'previous_version': None,
-                'change_history': []
-            },
-            'metadata': {
+                'version': str(UUID()),
                 'created_at': datetime.utcnow().isoformat()
             }
         }
 
-    async def _handle_error(self, message: ProcessingMessage) -> None:
-        """Handle settings-related errors"""
-        error = message.content.get('error', 'Unknown error')
-        self.logger.error(f"Settings error received: {error}")
-        await self._notify_error(message, error)
+    def _merge_settings(
+        self,
+        current_settings: Dict[str, Any],
+        update_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Merge current settings with update data"""
+        merged = current_settings.copy()
+        for category, values in update_data.items():
+            if category in merged:
+                merged[category].update(values)
+            else:
+                merged[category] = values
 
-    async def _notify_error(self, original_message: ProcessingMessage, error: str) -> None:
-        """Notify about errors"""
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.SERVICE_ERROR,
-                content={
-                    'service': self.module_identifier.component_name,
-                    'error': error,
-                    'original_message': original_message.content
-                },
-                metadata=MessageMetadata(
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager",
-                    correlation_id=original_message.metadata.correlation_id
-                )
+        merged['version_info']['updated_at'] = datetime.utcnow().isoformat()
+        return merged
+
+    async def _handle_system_settings_request(self, message: ProcessingMessage) -> None:
+        """Handle system-wide settings request"""
+        system_settings_message = ProcessingMessage(
+            message_type=MessageType.SYSTEM_SETTINGS_RESPONSE,
+            content={
+                'system_settings': {},  # Placeholder for system-wide settings
+                'timestamp': datetime.utcnow().isoformat()
+            },
+            source_identifier=self.module_identifier,
+            target_identifier=message.source_identifier,
+            metadata=MessageMetadata(
+                correlation_id=message.metadata.correlation_id,
+                processing_stage=ProcessingStage.SETTINGS_MANAGEMENT
             )
         )
+        await self.message_broker.publish(system_settings_message)
+
+    async def _handle_config_update(self, message: ProcessingMessage) -> None:
+        """Handle configuration update request"""
+        config_update_message = ProcessingMessage(
+            message_type=MessageType.SETTINGS_CONFIG_UPDATE_COMPLETE,
+            content={
+                'status': 'updated',
+                'timestamp': datetime.utcnow().isoformat()
+            },
+            source_identifier=self.module_identifier,
+            target_identifier=message.source_identifier,
+            metadata=MessageMetadata(
+                correlation_id=message.metadata.correlation_id,
+                processing_stage=ProcessingStage.SETTINGS_MANAGEMENT
+            )
+        )
+        await self.message_broker.publish(config_update_message)
 
     async def cleanup(self) -> None:
         """Cleanup service resources"""
         try:
-            await self.message_broker.unsubscribe_all(
-                self.module_identifier.component_name
-            )
+            # Unsubscribe from message broker
+            await self.message_broker.unsubscribe_all(self.module_identifier)
         except Exception as e:
-            self.logger.error(f"Cleanup failed: {str(e)}")
+            logger.error(f"Cleanup failed: {str(e)}")

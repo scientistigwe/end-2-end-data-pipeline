@@ -1,5 +1,3 @@
-# schemas/staging/decisions.py
-
 from marshmallow import Schema, fields, validates_schema, ValidationError
 from marshmallow.validate import OneOf
 from marshmallow_enum import EnumField
@@ -15,32 +13,54 @@ from .base import (
 from core.messaging.event_types import (
     MessageType,
     ComponentType,
-    ProcessingStatus
+    ProcessingStatus,
+    DecisionState,
+    DecisionContext,
+    DecisionRequest,
+    DecisionValidation,
+    DecisionImpact,
+    DecisionMetrics
 )
 
 
 class DecisionMessageType(Enum):
-    """Decision types based on system message types"""
-    START = MessageType.DECISION_START.value
-    REQUEST = MessageType.DECISION_REQUEST.value
-    OPTIONS = MessageType.DECISION_OPTIONS.value
-    SUBMIT = MessageType.DECISION_SUBMIT.value
-    VALIDATE = MessageType.DECISION_VALIDATE_RESULT.value
-    IMPACT = MessageType.DECISION_IMPACT.value
-    UPDATE = MessageType.DECISION_UPDATE.value
-    COMPLETE = MessageType.DECISION_COMPLETE.value
-    FEEDBACK = MessageType.DECISION_FEEDBACK.value
+    """Decision types directly mapped from system message types"""
+    START = MessageType.DECISION_PROCESS_START.value
+    PROGRESS = MessageType.DECISION_PROCESS_PROGRESS.value
+    COMPLETE = MessageType.DECISION_PROCESS_COMPLETE.value
+    FAILED = MessageType.DECISION_PROCESS_FAILED.value
+
+    # Context Analysis
+    CONTEXT_ANALYZE_REQUEST = MessageType.DECISION_CONTEXT_ANALYZE_REQUEST.value
+    CONTEXT_ANALYZE_PROGRESS = MessageType.DECISION_CONTEXT_ANALYZE_PROGRESS.value
+    CONTEXT_ANALYZE_COMPLETE = MessageType.DECISION_CONTEXT_ANALYZE_COMPLETE.value
+    CONTEXT_ANALYZE_FAILED = MessageType.DECISION_CONTEXT_ANALYZE_FAILED.value
+
+    # Option Management
+    OPTIONS_GENERATE_REQUEST = MessageType.DECISION_OPTIONS_GENERATE_REQUEST.value
+    OPTIONS_GENERATE_PROGRESS = MessageType.DECISION_OPTIONS_GENERATE_PROGRESS.value
+    OPTIONS_GENERATE_COMPLETE = MessageType.DECISION_OPTIONS_GENERATE_COMPLETE.value
+    OPTIONS_UPDATE = MessageType.DECISION_OPTIONS_UPDATE.value
+    OPTIONS_PRIORITIZE = MessageType.DECISION_OPTIONS_PRIORITIZE.value
+
+    # Validation Flow
+    VALIDATE_REQUEST = MessageType.DECISION_VALIDATE_REQUEST.value
+    VALIDATE_PROGRESS = MessageType.DECISION_VALIDATE_PROGRESS.value
+    VALIDATE_COMPLETE = MessageType.DECISION_VALIDATE_COMPLETE.value
+    VALIDATE_REJECT = MessageType.DECISION_VALIDATE_REJECT.value
+    VALIDATE_RETRY = MessageType.DECISION_VALIDATE_RETRY.value
+    VALIDATE_APPROVE = MessageType.DECISION_VALIDATE_APPROVE.value
 
 
 class FeedbackMessageType(Enum):
     """Feedback types based on system message types"""
-    SUBMIT = MessageType.DECISION_FEEDBACK.value
-    REQUEST = MessageType.DECISION_FEEDBACK_REQUEST.value
-    QUALITY = "quality.feedback"
-    INSIGHT = "insight.feedback"
-    IMPACT = "impact.feedback"
-    PROCESS = "process.feedback"
-    GENERAL = "general.feedback"
+    SUBMIT = MessageType.FEEDBACK_SUBMIT_REQUEST.value
+    REQUEST = MessageType.FEEDBACK_PROCESS_REQUEST.value
+    QUALITY = MessageType.FEEDBACK_PROCESS_REQUEST.value
+    INSIGHT = MessageType.FEEDBACK_PROCESS_REQUEST.value
+    IMPACT = MessageType.FEEDBACK_PROCESS_REQUEST.value
+    PROCESS = MessageType.FEEDBACK_PROCESS_REQUEST.value
+    GENERAL = MessageType.FEEDBACK_SUBMIT_REQUEST.value
 
 
 class DecisionItemSchema(BaseStagingSchema):
@@ -48,13 +68,13 @@ class DecisionItemSchema(BaseStagingSchema):
     decision_id = fields.String(required=True)
     pipeline_id = fields.String(required=True)
     decision_type = EnumField(DecisionMessageType, by_value=True, required=True)
+    decision_state = EnumField(DecisionState, by_value=True, default=DecisionState.INITIALIZING)
     description = fields.String(required=True)
     context = fields.Dict(keys=fields.String(), values=fields.Raw())
     options = fields.List(fields.Dict(keys=fields.String(), values=fields.Raw()))
     deadline = fields.DateTime(allow_none=True)
     assigned_to = fields.String(allow_none=True)
-    priority = fields.Integer(validate=lambda n: 0 <= n <= 10, default=5)
-    impact_level = fields.String(validate=OneOf(['LOW', 'MEDIUM', 'HIGH']), default='MEDIUM')
+    priority = fields.String(validate=OneOf(['LOW', 'MEDIUM', 'HIGH']), default='MEDIUM')
     decision_status = EnumField(ProcessingStatus, by_value=True, default=ProcessingStatus.PENDING)
     decision_made_at = fields.DateTime(allow_none=True)
     made_by = fields.String(allow_none=True)
@@ -87,8 +107,8 @@ class DecisionHistoryItemSchema(BaseStagingSchema):
     event_time = fields.DateTime(required=True)
     user_id = fields.String(required=True)
     changes = fields.Dict(keys=fields.String(), values=fields.Raw())
-    previous_state = fields.Dict(allow_none=True)
-    new_state = fields.Dict(allow_none=True)
+    previous_state = EnumField(DecisionState, by_value=True, allow_none=True)
+    new_state = EnumField(DecisionState, by_value=True, allow_none=True)
     comments = fields.String(allow_none=True)
     staging_details = fields.Dict(allow_none=True)
     component_type = EnumField(ComponentType, by_value=True)

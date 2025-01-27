@@ -1,10 +1,9 @@
 # backend/core/services/staging_service.py
 
 import logging
-import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
-from uuid import UUID
+from uuid import uuid4
 
 from core.messaging.broker import MessageBroker
 from core.messaging.event_types import (
@@ -13,58 +12,30 @@ from core.messaging.event_types import (
     ComponentType,
     ModuleIdentifier,
     MessageMetadata,
-    ProcessingStatus
+    ProcessingStage,
+    ProcessingStatus,
+    StagingContext
 )
-from core.staging.staging_manager import StagingManager
-from db.repository.staging_repository import StagingRepository
 
 logger = logging.getLogger(__name__)
 
 
-def initialize_services(app):
-    services = {
-        'staging_service': StagingService(
-            staging_manager=app.services.get('staging_manager'),
-            staging_repository=app.services.get('staging_repository'),
-            message_broker=app.services.get('message_broker'),
-            initialize_async=True
-        )
-    }
-    return services
-
-
 class StagingService:
     """
-    Comprehensive service layer for staging operations.
+    Staging Service: Orchestrates staging workflows
 
     Responsibilities:
-    - Coordinate staging workflows
-    - Handle message routing for staging-related requests
-    - Manage staging lifecycle
-    - Provide abstraction between components
+    - Coordinate between Staging Manager and Handler
+    - Manage staging workflow logic
+    - Route and transform messages
+    - Track staging contexts
     """
 
-    def __init__(
-            self,
-            staging_manager: StagingManager,
-            staging_repository: StagingRepository,
-            message_broker: MessageBroker,
-            initialize_async: bool = False
-    ):
-        """
-        Initialize the Staging Service with core dependencies.
-
-        Args:
-            staging_manager (StagingManager): Manager for handling staged data
-            staging_repository (StagingRepository): Repository for database interactions
-            message_broker (MessageBroker): Message broker for communication
-            initialize_async (bool, optional): Whether to initialize asynchronously
-        """
-        self.staging_manager = staging_manager
-        self.staging_repository = staging_repository
+    def __init__(self, message_broker: MessageBroker):
+        # Core dependency
         self.message_broker = message_broker
 
-        # Module identification for routing
+        # Service identification
         self.module_identifier = ModuleIdentifier(
             component_name="staging_service",
             component_type=ComponentType.STAGING_SERVICE,
@@ -72,227 +43,268 @@ class StagingService:
             role="service"
         )
 
-        self.logger = logger
+        # Active staging contexts
+        self.active_contexts: Dict[str, StagingContext] = {}
 
-        # Async initialization if requested
-        if initialize_async:
-            asyncio.run(self._initialize_async())
+        # Initialize message handlers
+        self._setup_message_handlers()
 
-    async def _initialize_async(self):
-        """Asynchronous initialization of message handlers"""
-        await self._initialize_message_handlers()
-
-    async def _initialize_message_handlers(self) -> None:
-        """Configure message handlers for staging operations"""
+    def _setup_message_handlers(self) -> None:
+        """Configure message handlers for staging service"""
         handlers = {
-            # Staging Lifecycle
-            MessageType.STAGING_DATA_RECEIVED: self._handle_data_received,
-            MessageType.STAGING_ACCESS_REQUEST: self._handle_access_request,
-            MessageType.STAGING_ACCESS_GRANTED: self._handle_access_granted,
-            MessageType.STAGING_ACCESS_DENIED: self._handle_access_denied,
+            # Manager Initiated Messages
+            MessageType.STAGING_SERVICE_START: self._handle_service_start,
+            MessageType.STAGING_SERVICE_UPDATE: self._handle_service_update,
+            MessageType.STAGING_SERVICE_DECISION: self._handle_service_decision,
 
-            # Storage and Versioning
-            MessageType.STAGING_OUTPUT_STORED: self._handle_output_stored,
-            MessageType.STAGING_VERSION_CREATED: self._handle_version_created,
+            # Handler Responses
+            MessageType.STAGING_HANDLER_COMPLETE: self._handle_handler_complete,
+            MessageType.STAGING_HANDLER_ERROR: self._handle_handler_error,
+            MessageType.STAGING_HANDLER_STATUS: self._handle_handler_status,
 
-            # Status and Maintenance
-            MessageType.STAGING_STATUS_REQUEST: self._handle_status_request,
-            MessageType.STAGING_CLEANUP_START: self._handle_cleanup_request,
-            MessageType.STAGING_CLEANUP_COMPLETE: self._handle_cleanup_complete,
+            # Direct Staging Requests
+            MessageType.STAGING_STORE_REQUEST: self._handle_store_request,
+            MessageType.STAGING_RETRIEVE_REQUEST: self._handle_retrieve_request,
+            MessageType.STAGING_DELETE_REQUEST: self._handle_delete_request,
 
             # Error Handling
             MessageType.STAGING_ERROR: self._handle_error
         }
 
         for message_type, handler in handlers.items():
-            await self.message_broker.subscribe(
+            self.message_broker.subscribe(
                 module_identifier=self.module_identifier,
-                message_patterns=f"staging.{message_type.value}.#",
+                message_patterns=f"staging.{message_type.value}.*",
                 callback=handler
             )
 
-    async def _handle_data_received(self, message: ProcessingMessage) -> None:
+    async def _handle_service_start(self, message: ProcessingMessage) -> None:
         """
-        Handle incoming data staging request.
-
-        Workflow:
-        1. Validate incoming data
-        2. Stage data using staging manager
-        3. Log staging event
-        4. Notify relevant components
+        Initialize staging workflow
+        Triggered by Staging Manager
         """
         try:
-            content = message.content
+            pipeline_id = message.content.get('pipeline_id')
+            config = message.content.get('config', {})
 
-            # Validate input
-            if not self._validate_staging_data(content):
-                raise ValueError("Invalid staging data")
-
-            # Stage data
-            reference_id = await self.staging_manager.stage_data(
-                data=content.get('data'),
-                component_type=ComponentType(content.get('component_type')),
-                pipeline_id=content.get('pipeline_id'),
-                metadata=content.get('metadata')
+            # Create staging context
+            context = StagingContext(
+                pipeline_id=pipeline_id,
+                stage_type=ProcessingStage.INITIAL_VALIDATION
             )
+            self.active_contexts[pipeline_id] = context
 
-            # Log staging event in repository
-            await self.staging_repository.store_staged_resource(
-                pipeline_id=content.get('pipeline_id'),
-                data={
-                    'stage_key': reference_id,
-                    'resource_type': 'staging_data',
-                    'storage_location': str(self.staging_manager.base_path / reference_id),
-                    'size_bytes': len(str(content.get('data'))),
-                    'metadata': content.get('metadata', {})
-                }
-            )
-
-            # Notify system about staged data
+            # Forward to Staging Handler
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.STAGING_DATA_READY,
+                    message_type=MessageType.STAGING_HANDLER_START,
                     content={
-                        'reference_id': reference_id,
-                        'pipeline_id': content.get('pipeline_id'),
-                        'component_type': content.get('component_type')
+                        'pipeline_id': pipeline_id,
+                        'config': config
                     },
                     source_identifier=self.module_identifier
                 )
             )
 
         except Exception as e:
-            self.logger.error(f"Data staging failed: {str(e)}")
-            await self._notify_error(message, str(e))
+            await self._handle_error(message, str(e))
 
-    async def _handle_access_request(self, message: ProcessingMessage) -> None:
+    async def _handle_store_request(self, message: ProcessingMessage) -> None:
         """
-        Handle data access requests.
-
-        Validates and manages access to staged resources.
+        Handle data storage requests
+        Route to Staging Handler
         """
         try:
-            reference_id = message.content.get('reference_id')
-            requester_id = message.content.get('requester_id')
+            # Generate unique stage ID if not provided
+            stage_id = message.content.get('stage_id', str(uuid4()))
 
-            # Check access permissions
-            has_access = await self._validate_access(reference_id, requester_id)
-
-            response_type = (
-                MessageType.STAGING_ACCESS_GRANTED
-                if has_access else
-                MessageType.STAGING_ACCESS_DENIED
-            )
-
+            # Forward to Staging Handler
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=response_type,
+                    message_type=MessageType.STAGING_HANDLER_STORE,
                     content={
-                        'reference_id': reference_id,
-                        'requester_id': requester_id
+                        'stage_id': stage_id,
+                        **message.content
                     },
                     source_identifier=self.module_identifier
                 )
             )
 
         except Exception as e:
-            self.logger.error(f"Access request handling failed: {str(e)}")
-            await self._notify_error(message, str(e))
+            await self._handle_error(message, str(e))
 
-    async def _handle_cleanup_request(self, message: ProcessingMessage) -> None:
+    async def _handle_retrieve_request(self, message: ProcessingMessage) -> None:
         """
-        Handle staging resource cleanup requests.
-
-        Coordinates cleanup of expired or unnecessary staged resources.
+        Handle data retrieval requests
+        Route to Staging Handler
         """
         try:
-            # Cleanup expired resources through repository
-            expired_ids = await self.staging_repository.cleanup_expired_resources()
+            stage_id = message.content.get('stage_id')
 
-            # Remove physical files through staging manager
-            for ref_id in expired_ids:
-                await self.staging_manager.cleanup_reference(ref_id)
-
-            # Notify about cleanup completion
+            # Forward to Staging Handler
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.STAGING_CLEANUP_COMPLETE,
-                    content={'expired_resources': expired_ids},
+                    message_type=MessageType.STAGING_HANDLER_RETRIEVE,
+                    content=message.content,
                     source_identifier=self.module_identifier
                 )
             )
 
         except Exception as e:
-            self.logger.error(f"Staging cleanup failed: {str(e)}")
-            await self._notify_error(message, str(e))
+            await self._handle_error(message, str(e))
 
-    async def _handle_status_request(self, message: ProcessingMessage) -> None:
+    async def _handle_delete_request(self, message: ProcessingMessage) -> None:
         """
-        Retrieve and report staging resource status.
+        Handle deletion requests
+        Route to Staging Handler
         """
         try:
-            reference_id = message.content.get('reference_id')
+            stage_id = message.content.get('stage_id')
 
-            # Get resource history from repository
-            resource_history = await self.staging_repository.get_resource_history(
-                resource_id=reference_id
-            )
-
+            # Forward to Staging Handler
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.STAGING_STATUS_RESPONSE,
-                    content={
-                        'reference_id': reference_id,
-                        'history': [
-                            {
-                                'event_type': entry.event_type,
-                                'status': entry.final_status,
-                                'created_at': entry.created_at.isoformat()
-                            } for entry in resource_history
-                        ]
-                    },
-                    source_identifier=self.module_identifier,
-                    target_identifier=message.source_identifier
+                    message_type=MessageType.STAGING_HANDLER_DELETE,
+                    content=message.content,
+                    source_identifier=self.module_identifier
                 )
             )
 
         except Exception as e:
-            self.logger.error(f"Status retrieval failed: {str(e)}")
-            await self._notify_error(message, str(e))
+            await self._handle_error(message, str(e))
 
-    def _validate_staging_data(self, data: Dict[str, Any]) -> bool:
+    async def _handle_handler_complete(self, message: ProcessingMessage) -> None:
         """
-        Validate incoming staging data.
+        Handle successful completion from Staging Handler
+        Notify Staging Manager
+        """
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_contexts.get(pipeline_id)
 
-        Ensures data meets minimum requirements for staging.
-        """
-        required_fields = ['data', 'component_type', 'pipeline_id']
-        return all(field in data for field in required_fields)
+            if context:
+                # Update context
+                context.status = ProcessingStatus.COMPLETED
 
-    async def _validate_access(self, reference_id: str, requester_id: str) -> bool:
-        """
-        Complex access validation logic.
+                # Notify Staging Manager
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.STAGING_SERVICE_COMPLETE,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'results': message.content
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
 
-        Checks multiple access criteria including:
-        - User permissions
-        - Resource state
-        - Access patterns
-        """
-        # Placeholder for complex access validation
-        # Would integrate with authentication, authorization systems
-        return True
+        except Exception as e:
+            await self._handle_error(message, str(e))
 
-    async def _notify_error(self, original_message: ProcessingMessage, error: str) -> None:
+    async def _handle_service_update(self, message: ProcessingMessage) -> None:
         """
-        Centralized error notification mechanism.
+        Handle update instructions from Staging Manager
+        """
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_contexts.get(pipeline_id)
 
-        Publishes errors to the system with relevant context.
+            if context:
+                # Forward update to Handler
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.STAGING_HANDLER_UPDATE,
+                        content=message.content,
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+        except Exception as e:
+            await self._handle_error(message, str(e))
+
+    async def _handle_service_decision(self, message: ProcessingMessage) -> None:
         """
+        Handle decision from Staging Manager
+        """
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            decision = message.content.get('decision')
+
+            # Forward decision to Handler
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_HANDLER_DECISION,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'decision': decision
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            await self._handle_error(message, str(e))
+
+    async def _handle_handler_error(self, message: ProcessingMessage) -> None:
+        """
+        Handle errors from Staging Handler
+        Notify Staging Manager
+        """
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            error = message.content.get('error')
+
+            # Notify Staging Manager
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_SERVICE_ERROR,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error': error
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Error handling failed: {str(e)}")
+
+    async def _handle_handler_status(self, message: ProcessingMessage) -> None:
+        """
+        Handle status updates from Staging Handler
+        """
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+
+            # Notify Staging Manager
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_SERVICE_STATUS,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'status': message.content.get('status')
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            await self._handle_error(message, str(e))
+
+    async def _handle_error(
+            self,
+            original_message: ProcessingMessage,
+            error: str
+    ) -> None:
+        """
+        Centralized error handling
+        """
+        logger.error(f"Staging service error: {error}")
+
         await self.message_broker.publish(
             ProcessingMessage(
                 message_type=MessageType.STAGING_ERROR,
                 content={
-                    'service': self.module_identifier.component_name,
                     'error': error,
                     'original_message': original_message.content
                 },
@@ -302,38 +314,16 @@ class StagingService:
 
     async def cleanup(self) -> None:
         """
-        Gracefully clean up service resources.
-
-        Unsubscribes from message broker and performs necessary cleanup.
+        Gracefully clean up service resources
         """
         try:
+            # Unsubscribe from all message types
             await self.message_broker.unsubscribe_all(
                 self.module_identifier.component_name
             )
+
+            # Clear active contexts
+            self.active_contexts.clear()
+
         except Exception as e:
-            self.logger.error(f"Staging service cleanup failed: {str(e)}")
-
-    # Additional methods can be added as needed
-    async def _handle_output_stored(self, message: ProcessingMessage) -> None:
-        """Handle component output storage"""
-        pass
-
-    async def _handle_version_created(self, message: ProcessingMessage) -> None:
-        """Handle version creation events"""
-        pass
-
-    async def _handle_access_granted(self, message: ProcessingMessage) -> None:
-        """Handle granted access notifications"""
-        pass
-
-    async def _handle_access_denied(self, message: ProcessingMessage) -> None:
-        """Handle denied access notifications"""
-        pass
-
-    async def _handle_cleanup_complete(self, message: ProcessingMessage) -> None:
-        """Handle cleanup completion notifications"""
-        pass
-
-    async def _handle_error(self, message: ProcessingMessage) -> None:
-        """Handle general staging-related errors"""
-        pass
+            logger.error(f"Staging service cleanup failed: {str(e)}")

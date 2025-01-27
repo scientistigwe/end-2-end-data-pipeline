@@ -27,6 +27,7 @@ from .decision_manager import DecisionManager
 from .monitoring_manager import MonitoringManager
 from .report_manager import ReportManager
 from .advanced_analytics_manager import AnalyticsManager
+from .staging_manager import StagingManager
 
 __all__ = [
     'PipelineManager',
@@ -36,5 +37,6 @@ __all__ = [
     'DecisionManager',
     'MonitoringManager',
     'ReportManager',
-    'AnalyticsManager'
+    'AnalyticsManager',
+    'StagingManager'
 ]

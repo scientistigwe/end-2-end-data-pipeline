@@ -4,199 +4,241 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from ...messaging.broker import MessageBroker
-from ...messaging.event_types import (
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
+    ComponentType,
+    ModuleIdentifier,
+    MessageMetadata,
     ProcessingStage,
-    RecommendationContext,
-    BaseContext
+    ProcessingStatus,
+    RecommendationState
 )
-from ...staging.staging_manager import StagingManager
-from ..base.base_handler import BaseChannelHandler
-from data.processing.recommendation.processor.recommendation_processor import RecommendationProcessor
 
 logger = logging.getLogger(__name__)
 
 
-class RecommendationHandler(BaseChannelHandler):
+class RecommendationHandler:
     """
-    Handles communication and routing for recommendation-related messages.
-    Coordinates between manager and processor.
+    Recommendation Handler: Pure message routing layer.
+    - Routes between Service and Processor
+    - Performs message transformations
+    - No business logic
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            staging_manager: StagingManager
-    ):
-        super().__init__(
-            message_broker=message_broker,
-            handler_name="recommendation_handler",
-            domain_type="recommendation"
+    def __init__(self, message_broker: MessageBroker):
+        self.message_broker = message_broker
+
+        # Handler identification
+        self.module_identifier = ModuleIdentifier(
+            component_name="recommendation_handler",
+            component_type=ComponentType.RECOMMENDATION_HANDLER,
+            department="recommendation",
+            role="handler"
         )
 
-        self.staging_manager = staging_manager
-        self.processor = RecommendationProcessor(message_broker, staging_manager)
-
-        # Setup message handlers
+        # Setup message routing
         self._setup_message_handlers()
 
     def _setup_message_handlers(self) -> None:
-        """Setup handlers for recommendation-related messages"""
-        self.register_message_handler(
-            MessageType.RECOMMENDATION_START,
-            self._handle_recommendation_start
-        )
-        self.register_message_handler(
-            MessageType.RECOMMENDATION_UPDATE,
-            self._handle_recommendation_update
-        )
-        self.register_message_handler(
-            MessageType.RECOMMENDATION_COMPLETE,
-            self._handle_recommendation_complete
-        )
+        """Setup message routing handlers"""
+        routing_map = {
+            # Service Messages
+            MessageType.RECOMMENDATION_HANDLER_START: self._route_start_request,
+            MessageType.RECOMMENDATION_HANDLER_UPDATE: self._route_update_request,
+            MessageType.RECOMMENDATION_HANDLER_FILTER: self._route_filter_request,
+            MessageType.RECOMMENDATION_HANDLER_RANK: self._route_rank_request,
+            MessageType.RECOMMENDATION_HANDLER_VALIDATE: self._route_validate_request,
 
-    async def _handle_recommendation_start(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle start of recommendation process"""
+            # Processor Responses
+            MessageType.RECOMMENDATION_PROCESSOR_COMPLETE: self._route_processor_complete,
+            MessageType.RECOMMENDATION_PROCESSOR_ERROR: self._route_processor_error,
+            MessageType.RECOMMENDATION_PROCESSOR_STATUS: self._route_processor_status,
+
+            # Engine Messages
+            MessageType.RECOMMENDATION_ENGINE_RESPONSE: self._route_engine_response,
+            MessageType.RECOMMENDATION_ENGINE_ERROR: self._route_engine_error,
+
+            # Error Handling
+            MessageType.RECOMMENDATION_ERROR: self._handle_error_routing
+        }
+
+        for message_type, handler in routing_map.items():
+            self.message_broker.subscribe(
+                self.module_identifier,
+                f"recommendation.{message_type.value}.#",
+                handler
+            )
+
+    async def _route_start_request(self, message: ProcessingMessage) -> None:
+        """Route start request to processor"""
         try:
-            pipeline_id = message.content['pipeline_id']
+            # Transform message
+            transformed_message = self._preprocess_message(message)
 
-            # Create recommendation context
-            context = RecommendationContext(
-                pipeline_id=pipeline_id,
-                stage=ProcessingStage.RECOMMENDATION,
-                status=message.content.get('status', 'pending'),
-                source_component=message.metadata.source_component,
-                request_type=message.content.get('request_type'),
-                engine_types=message.content.get('engine_types', []),
-                ranking_rules=message.content.get('ranking_rules', {}),
-                aggregation_config=message.content.get('aggregation_config', {}),
-                filtering_rules=message.content.get('filtering_rules', {}),
-                performance_metrics=message.content.get('performance_metrics', {})
+            # Route to processor
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_PROCESSOR_START,
+                    content=transformed_message.content,
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="recommendation_processor",
+                        domain_type="recommendation",
+                        processing_stage=ProcessingStage.RECOMMENDATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
             )
-
-            # Start processing
-            state = await self.processor.process_recommendation_request(
-                pipeline_id,
-                context
-            )
-
-            # Create response
-            response = message.create_response(
-                MessageType.RECOMMENDATION_UPDATE,
-                {
-                    'pipeline_id': pipeline_id,
-                    'state': state.status.value,
-                    'current_phase': state.current_phase.value,
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
-
-            await self.message_broker.publish(response)
 
         except Exception as e:
-            logger.error(f"Failed to handle recommendation start: {str(e)}")
-            await self._handle_error(message, e)
+            await self._publish_routing_error(message, str(e))
 
-    async def _handle_recommendation_update(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle recommendation process updates"""
+    async def _route_processor_complete(self, message: ProcessingMessage) -> None:
+        """Route processor completion to service"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            update_data = message.content.get('update_data', {})
+            transformed_message = self._preprocess_message(message)
 
-            # Forward update to manager
-            response = message.create_response(
-                MessageType.RECOMMENDATION_UPDATE,
-                {
-                    'pipeline_id': pipeline_id,
-                    'phase': update_data.get('phase'),
-                    'status': update_data.get('status'),
-                    'metrics': update_data.get('metrics', {}),
-                    'timestamp': datetime.now().isoformat()
-                }
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_HANDLER_COMPLETE,
+                    content=transformed_message.content,
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation",
+                        processing_stage=ProcessingStage.RECOMMENDATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
             )
-
-            await self.message_broker.publish(response)
 
         except Exception as e:
-            logger.error(f"Failed to handle recommendation update: {str(e)}")
-            await self._handle_error(message, e)
+            await self._publish_routing_error(message, str(e))
 
-    async def _handle_recommendation_complete(
-            self,
-            message: ProcessingMessage
-    ) -> None:
-        """Handle recommendation process completion"""
+    async def _route_processor_status(self, message: ProcessingMessage) -> None:
+        """Route processor status update to service"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            recommendations = message.content.get('recommendations', [])
+            transformed_message = self._preprocess_message(message)
 
-            # Store recommendations in staging
-            staged_id = await self.staging_manager.store_staged_data(
-                pipeline_id,
-                {
-                    'type': 'recommendations',
-                    'data': recommendations,
-                    'metadata': message.content.get('metadata', {}),
-                    'timestamp': datetime.now().isoformat()
-                }
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_HANDLER_STATUS,
+                    content=transformed_message.content,
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation",
+                        processing_stage=ProcessingStage.RECOMMENDATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
             )
-
-            # Create completion response
-            response = message.create_response(
-                MessageType.RECOMMENDATION_COMPLETE,
-                {
-                    'pipeline_id': pipeline_id,
-                    'staged_id': staged_id,
-                    'count': len(recommendations),
-                    'metadata': message.content.get('metadata', {}),
-                    'timestamp': datetime.now().isoformat()
-                }
-            )
-
-            await self.message_broker.publish(response)
 
         except Exception as e:
-            logger.error(f"Failed to handle recommendation completion: {str(e)}")
-            await self._handle_error(message, e)
+            await self._publish_routing_error(message, str(e))
 
-    async def _handle_error(
+    async def _route_engine_response(self, message: ProcessingMessage) -> None:
+        """Route engine response to processor"""
+        try:
+            transformed_message = self._preprocess_message(message)
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_PROCESSOR_ENGINE_RESPONSE,
+                    content=transformed_message.content,
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="recommendation_processor",
+                        domain_type="recommendation",
+                        processing_stage=ProcessingStage.RECOMMENDATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            await self._publish_routing_error(message, str(e))
+
+    def _preprocess_message(self, message: ProcessingMessage) -> ProcessingMessage:
+        """
+        Preprocess message for routing
+        - Validate required fields
+        - Normalize message structure
+        - Add routing metadata
+        """
+        required_fields = ['pipeline_id']
+
+        # Validate message content
+        for field in required_fields:
+            if field not in message.content:
+                raise ValueError(f"Missing required field: {field}")
+
+        # Add routing metadata
+        if not message.metadata:
+            message.metadata = MessageMetadata()
+
+        message.metadata.domain_type = "recommendation"
+        message.metadata.processing_stage = ProcessingStage.RECOMMENDATION
+
+        return message
+
+    async def _publish_routing_error(
             self,
-            message: ProcessingMessage,
-            error: Exception
+            original_message: ProcessingMessage,
+            error: str
     ) -> None:
-        """Handle processing errors"""
-        error_message = message.create_response(
-            MessageType.RECOMMENDATION_ERROR,
-            {
-                'pipeline_id': message.content.get('pipeline_id'),
-                'error': str(error),
-                'phase': message.content.get('phase', 'unknown'),
-                'timestamp': datetime.now().isoformat()
-            }
+        """Publish routing error"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.RECOMMENDATION_ERROR,
+                content={
+                    'error': error,
+                    'original_message': original_message.content,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="recommendation_service",
+                    domain_type="recommendation",
+                    processing_stage=ProcessingStage.RECOMMENDATION
+                ),
+                source_identifier=self.module_identifier
+            )
         )
-        await self.message_broker.publish(error_message)
 
-    async def get_process_status(
-            self,
-            pipeline_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get current status of recommendation process"""
-        return await self.processor.get_process_status(pipeline_id)
+    async def _handle_error_routing(self, message: ProcessingMessage) -> None:
+        """Handle error routing"""
+        logger.error(f"Routing error: {message.content}")
+
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.SYSTEM_ERROR,
+                    content={
+                        'error_source': 'recommendation_handler',
+                        'original_message': message.content,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="error_handler",
+                        domain_type="recommendation"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+        except Exception as e:
+            logger.critical(f"Error handling failed: {str(e)}")
 
     async def cleanup(self) -> None:
         """Cleanup handler resources"""
         try:
-            await self.processor.cleanup()
-            await super().cleanup()
-
+            # Unsubscribe from all message patterns
+            await self.message_broker.unsubscribe_all(
+                self.module_identifier.component_name
+            )
         except Exception as e:
             logger.error(f"Cleanup failed: {str(e)}")
             raise

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timedelta
 import uuid
+import re
 from typing import Dict, Any, Optional, Set, List
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,6 @@ from pathlib import Path
 class ProcessingStage(Enum):
     """Pipeline processing stages"""
     RECEPTION = "reception"
-    VALIDATION = "validation"
     QUALITY_CHECK = "quality_check"
     CONTEXT_ANALYSIS = "context_analysis"
     INSIGHT_GENERATION = "insight_generation"
@@ -21,6 +21,12 @@ class ProcessingStage(Enum):
     RECOMMENDATION = "recommendation"
     USER_REVIEW = "user_review"
     COMPLETION = "completion"
+    INITIAL_VALIDATION = "initial_validation"
+    DATA_EXTRACTION = "data_extraction"
+    DATA_VALIDATION = "data_validation"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    VALIDATION = "validation"
 
 
 class ProcessingStatus(Enum):
@@ -38,10 +44,21 @@ class ProcessingStatus(Enum):
 
 @dataclass
 class BaseContext:
-    """Enhanced base context with staging information"""
+    """Base context for all processing types"""
     pipeline_id: str
     stage: ProcessingStage
     status: ProcessingStatus
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    completed_at: Optional[datetime] = None
+
+    # Resource Management
+    resource_requirements: Dict[str, Any] = field(default_factory=dict)
+    allocated_resources: Dict[str, Any] = field(default_factory=dict)
+
+    # Processing Configuration
+    processing_mode: str = "batch"  # or "streaming"
+    timeout_seconds: Optional[int] = None
+    retry_policy: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -51,6 +68,16 @@ class BaseContext:
     staging_location: Optional[str] = None  # Location in staging area
     input_refs: List[str] = field(default_factory=list)  # Input data references
     output_refs: List[str] = field(default_factory=list)  # Output data references
+
+    # Monitoring
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    health_status: Dict[str, str] = field(default_factory=dict)
+    performance_stats: Dict[str, float] = field(default_factory=dict)
+
+    # Error Handling
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    retry_count: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -91,47 +118,103 @@ class ManagerContext(BaseContext):
     """Base context for manager operations"""
     component_name: str = None
     domain_type: str = None
-    state: ManagerState = field(default=ManagerState.INITIALIZING)
+    state: ManagerState = field(default_factory=lambda: ManagerState.INITIALIZING)
     metrics: ManagerMetrics = field(default_factory=ManagerMetrics)
     handlers: Dict[str, str] = field(default_factory=dict)
 
 
-class QualityState(Enum):
-    """States specific to quality processing"""
+class AnalyticsState(Enum):
+    """Analytics processing states"""
     INITIALIZING = "initializing"
-    DETECTING = "detecting"
-    ISSUE_DETECTED = "issue_detected"
-    RESOLVING = "resolving"
-    VALIDATING = "validating"
+    DATA_PREPARATION = "data_preparation"
+    FEATURE_ENGINEERING = "feature_engineering"
+    MODEL_SELECTION = "model_selection"
+    MODEL_TRAINING = "model_training"
+    MODEL_EVALUATION = "model_evaluation"
+    VISUALIZATION = "visualization"
     COMPLETED = "completed"
     FAILED = "failed"
 
 
-class QualityCheckType(Enum):
-    """Types of quality checks"""
-    DATA_COMPLETENESS = "data_completeness"
-    DATA_ACCURACY = "data_accuracy"
-    DATA_CONSISTENCY = "data_consistency"
-    DATA_TIMELINESS = "data_timeliness"
-    DATA_VALIDITY = "data_validity"
-    BUSINESS_RULES = "business_rules"
-    REFERENCE_DATA = "reference_data"
-    CUSTOM = "custom"
+@dataclass
+class AnalyticsMetrics:
+    """Comprehensive metrics for analytics processing"""
+    data_quality_score: float = 0.0
+    feature_importance: Dict[str, float] = field(default_factory=dict)
+    model_performance: Dict[str, float] = field(default_factory=dict)
+    prediction_confidence: Dict[str, float] = field(default_factory=dict)
+    processing_time: Dict[str, float] = field(default_factory=dict)
+    resource_utilization: Dict[str, float] = field(default_factory=dict)
+    validation_scores: Dict[str, float] = field(default_factory=dict)
+    error_metrics: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
-class QualityMetrics:
-    """Metrics for quality processing"""
-    total_records: int = 0
-    processed_records: int = 0
-    total_issues: int = 0
-    issues_by_type: Dict[str, int] = field(default_factory=dict)
-    issues_by_severity: Dict[str, int] = field(default_factory=dict)
-    auto_resolvable: int = 0
-    manual_required: int = 0
-    resolution_rate: float = 0.0
-    processing_time: float = 0.0
-    completion_percentage: float = 0.0
+class AnalyticsContext(BaseContext):
+    """Enhanced analytics processing context"""
+    # Core tracking
+    pipeline_id: str
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    state: AnalyticsState = field(default_factory=lambda: AnalyticsState.INITIALIZING)
+    status: ProcessingStatus = field(default_factory=lambda: ProcessingStatus.PENDING)
+
+    # Data Management
+    data_schema: Dict[str, Any] = field(default_factory=dict)
+    data_quality_metrics: Dict[str, float] = field(default_factory=dict)
+    feature_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # Model Management
+    model_type: Optional[str] = None
+    model_parameters: Dict[str, Any] = field(default_factory=dict)
+    model_metrics: Dict[str, float] = field(default_factory=dict)
+    model_artifacts: Dict[str, str] = field(default_factory=dict)
+
+    # Training Configuration
+    training_config: Dict[str, Any] = field(default_factory=dict)
+    validation_config: Dict[str, Any] = field(default_factory=dict)
+    hyperparameters: Dict[str, Any] = field(default_factory=dict)
+
+    # Performance Tracking
+    training_metrics: Dict[str, float] = field(default_factory=dict)
+    validation_metrics: Dict[str, float] = field(default_factory=dict)
+    inference_metrics: Dict[str, float] = field(default_factory=dict)
+
+    # MLOps
+    model_version: Optional[str] = None
+    model_lineage: Dict[str, Any] = field(default_factory=dict)
+    experiment_tracking: Dict[str, Any] = field(default_factory=dict)
+    deployment_config: Dict[str, Any] = field(default_factory=dict)
+
+    # Configuration
+    data_config: Dict[str, Any] = field(default_factory=dict)
+    model_config: Dict[str, Any] = field(default_factory=dict)
+    feature_config: Dict[str, Any] = field(default_factory=dict)
+    visualization_config: Dict[str, Any] = field(default_factory=dict)
+
+    # Results tracking
+    phase_results: Dict[str, Any] = field(default_factory=dict)
+    model_metadata: Dict[str, Any] = field(default_factory=dict)
+    metrics: Dict[str, float] = field(default_factory=dict)
+
+    # Error handling
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+    # Timestamps
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+
+    def update_state(self, new_state: AnalyticsState) -> None:
+        """Update processing state"""
+        self.state = new_state
+        self.updated_at = datetime.now()
+
+        if new_state == AnalyticsState.COMPLETED:
+            self.completed_at = datetime.now()
+
+
+from enum import Enum
 
 
 class MessageType(Enum):
@@ -144,7 +227,6 @@ class MessageType(Enum):
     - Supports complex, adaptive data processing workflows
     - Provides clear semantic meaning for each message type
     """
-
     # Global System Communication
     GLOBAL_ERROR_NOTIFY = "global.error.notify"
     GLOBAL_STATUS_REQUEST = "global.status.request"
@@ -200,6 +282,7 @@ class MessageType(Enum):
     WORKFLOW_ROLLBACK_REQUEST = "workflow.rollback.request"
     WORKFLOW_ROLLBACK_COMPLETE = "workflow.rollback.complete"
 
+    #............................................Quality Types..........................................................
     # Quality Analysis
     QUALITY_ANALYZE_REQUEST = "quality.analyze.request"
     QUALITY_ANALYZE_COMPLETE = "quality.analyze.complete"
@@ -239,116 +322,241 @@ class MessageType(Enum):
     QUALITY_CLEANUP_REQUEST = "quality.cleanup.request"
     QUALITY_CLEANUP_COMPLETE = "quality.cleanup.complete"
 
-    # Insight Generation
-    INSIGHT_GENERATE_REQUEST = "insight.generate.request"
-    INSIGHT_GENERATE_COMPLETE = "insight.generate.complete"
+    # Core Process Flow
+    QUALITY_PROCESS_START = "quality.process.start"
+    QUALITY_PROCESS_PROGRESS = "quality.process.progress"
+    QUALITY_PROCESS_FAILED = "quality.process.failed"
 
-    # Insight Context Analysis
+    # Context Analysis
+    QUALITY_CONTEXT_ANALYZE_REQUEST = "quality.context.analyze.request"
+    QUALITY_CONTEXT_ANALYZE_PROGRESS = "quality.context.analyze.progress"
+    QUALITY_CONTEXT_ANALYZE_COMPLETE = "quality.context.analyze.complete"
+
+    # Detection Process
+    QUALITY_DETECTION_START = "quality.detection.start"
+    QUALITY_DETECTION_PROGRESS = "quality.detection.progress"
+    QUALITY_DETECTION_COMPLETE = "quality.detection.complete"
+
+    # Issue Management
+    QUALITY_ISSUE_DETECT = "quality.issue.detect"
+    QUALITY_ISSUE_ANALYZE = "quality.issue.analyze"
+    QUALITY_ISSUE_VALIDATE = "quality.issue.validate"
+
+    # Resolution Management
+    QUALITY_RESOLUTION_REQUEST = "quality.resolution.request"
+    QUALITY_RESOLUTION_APPLY = "quality.resolution.apply"
+    QUALITY_RESOLUTION_VALIDATE = "quality.resolution.validate"
+    QUALITY_RESOLUTION_COMPLETE = "quality.resolution.complete"
+
+    # Validation Flow
+    QUALITY_VALIDATE_PROGRESS = "quality.validate.progress"
+    # Quality Reporting
+    QUALITY_REPORT_GENERATE = "quality.report.generate"
+    QUALITY_METRICS_UPDATE = "quality.metrics.update"
+    # System Operations
+    QUALITY_CONFIG_UPDATE = "quality.config.update"
+    QUALITY_RESOURCE_REQUEST = "quality.resource.request"
+
+    #......................................Insight Types.............................................................
+    # Core Flow
+    INSIGHT_GENERATE_REQUEST = "insight.generate.request"
+    INSIGHT_GENERATE_PROGRESS = "insight.generate.progress"
+    INSIGHT_GENERATE_COMPLETE = "insight.generate.complete"
+    INSIGHT_GENERATE_FAILED = "insight.generate.failed"
+
+    # Context Analysis
     INSIGHT_CONTEXT_ANALYZE_REQUEST = "insight.context.analyze.request"
+    INSIGHT_CONTEXT_ANALYZE_PROGRESS = "insight.context.analyze.progress"
     INSIGHT_CONTEXT_ANALYZE_COMPLETE = "insight.context.analyze.complete"
 
-    # Insight Validation
+    # Detection Process
+    INSIGHT_DETECTION_START = "insight.detection.start"
+    INSIGHT_DETECTION_PROGRESS = "insight.detection.progress"
+    INSIGHT_DETECTION_COMPLETE = "insight.detection.complete"
+    INSIGHT_DETECTION_FAILED = "insight.detection.failed"
+
+    # Type-Specific Processing
+    INSIGHT_PATTERN_PROCESS = "insight.pattern.process"
+    INSIGHT_TREND_PROCESS = "insight.trend.process"
+    INSIGHT_RELATIONSHIP_PROCESS = "insight.relationship.process"
+    INSIGHT_ANOMALY_PROCESS = "insight.anomaly.process"
+    INSIGHT_CUSTOM_PROCESS = "insight.custom.process"
+
+    # Validation Flow
     INSIGHT_VALIDATE_REQUEST = "insight.validate.request"
+    INSIGHT_VALIDATE_PROGRESS = "insight.validate.progress"
     INSIGHT_VALIDATE_COMPLETE = "insight.validate.complete"
-    INSIGHT_VALIDATE_APPROVE = "insight.validate.approve"
-    INSIGHT_VALIDATE_REJECT = "insight.validate.reject"
+    INSIGHT_VALIDATE_FAILED = "insight.validate.failed"
 
-    # Insight Review
-    INSIGHT_REVIEW_REQUEST = "insight.review.request"
-    INSIGHT_REVIEW_COMPLETE = "insight.review.complete"
+    # Resource Management
+    INSIGHT_RESOURCE_REQUEST = "insight.resource.request"
+    INSIGHT_RESOURCE_RELEASE = "insight.resource.release"
+    INSIGHT_RESOURCE_UNAVAILABLE = "insight.resource.unavailable"
 
-    # Insight Process Management
-    INSIGHT_PROCESS_START_REQUEST = "insight.process.start.request"
-    INSIGHT_PROCESS_STATE_UPDATE = "insight.process.state.update"
-    INSIGHT_PROCESS_COMPLETE = "insight.process.complete"
+    # Pipeline Control
+    INSIGHT_PIPELINE_PAUSE = "insight.pipeline.pause"
+    INSIGHT_PIPELINE_RESUME = "insight.pipeline.resume"
+    INSIGHT_PIPELINE_CANCEL = "insight.pipeline.cancel"
+    INSIGHT_PIPELINE_ROLLBACK = "insight.pipeline.rollback"
 
-    # Insight Advanced Analysis
-    INSIGHT_CORRELATION_DETECT = "insight.correlation.detect"
-    INSIGHT_TREND_ANALYZE = "insight.trend.analyze"
-    INSIGHT_PREDICTIVE_REQUEST = "insight.predictive.request"
-    INSIGHT_PREDICTIVE_GENERATE_COMPLETE = "insight.predictive.generate.complete"
+    # System Operations
+    INSIGHT_METRICS_UPDATE = "insight.metrics.update"
+    INSIGHT_HEALTH_CHECK = "insight.health.check"
+    INSIGHT_CONFIG_UPDATE = "insight.config.update"
+    INSIGHT_BACKPRESSURE_NOTIFY = "insight.backpressure.notify"
 
-    # Insight Reporting
-    INSIGHT_STATUS_REQUEST = "insight.status.request"
-    INSIGHT_STATUS_RESPONSE = "insight.status.response"
-    INSIGHT_REPORT_REQUEST = "insight.report.request"
-    INSIGHT_REPORT_RESPONSE = "insight.report.response"
+    # Component Communication
+    INSIGHT_COMPONENT_HEARTBEAT = "insight.component.heartbeat"
+    INSIGHT_COMPONENT_COORDINATE = "insight.component.coordinate"
+    INSIGHT_COMPONENT_SYNC = "insight.component.sync"
 
-    # Insight Cleanup
-    INSIGHT_CLEANUP_REQUEST = "insight.cleanup.request"
-    INSIGHT_CLEANUP_COMPLETE = "insight.cleanup.complete"
-
-    # Advanced Analytics
-    ANALYTICS_PROCESS_REQUEST = "analytics.process.request"
+    # ....................................Advanced Analytics Types........................................
+    # Core Process Flow
+    ANALYTICS_PROCESS_START = "analytics.process.start"
+    ANALYTICS_PROCESS_PROGRESS = "analytics.process.progress"
     ANALYTICS_PROCESS_COMPLETE = "analytics.process.complete"
+    ANALYTICS_PROCESS_FAILED = "analytics.process.failed"
+    ANALYTICS_PROCESS_REQUEST = "analytics.process.request"
+    ANALYTICS_PROCESS_ERROR = "analytics.process.error"
 
-    # Analytics Model Management
-    ANALYTICS_MODEL_SELECT_REQUEST = "analytics.model.select.request"
-    ANALYTICS_MODEL_SELECT_COMPLETE = "analytics.model.select.complete"
-    ANALYTICS_MODEL_TRAIN_REQUEST = "analytics.model.train.request"
-    ANALYTICS_MODEL_TRAIN_COMPLETE = "analytics.model.train.complete"
-    ANALYTICS_MODEL_EVALUATE_REQUEST = "analytics.model.evaluate.request"
-    ANALYTICS_MODEL_EVALUATE_COMPLETE = "analytics.model.evaluate.complete"
+    # Data Preparation
+    ANALYTICS_DATA_PREPARE_REQUEST = "analytics.data.prepare.request"
+    ANALYTICS_DATA_PREPARE_PROGRESS = "analytics.data.prepare.progress"
+    ANALYTICS_DATA_PREPARE_COMPLETE = "analytics.data.prepare.complete"
+    ANALYTICS_DATA_VALIDATE = "analytics.data.validate"
+    ANALYTICS_DATA_VALIDATE_REQUEST = "analytics.data.validate.request"
+    ANALYTICS_DATA_VALIDATE_COMPLETE = "analytics.data.validate.complete"
 
-    # Analytics Feature Engineering
+    # Feature Engineering
+    ANALYTICS_FEATURE_SELECT_REQUEST = "analytics.feature.select.request"
+    ANALYTICS_FEATURE_TRANSFORM_REQUEST = "analytics.feature.transform.request"
+    ANALYTICS_FEATURE_VALIDATE = "analytics.feature.validate"
     ANALYTICS_FEATURE_ENGINEER_REQUEST = "analytics.feature.engineer.request"
     ANALYTICS_FEATURE_ENGINEER_COMPLETE = "analytics.feature.engineer.complete"
+    ANALYTICS_FEATURE_SELECT_COMPLETE = "analytics.feature.select.complete"
 
-    # Analytics Simulation and Scenario
-    ANALYTICS_SIMULATION_RUN = "analytics.simulation.run"
-    ANALYTICS_SCENARIO_GENERATE = "analytics.scenario.generate"
+    # Model Management
+    ANALYTICS_MODEL_SELECT_REQUEST = "analytics.model.select.request"
+    ANALYTICS_MODEL_TRAIN_REQUEST = "analytics.model.train.request"
+    ANALYTICS_MODEL_EVALUATE_REQUEST = "analytics.model.evaluate.request"
+    ANALYTICS_MODEL_TUNE_REQUEST = "analytics.model.tune.request"
+    ANALYTICS_MODEL_DEPLOY = "analytics.model.deploy"
+    ANALYTICS_MODEL_MONITOR = "analytics.model.monitor"
+    ANALYTICS_MODEL_SELECT_COMPLETE = "analytics.model.select.complete"
+    ANALYTICS_MODEL_TRAIN_COMPLETE = "analytics.model.train.complete"
+    ANALYTICS_MODEL_EVALUATE_COMPLETE = "analytics.model.evaluate.complete"
 
-    # Analytics Performance and Bias
-    ANALYTICS_PERFORMANCE_MONITOR = "analytics.performance.monitor"
-    ANALYTICS_BIAS_DETECT = "analytics.bias.detect"
+    # Performance Analysis
+    ANALYTICS_PERFORMANCE_EVALUATE = "analytics.performance.evaluate"
+    ANALYTICS_BIAS_CHECK = "analytics.bias.check"
+    ANALYTICS_STABILITY_TEST = "analytics.stability.test"
+    ANALYTICS_DRIFT_DETECT = "analytics.drift.detect"
 
-    # Analytics Reporting
+    # Resource Management
+    ANALYTICS_RESOURCE_REQUEST = "analytics.resource.request"
+    ANALYTICS_RESOURCE_ALLOCATE = "analytics.resource.allocate"
+    ANALYTICS_RESOURCE_RELEASE = "analytics.resource.release"
+    ANALYTICS_RESOURCE_EXCEEDED = "analytics.resource.exceeded"
+
+    # Pipeline Control
+    ANALYTICS_PIPELINE_PAUSE = "analytics.pipeline.pause"
+    ANALYTICS_PIPELINE_RESUME = "analytics.pipeline.resume"
+    ANALYTICS_PIPELINE_CANCEL = "analytics.pipeline.cancel"
+    ANALYTICS_PIPELINE_ROLLBACK = "analytics.pipeline.rollback"
+
+    # System Operations
+    ANALYTICS_METRICS_UPDATE = "analytics.metrics.update"
+    ANALYTICS_HEALTH_CHECK = "analytics.health.check"
+    ANALYTICS_CONFIG_UPDATE = "analytics.config.update"
+    ANALYTICS_BACKPRESSURE_NOTIFY = "analytics.backpressure.notify"
+
+    # ML Operations
+    ANALYTICS_MODEL_VERSION_CONTROL = "analytics.model.version"
+    ANALYTICS_MODEL_REGISTRY_UPDATE = "analytics.model.registry"
+    ANALYTICS_MODEL_ARTIFACT_STORE = "analytics.model.artifact"
+    ANALYTICS_MODEL_LINEAGE_TRACK = "analytics.model.lineage"
+
+    # Visualization
+    ANALYTICS_VISUALIZATION_REQUEST = "analytics.visualization.request"
+    ANALYTICS_VISUALIZATION_COMPLETE = "analytics.visualization.complete"
+
+    # Status & Control
     ANALYTICS_STATUS_REQUEST = "analytics.status.request"
-    ANALYTICS_STATUS_RESPONSE = "analytics.status.response"
-    ANALYTICS_REPORT_REQUEST = "analytics.report.request"
-    ANALYTICS_REPORT_RESPONSE = "analytics.report.response"
+    ANALYTICS_STATUS_UPDATE = "analytics.status.update"
+    ANALYTICS_CANCEL_REQUEST = "analytics.cancel.request"
+    ANALYTICS_CLEANUP_REQUEST = "analytics.cleanup.request"
 
-    # Decision Support
-    DECISION_GENERATE_REQUEST = "decision.generate.request"
-    DECISION_GENERATE_COMPLETE = "decision.generate.complete"
+    #....................................Decision Types........................................
+    # Core Process Flow
+    DECISION_PROCESS_START = "decision.process.start"
+    DECISION_PROCESS_PROGRESS = "decision.process.progress"
+    DECISION_PROCESS_COMPLETE = "decision.process.complete"
+    DECISION_PROCESS_FAILED = "decision.process.failed"
 
-    # Decision Context Analysis
+    # Context Analysis
     DECISION_CONTEXT_ANALYZE_REQUEST = "decision.context.analyze.request"
+    DECISION_CONTEXT_ANALYZE_PROGRESS = "decision.context.analyze.progress"
     DECISION_CONTEXT_ANALYZE_COMPLETE = "decision.context.analyze.complete"
+    DECISION_CONTEXT_ANALYZE_FAILED = "decision.context.analyze.failed"
 
-    # Decision Options Management
+    # Option Management
     DECISION_OPTIONS_GENERATE_REQUEST = "decision.options.generate.request"
+    DECISION_OPTIONS_GENERATE_PROGRESS = "decision.options.generate.progress"
     DECISION_OPTIONS_GENERATE_COMPLETE = "decision.options.generate.complete"
+    DECISION_OPTIONS_UPDATE = "decision.options.update"
+    DECISION_OPTIONS_PRIORITIZE = "decision.options.prioritize"
 
-    # Decision Validation
+    # Validation Flow
     DECISION_VALIDATE_REQUEST = "decision.validate.request"
+    DECISION_VALIDATE_PROGRESS = "decision.validate.progress"
     DECISION_VALIDATE_COMPLETE = "decision.validate.complete"
-    DECISION_VALIDATE_APPROVE = "decision.validate.approve"
     DECISION_VALIDATE_REJECT = "decision.validate.reject"
+    DECISION_VALIDATE_RETRY = "decision.validate.retry"
+    DECISION_VALIDATE_APPROVE = "decision.validate.approve"
 
-    # Decision Impact Assessment
+    # Impact Assessment
     DECISION_IMPACT_ASSESS_REQUEST = "decision.impact.assess.request"
+    DECISION_IMPACT_ASSESS_PROGRESS = "decision.impact.assess.progress"
     DECISION_IMPACT_ASSESS_COMPLETE = "decision.impact.assess.complete"
-
-    # Decision Optimization
-    DECISION_OPTIMIZE_REQUEST = "decision.optimize.request"
-    DECISION_OPTIMIZE_COMPLETE = "decision.optimize.complete"
-
-    # Decision Advanced Scenarios
-    DECISION_SCENARIO_CREATE = "decision.scenario.create"
-    DECISION_RISK_ASSESS = "decision.risk.assess"
     DECISION_IMPACT_SIMULATE = "decision.impact.simulate"
-    DECISION_RECOMMENDATION_COMPARE = "decision.recommendation.compare"
 
-    # Decision Constraint Validation
-    DECISION_CONSTRAINT_VALIDATE = "decision.constraint.validate"
+    # Component Communication
+    DECISION_COMPONENT_REQUEST = "decision.component.request"
+    DECISION_COMPONENT_RESPONSE = "decision.component.response"
+    DECISION_COMPONENT_TIMEOUT = "decision.component.timeout"
+    DECISION_COMPONENT_ERROR = "decision.component.error"
+    DECISION_COMPONENT_UPDATE = "decision.component.update"
+    DECISION_COMPONENT_NOTIFY = "decision.component.notify"
 
-    # Decision Reporting
+    # Resource Management
+    DECISION_RESOURCE_REQUEST = "decision.resource.request"
+    DECISION_RESOURCE_ALLOCATE = "decision.resource.allocate"
+    DECISION_RESOURCE_RELEASE = "decision.resource.release"
+    DECISION_RESOURCE_EXCEEDED = "decision.resource.exceeded"
+
+    # Pipeline Control
+    DECISION_PIPELINE_PAUSE = "decision.pipeline.pause"
+    DECISION_PIPELINE_RESUME = "decision.pipeline.resume"
+    DECISION_PIPELINE_CANCEL = "decision.pipeline.cancel"
+    DECISION_PIPELINE_ROLLBACK = "decision.pipeline.rollback"
+
+    # System Operations
+    DECISION_METRICS_UPDATE = "decision.metrics.update"
+    DECISION_HEALTH_CHECK = "decision.health.check"
+    DECISION_CONFIG_UPDATE = "decision.config.update"
+    DECISION_BACKPRESSURE_NOTIFY = "decision.backpressure.notify"
+
+    # Compliance and Audit
+    DECISION_AUDIT_LOG = "decision.audit.log"
+    DECISION_COMPLIANCE_CHECK = "decision.compliance.check"
+    DECISION_POLICY_VALIDATE = "decision.policy.validate"
+
+    # Status & Control
     DECISION_STATUS_REQUEST = "decision.status.request"
-    DECISION_STATUS_RESPONSE = "decision.status.response"
-    DECISION_REPORT_REQUEST = "decision.report.request"
-    DECISION_REPORT_RESPONSE = "decision.report.response"
+    DECISION_STATUS_UPDATE = "decision.status.update"
+    DECISION_CANCEL_REQUEST = "decision.cancel.request"
 
+    #..............................Recommendation Types.......................................................
     # Recommendation Engine
     RECOMMENDATION_GENERATE_REQUEST = "recommendation.generate.request"
     RECOMMENDATION_GENERATE_COMPLETE = "recommendation.generate.complete"
@@ -390,6 +598,36 @@ class MessageType(Enum):
     RECOMMENDATION_REPORT_REQUEST = "recommendation.report.request"
     RECOMMENDATION_REPORT_RESPONSE = "recommendation.report.response"
 
+    # Core Process Flow
+    RECOMMENDATION_PROCESS_START = "recommendation.process.start"
+    RECOMMENDATION_PROCESS_PROGRESS = "recommendation.process.progress"
+    RECOMMENDATION_PROCESS_COMPLETE = "recommendation.process.complete"
+    RECOMMENDATION_PROCESS_FAILED = "recommendation.process.failed"
+
+    # Candidate Generation
+    RECOMMENDATION_CANDIDATES_GENERATE = "recommendation.candidates.generate"
+    RECOMMENDATION_CANDIDATES_PROGRESS = "recommendation.candidates.progress"
+    RECOMMENDATION_CANDIDATES_COMPLETE = "recommendation.candidates.complete"
+
+    # Engine-Specific Processing
+    RECOMMENDATION_ENGINE_CONTENT = "recommendation.engine.content"
+    RECOMMENDATION_ENGINE_COLLABORATIVE = "recommendation.engine.collaborative"
+    RECOMMENDATION_ENGINE_CONTEXTUAL = "recommendation.engine.contextual"
+    RECOMMENDATION_ENGINE_HYBRID = "recommendation.engine.hybrid"
+
+    # Diversity and Personalization
+    RECOMMENDATION_DIVERSITY_APPLY = "recommendation.diversity.apply"
+    RECOMMENDATION_BUSINESS_RULES = "recommendation.rules.apply"
+
+    # Validation and Feedback
+    RECOMMENDATION_FEEDBACK_PROCESS = "recommendation.feedback.process"
+
+    # System Operations
+    RECOMMENDATION_METRICS_UPDATE = "recommendation.metrics.update"
+    RECOMMENDATION_CONFIG_UPDATE = "recommendation.config.update"
+    RECOMMENDATION_CLEANUP_REQUEST = "recommendation.cleanup.request"
+
+    #......................................Pipeline Types.............................................................
     # Pipeline Management
     PIPELINE_CREATE_REQUEST = "pipeline.create.request"
     PIPELINE_CREATE_COMPLETE = "pipeline.create.complete"
@@ -400,6 +638,7 @@ class MessageType(Enum):
     PIPELINE_STAGE_START_REQUEST = "pipeline.stage.start.request"
     PIPELINE_STAGE_START_COMPLETE = "pipeline.stage.start.complete"
     PIPELINE_STAGE_COMPLETE_NOTIFY = "pipeline.stage.complete.notify"
+    PIPELINE_STAGE_START_FAILED = 'pipeline.stage.start.failed'
 
     # Pipeline State Control
     PIPELINE_PAUSE_REQUEST = "pipeline.pause.request"
@@ -414,11 +653,13 @@ class MessageType(Enum):
     PIPELINE_STATUS_REQUEST = "pipeline.status.request"
     PIPELINE_STATUS_RESPONSE = "pipeline.status.response"
     PIPELINE_ERROR_NOTIFY = "pipeline.error.notify"
+    PIPELINE_METRICS_UPDATE = "pipeline.metrics.update"
 
     # Pipeline Reporting
     PIPELINE_REPORT_REQUEST = "pipeline.report.request"
     PIPELINE_REPORT_RESPONSE = "pipeline.report.response"
 
+    #..................................Reporting Types.........................................................
     # Reporting Management
     REPORT_GENERATE_REQUEST = "report.generate.request"
     REPORT_GENERATE_COMPLETE = "report.generate.complete"
@@ -449,6 +690,40 @@ class MessageType(Enum):
     REPORT_STATUS_REQUEST = "report.status.request"
     REPORT_STATUS_RESPONSE = "report.status.response"
 
+    # Core Process Flow
+    REPORT_PROCESS_START = "report.process.start"
+    REPORT_PROCESS_PROGRESS = "report.process.progress"
+    REPORT_PROCESS_COMPLETE = "report.process.complete"
+    REPORT_PROCESS_FAILED = "report.process.failed"
+
+    # Data Preparation
+    REPORT_DATA_PREPARE_PROGRESS = "report.data.prepare.progress"
+
+    # Visualization Generation
+    REPORT_VISUALIZATION_REQUEST = "report.visualization.generate"
+    REPORT_VISUALIZATION_COMPLETE = "report.visualization.complete"
+    REPORT_CHART_GENERATE = "report.chart.generate"
+    REPORT_GRAPH_GENERATE = "report.graph.generate"
+
+    # Format and Layout
+    REPORT_FORMAT_REQUEST = "report.format.request"
+    REPORT_LAYOUT_APPLY = "report.layout.apply"
+    REPORT_STYLE_UPDATE = "report.style.update"
+
+    # Review and Validation
+    REPORT_FEEDBACK_SUBMIT = "report.feedback.submit"
+
+    # Export and Delivery
+    REPORT_EXPORT_REQUEST = "report.export.request"
+    REPORT_EXPORT_COMPLETE = "report.export.complete"
+    REPORT_DELIVERY_REQUEST = "report.delivery.request"
+
+    # System Operations
+    REPORT_CONFIG_UPDATE = "report.config.update"
+    REPORT_TEMPLATE_UPDATE = "report.template.update"
+    REPORT_CLEANUP_REQUEST = "report.cleanup.request"
+
+    #........................................Staging Types..........................................................
     # Staging Management
     STAGING_CREATE_REQUEST = "staging.create.request"
     STAGING_CREATE_COMPLETE = "staging.create.complete"
@@ -577,6 +852,67 @@ class MessageType(Enum):
     # Extensibility Marker
     CUSTOM_EXTENSION_POINT = "custom.extension.point"
 
+    #..................................Monitoring Types...................................................
+    # Core Monitoring Flow
+    MONITORING_PROCESS_START = "monitoring.process.start"
+    MONITORING_PROCESS_PROGRESS = "monitoring.process.progress"
+    MONITORING_PROCESS_COMPLETE = "monitoring.process.complete"
+    MONITORING_PROCESS_FAILED = "monitoring.process.failed"
+
+    # Metric Collection
+    MONITORING_METRICS_COLLECT = "monitoring.metrics.collect"
+    MONITORING_METRICS_UPDATE = "monitoring.metrics.update"
+    MONITORING_METRICS_AGGREGATE = "monitoring.metrics.aggregate"
+    MONITORING_METRICS_EXPORT = "monitoring.metrics.export"
+
+    # Performance Monitoring
+    MONITORING_PERFORMANCE_CHECK = "monitoring.performance.check"
+    MONITORING_PERFORMANCE_ALERT = "monitoring.performance.alert"
+    MONITORING_PERFORMANCE_REPORT = "monitoring.performance.report"
+
+    # Resource Management
+    MONITORING_RESOURCE_CHECK = "monitoring.resource.check"
+    MONITORING_RESOURCE_ALERT = "monitoring.resource.alert"
+    MONITORING_RESOURCE_THRESHOLD = "monitoring.resource.threshold"
+
+    # System Health
+    MONITORING_HEALTH_CHECK = "monitoring.health.check"
+    MONITORING_HEALTH_STATUS = "monitoring.health.status"
+    MONITORING_HEALTH_ALERT = "monitoring.health.alert"
+
+    # Alert Management
+    MONITORING_ALERT_GENERATE = "monitoring.alert.generate"
+    MONITORING_ALERT_PROCESS = "monitoring.alert.process"
+    MONITORING_ALERT_RESOLVE = "monitoring.alert.resolve"
+    MONITORING_ALERT_ESCALATE = "monitoring.alert.escalate"
+
+    # Data Export
+    MONITORING_EXPORT_PROMETHEUS = "monitoring.export.prometheus"
+    MONITORING_EXPORT_INFLUXDB = "monitoring.export.influxdb"
+    MONITORING_EXPORT_JSON = "monitoring.export.json"
+
+    # System Operations
+    MONITORING_CONFIG_UPDATE = "monitoring.config.update"
+    MONITORING_CLEANUP_REQUEST = "monitoring.cleanup.request"
+    MONITORING_BACKUP_REQUEST = "monitoring.backup.request"
+
+    @property
+    def domain(self) -> str:
+        """Extract domain from message type"""
+        return self.value.split('.')[0]
+
+    @property
+    def action(self) -> str:
+        """Extract action from message type"""
+        parts = self.value.split('.')
+        return parts[1] if len(parts) > 1 else ""
+
+    @property
+    def state(self) -> str:
+        """Extract state from message type"""
+        parts = self.value.split('.')
+        return parts[2] if len(parts) > 2 else ""
+
 
 class ComponentType(Enum):
     """Enhanced system component types with detailed categorization"""
@@ -599,6 +935,7 @@ class ComponentType(Enum):
     MONITORING_MANAGER = "monitoring.manager"
     STAGING_MANAGER = "staging.manager"
     SETTINGS_MANAGER = "settings.manager"
+    PIPELINE_MANAGER = "pipeline.manager"
 
     # Department Handlers
     QUALITY_HANDLER = "quality.handler"
@@ -608,6 +945,8 @@ class ComponentType(Enum):
     RECOMMENDATION_HANDLER = "recommendation.handler"
     REPORT_HANDLER = "report.handler"
     MONITORING_HANDLER = "monitoring.handler"
+    PIPELINE_HANDLER = "pipeline.handler"
+
 
     # Department Processors
     QUALITY_PROCESSOR = "quality.processor"
@@ -761,8 +1100,8 @@ class MessageMetadata:
     """Enhanced message metadata with routing information"""
     timestamp: datetime = field(default_factory=datetime.now)
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    source_component: str = field(default="unknown")
-    target_component: str = field(default="unknown")
+    source_component: str = field(default_factory=lambda: "unknown")
+    target_component: str = field(default_factory=lambda: "unknown")
     priority: int = 1
     retry_count: int = 0
     domain_type: Optional[str] = None
@@ -855,60 +1194,6 @@ class ProcessingMessage:
 
 
 @dataclass
-class AnalyticsState(Enum):
-    """Detailed states for analytics processing"""
-    INITIALIZING = "initializing"
-    DATA_PREPARATION = "data_preparation"
-    FEATURE_ENGINEERING = "feature_engineering"
-    MODEL_SELECTION = "model_selection"
-    MODEL_TRAINING = "model_training"
-    MODEL_EVALUATION = "model_evaluation"
-    MODEL_VALIDATION = "model_validation"
-    PREDICTION_GENERATION = "prediction_generation"
-    RESULT_ANALYSIS = "result_analysis"
-    VISUALIZATION = "visualization"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-@dataclass
-class AnalyticsMetrics:
-    """Comprehensive metrics for analytics processing"""
-    data_quality_score: float = 0.0
-    feature_importance: Dict[str, float] = field(default_factory=dict)
-    model_performance: Dict[str, float] = field(default_factory=dict)
-    prediction_confidence: Dict[str, float] = field(default_factory=dict)
-    processing_time: Dict[str, float] = field(default_factory=dict)
-    resource_utilization: Dict[str, float] = field(default_factory=dict)
-    validation_scores: Dict[str, float] = field(default_factory=dict)
-    error_metrics: Dict[str, float] = field(default_factory=dict)
-
-
-@dataclass
-class AnalyticsContext(BaseContext):
-    """Enhanced analytics context with comprehensive tracking"""
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    model_context: Optional[ModelContext] = None
-    analytics_state: AnalyticsState = field(default=AnalyticsState.INITIALIZING)
-    metrics: AnalyticsMetrics = field(default_factory=AnalyticsMetrics)
-    feature_config: Dict[str, Any] = field(default_factory=dict)
-    model_config: Dict[str, Any] = field(default_factory=dict)
-    evaluation_criteria: Dict[str, Any] = field(default_factory=dict)
-    validation_rules: Dict[str, Any] = field(default_factory=dict)
-    visualization_config: Dict[str, Any] = field(default_factory=dict)
-    error_thresholds: Dict[str, float] = field(default_factory=dict)
-    processing_history: List[Dict[str, Any]] = field(default_factory=list)
-    model_type: str = field(default="default_model")
-    features: List[str] = field(default_factory=list)
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    training_config: Dict[str, Any] = field(default_factory=lambda: {"method": "default"})
-    evaluation_metrics: List[str] = field(default_factory=list)
-    model_constraints: Dict[str, Any] = field(default_factory=dict)
-    performance_requirements: Dict[str, float] = field(default_factory=lambda: {"accuracy": 0.0})
-    data_dependencies: List[str] = field(default_factory=list)
-
-
-@dataclass
 class ImplementationContext:
     """Context for decision implementation tracking"""
     implementation_id: str
@@ -923,24 +1208,95 @@ class ImplementationContext:
     updated_at: datetime = field(default_factory=datetime.now)
 
 
-@dataclass
 class DecisionState(Enum):
-    """Comprehensive states for decision processing"""
+    """States for decision processing"""
     INITIALIZING = "initializing"
     CONTEXT_ANALYSIS = "context_analysis"
     OPTION_GENERATION = "option_generation"
+    VALIDATION = "validation"
     IMPACT_ANALYSIS = "impact_analysis"
-    CONSTRAINT_VALIDATION = "constraint_validation"
+    AWAITING_COMPONENT_RESPONSE = "awaiting_component_response"
     AWAITING_APPROVAL = "awaiting_approval"
-    IMPLEMENTATION = "implementation"
-    MONITORING = "monitoring"
     COMPLETED = "completed"
     FAILED = "failed"
-    ANALYZING = "analyzing"
-    VALIDATING = "validating"
-    AWAITING_INPUT = "awaiting_input"
-    PROCESSING = "processing"
 
+
+@dataclass
+class DecisionContext:
+    """Enhanced decision processing context"""
+    pipeline_id: str
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    state: DecisionState = field(default_factory=lambda: DecisionState.INITIALIZING)
+
+    # Decision Configuration and Request Tracking
+    decision_type: str = field(default_factory=lambda: "standard")
+    priority: str = "medium"
+    requires_validation: bool = True
+    auto_apply_threshold: Optional[float] = None
+    request_id: Optional[str] = None
+    source_component: str = field(default_factory=lambda: "unknown")
+    requires_approval: bool = True
+
+    # Decision content and Option Management
+    options: List[Dict[str, Any]] = field(default_factory=list)
+    selected_option: Optional[Dict[str, Any]] = None
+    component_responses: Dict[str, Any] = field(default_factory=dict)
+    validation_results: Dict[str, Any] = field(default_factory=dict)
+    impact_assessment: Dict[str, Any] = field(default_factory=dict)
+    available_options: List[Dict[str, Any]] = field(default_factory=list)
+    option_constraints: Dict[str, Any] = field(default_factory=dict)
+    pending_responses: Set[str] = field(default_factory=set)
+    timeout_components: List[str] = field(default_factory=list)
+
+    # Processing metadata
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+
+    # Impact Assessment
+    impact_metrics: Dict[str, float] = field(default_factory=dict)
+    risk_assessment: Dict[str, Any] = field(default_factory=dict)
+    compliance_status: Dict[str, bool] = field(default_factory=dict)
+
+    def update_state(self, new_state: DecisionState) -> None:
+        self.state = new_state
+        self.updated_at = datetime.now()
+        if new_state == DecisionState.COMPLETED:
+            self.completed_at = datetime.now()
+
+
+@dataclass
+class DecisionRequest:
+    """Structure for decision requests"""
+    request_id: str
+    pipeline_id: str
+    source_component: str
+    options: List[Dict[str, Any]]
+    priority: str = "medium"
+    requires_approval: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class DecisionValidation:
+    """Structure for validation results"""
+    decision_id: str
+    validation_type: str
+    passed: bool
+    issues: List[str] = field(default_factory=list)
+    component_validations: Dict[str, bool] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DecisionImpact:
+    """Structure for impact assessment"""
+    decision_id: str
+    affected_components: Dict[str, Any]
+    cascading_effects: List[Dict[str, Any]]
+    requires_updates: List[str]
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class DecisionMetrics:
@@ -956,83 +1312,108 @@ class DecisionMetrics:
 
 
 @dataclass
-class DecisionContext(BaseContext):
-    """Enhanced decision context with comprehensive tracking"""
-
-    # Core tracking
-    decision_state: DecisionState = field(default=DecisionState.INITIALIZING)
-    metrics: DecisionMetrics = field(default_factory=DecisionMetrics)
-    implementation_context: Optional[ImplementationContext] = None
-    stakeholders: List[str] = field(default_factory=list)
-    approval_chain: List[str] = field(default_factory=list)
-    impact_criteria: Dict[str, Any] = field(default_factory=dict)
-    risk_thresholds: Dict[str, float] = field(default_factory=dict)
-    dependencies: Dict[str, List[str]] = field(default_factory=dict)
-    audit_trail: List[Dict[str, Any]] = field(default_factory=list)
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    control_point_id: Optional[str] = None
-    staged_id: Optional[str] = None
-
-    # Decision configuration
-    source_component: str = field(default="default_decision_maker")
-    decision_type: str = field(default="standard_decision")
-    options: List[Dict[str, Any]] = field(default_factory=list)
-    impacts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    constraints: Dict[str, Any] = field(default_factory=dict)
-    required_validations: List[str] = field(default_factory=list)
-
-    # Processing state
-    state: DecisionState = field(default_factory=lambda: DecisionState.INITIALIZING)  # Changed this line
-    requires_confirmation: bool = True
-    timeout_minutes: Optional[int] = None
-
-    # Tracking
-    error: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
-    feedback: List[Dict[str, Any]] = field(default_factory=list)
-
-    # Timestamps
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
-
-    def update_state(self, new_state: DecisionState) -> None:
-        """Update process state with timestamp"""
-        self.state = new_state
-        self.updated_at = datetime.now()
-
-        if new_state == DecisionState.COMPLETED:
-            self.completed_at = datetime.now()
+class QualityMetrics:
+    """Comprehensive metrics for quality analysis"""
+    total_issues: int = 0
+    issues_by_type: Dict[str, int] = field(default_factory=dict)
+    issues_by_severity: Dict[str, int] = field(default_factory=dict)
+    auto_resolvable: int = 0
+    manual_required: int = 0
+    resolution_rate: float = 0.0
+    validation_rate: float = 0.0
+    processing_time: float = 0.0
+    average_severity: float = 0.0
+    detection_accuracy: float = 0.0
 
 
 @dataclass
-class QualityContext(BaseContext):
-    """Enhanced quality context for message-based processing"""
-    # Core tracking
+class QualityRules:
+    """Configuration for quality rules"""
+    enabled_rules: List[str] = field(default_factory=list)
+    severity_thresholds: Dict[str, float] = field(default_factory=dict)
+    validation_criteria: Dict[str, Any] = field(default_factory=dict)
+    auto_resolution_rules: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    custom_rules: Dict[str, Any] = field(default_factory=dict)
+
+
+class QualityCheckType(Enum):
+    """Comprehensive types of quality checks"""
+    BASIC_VALIDATION = "basic_validation"
+    ADDRESS_LOCATION = "address_location"
+    CODE_CLASSIFICATION = "code_classification"
+    DATETIME_PROCESSING = "datetime_processing"
+    DOMAIN_VALIDATION = "domain_validation"
+    DUPLICATION_CHECK = "duplication_check"
+    IDENTIFIER_CHECK = "identifier_check"
+    NUMERIC_CURRENCY = "numeric_currency"
+    TEXT_STANDARD = "text_standard"
+    RELATIONSHIP_CHECK = "relationship_check"
+    CONSISTENCY_CHECK = "consistency_check"
+    COMPLETENESS_CHECK = "completeness_check"
+
+
+class QualityState(Enum):
+    """States for quality processing"""
+    INITIALIZING = "initializing"
+    CONTEXT_ANALYSIS = "context_analysis"
+    DETECTION = "detection"
+    ANALYSIS = "analysis"
+    RESOLUTION = "resolution"
+    VALIDATION = "validation"
+    REPORTING = "reporting"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class QualityIssueType(Enum):
+    """Types of quality issues"""
+    MISSING_VALUE = "missing_value"
+    INVALID_FORMAT = "invalid_format"
+    INCONSISTENT_VALUE = "inconsistent_value"
+    DUPLICATE_ENTRY = "duplicate_entry"
+    RELATIONSHIP_VIOLATION = "relationship_violation"
+    DOMAIN_VIOLATION = "domain_violation"
+    RANGE_VIOLATION = "range_violation"
+    FORMAT_VIOLATION = "format_violation"
+
+
+class ResolutionType(Enum):
+    """Types of issue resolutions"""
+    AUTO_FILL = "auto_fill"
+    FORMAT_CORRECTION = "format_correction"
+    VALUE_STANDARDIZATION = "value_standardization"
+    DUPLICATE_REMOVAL = "duplicate_removal"
+    MANUAL_CORRECTION = "manual_correction"
+    RELATIONSHIP_FIX = "relationship_fix"
+    DOMAIN_CORRECTION = "domain_correction"
+
+
+@dataclass
+class QualityContext:
+    """Enhanced quality processing context"""
+    pipeline_id: str
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    control_point_id: Optional[str] = None
-    staged_id: Optional[str] = None
-    source_type: str = field(default="data_quality")
-    column_types: Dict[str, str] = field(default_factory=dict)
-    detected_issues: List[Dict[str, Any]] = field(default_factory=list)
-    confidence_scores: Dict[str, float] = field(default_factory=lambda: {"overall": 0.0})
-    suggested_actions: List[str] = field(default_factory=list)
+    state: QualityState = field(default_factory=lambda: QualityState.INITIALIZING)
+
+    # Data Context
+    total_rows: int = 0
+    total_columns: int = 0
+    column_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    relationships: Dict[str, List[str]] = field(default_factory=dict)
+
+    # Processing Configuration
+    enabled_checks: List[QualityCheckType] = field(default_factory=list)
     validation_rules: Dict[str, Any] = field(default_factory=dict)
-    resolution_status: Dict[str, str] = field(default_factory=lambda: {"status": "pending"})
-    requires_decision: bool = False
+    resolution_config: Dict[str, Any] = field(default_factory=dict)
 
-    # Process state
-    state: QualityState = field(default=QualityState.INITIALIZING)
-    config: Dict[str, Any] = field(default_factory=dict)
+    # Results Tracking
+    detected_issues: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    applied_resolutions: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    validation_results: Dict[str, Any] = field(default_factory=dict)
 
-    # Results tracking
-    issues: List[Dict[str, Any]] = field(default_factory=list)
-    results: Dict[str, Any] = field(default_factory=dict)
-    metrics: QualityMetrics = field(default_factory=QualityMetrics)
-
-    # Error handling
-    error: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
+    # Performance Tracking
+    processing_metrics: Dict[str, float] = field(default_factory=dict)
+    error_counts: Dict[str, int] = field(default_factory=dict)
 
     # Timestamps
     created_at: datetime = field(default_factory=datetime.now)
@@ -1040,42 +1421,38 @@ class QualityContext(BaseContext):
     completed_at: Optional[datetime] = None
 
     def update_state(self, new_state: QualityState) -> None:
-        """Update process state with timestamp"""
         self.state = new_state
         self.updated_at = datetime.now()
 
         if new_state == QualityState.COMPLETED:
             self.completed_at = datetime.now()
 
-    def add_warning(self, warning: str) -> None:
-        """Add warning message"""
-        self.warnings.append(warning)
-        self.updated_at = datetime.now()
 
-    def add_issues(self, issues: List[Dict[str, Any]]) -> None:
-        """Add detected quality issues"""
-        self.issues.extend(issues)
-        self.updated_at = datetime.now()
-
-    def update_metrics(self, metrics: QualityMetrics) -> None:
-        """Update quality metrics"""
-        self.metrics = metrics
-        self.updated_at = datetime.now()
+@dataclass
+class QualityIssue:
+    """Structure for quality issues"""
+    issue_id: str
+    issue_type: QualityIssueType
+    column_name: str
+    description: str
+    affected_rows: List[int]
+    severity: str
+    auto_resolvable: bool
+    resolution_type: Optional[ResolutionType] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class InsightState(Enum):
-    """States specific to insight processing"""
-    INITIALIZING = "initializing"
-    ANALYZING = "analyzing"
-    GENERATING = "generating"
-    VALIDATING = "validating"
-    REVIEWING = "reviewing"
-    COMPLETING = "completing"
-    FAILED = "failed"
-    COMPLETED = "completed"
-    AWAITING_REVIEW = "awaiting_review"
-
+class ResolutionResult:
+    """Structure for resolution results"""
+    resolution_id: str
+    issue_id: str
+    resolution_type: ResolutionType
+    success: bool
+    affected_rows: List[int]
+    changes_made: Dict[str, Any]
+    validation_status: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class InsightMetrics:
@@ -1087,66 +1464,183 @@ class InsightMetrics:
     validation_scores: Dict[str, float] = field(default_factory=dict)
     review_status: Dict[str, str] = field(default_factory=dict)
 
+
+class InsightState(Enum):
+    """Enhanced insight processing states"""
+    INITIALIZING = "initializing"
+    RESOURCE_ALLOCATION = "resource_allocation"
+    CONTEXT_ANALYSIS = "context_analysis"
+    DETECTION_PREPARATION = "detection_preparation"
+    DETECTION_IN_PROGRESS = "detection_in_progress"
+    VALIDATION_PENDING = "validation_pending"
+    VALIDATION_IN_PROGRESS = "validation_in_progress"
+    RESULTS_AGGREGATION = "results_aggregation"
+    COMPLETION = "completion"
+    ERROR = "error"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
+    ROLLING_BACK = "rolling_back"
+
+
 @dataclass
-class InsightContext(BaseContext):
-    """Enhanced context for insight processing"""
-    # Core tracking
+class InsightContext:
+    """Enhanced insight processing context"""
+    pipeline_id: str
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    control_point_id: Optional[str] = None
-    staged_id: Optional[str] = None
-    data_segments: List[str] = field(default_factory=list)
-    priority_rules: Dict[str, Any] = field(default_factory=dict)
+    state: InsightState = field(default_factory=lambda: InsightState.INITIALIZING)
 
-    # Insight configuration
-    analysis_type: str = field(default="general_analysis")
-    target_metrics: List[str] = field(default_factory=list)
-    insight_categories: List[str] = field(default_factory=list)
-    confidence_threshold: float = 0.5
-    validation_criteria: List[str] = field(default_factory=list)
-    business_rules: Dict[str, Any] = field(default_factory=dict)
+    # Configuration
+    enabled_features: List[str] = field(default_factory=list)
+    custom_processors: Dict[str, Any] = field(default_factory=dict)
+    processing_mode: str = "batch"  # or "streaming"
 
-    # Processing state
-    state: InsightState = field(default=InsightState.INITIALIZING)
-    metrics: InsightMetrics = field(default_factory=InsightMetrics)
-    requires_review: bool = False
+    # Resource Management
+    resource_requirements: Dict[str, Any] = field(default_factory=dict)
+    allocated_resources: Dict[str, Any] = field(default_factory=dict)
 
-    # Results tracking
-    insights_generated: int = 0
-    insights_validated: int = 0
-    insights: Dict[str, Any] = field(default_factory=dict)
+    # Processing Tracking
+    progress: Dict[str, float] = field(default_factory=dict)
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    backpressure_indicators: Dict[str, Any] = field(default_factory=dict)
 
-    # Error handling
-    error: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
+    # Results Management
+    intermediate_results: Dict[str, Any] = field(default_factory=dict)
+    validation_history: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Error Handling
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+    retry_count: Dict[str, int] = field(default_factory=dict)
+
+    # Timestamps and Duration
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+
+    # Operational Metadata
+    component_health: Dict[str, str] = field(default_factory=dict)
+    sync_status: Dict[str, bool] = field(default_factory=dict)
+
+    def update_state(self, new_state: InsightState, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Update state with tracking"""
+        self.state = new_state
+        self.updated_at = datetime.now()
+
+        if metadata:
+            self.metrics[f"state_change_{new_state.value}"] = metadata
+
+        if new_state == InsightState.COMPLETION:
+            self.completed_at = datetime.now()
+            self.duration_ms = int((self.completed_at - self.created_at).total_seconds() * 1000)
+
+
+class RecommendationState(Enum):
+    """States for recommendation processing"""
+    INITIALIZING = "initializing"
+    CANDIDATE_GENERATION = "candidate_generation"
+    FILTERING = "filtering"
+    RANKING = "ranking"
+    PERSONALIZATION = "personalization"
+    DIVERSITY_CHECK = "diversity_check"
+    VALIDATION = "validation"
+    COMPLETION = "completion"
+    FAILED = "failed"
+
+
+class RecommendationType(Enum):
+    """Types of recommendation engines"""
+    CONTENT_BASED = "content_based"
+    COLLABORATIVE = "collaborative"
+    CONTEXTUAL = "contextual"
+    HYBRID = "hybrid"
+    PERSONALIZED = "personalized"
+
+
+@dataclass
+class RecommendationContext:
+    """Enhanced recommendation processing context"""
+    pipeline_id: str
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    state: RecommendationState = field(default_factory=lambda: RecommendationState.INITIALIZING)
+
+    # Engine Configuration
+    enabled_engines: List[RecommendationType] = field(default_factory=list)
+    engine_weights: Dict[str, float] = field(default_factory=dict)
+    engine_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    # Processing Configuration
+    filtering_rules: Dict[str, Any] = field(default_factory=dict)
+    ranking_criteria: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    diversity_settings: Dict[str, Any] = field(default_factory=dict)
+    personalization_config: Dict[str, Any] = field(default_factory=dict)
+
+    # Limits and Thresholds
+    min_confidence: float = 0.5
+    max_recommendations: int = 10
+    similarity_threshold: float = 0.8
+
+    # Results Tracking
+    candidates: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    filtered_candidates: List[Dict[str, Any]] = field(default_factory=list)
+    ranked_recommendations: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Performance Tracking
+    processing_metrics: Dict[str, float] = field(default_factory=dict)
+    engine_metrics: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
     # Timestamps
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
-    def update_state(self, new_state: InsightState) -> None:
-        """Update process state with timestamp"""
+    def update_state(self, new_state: RecommendationState) -> None:
+        """Update recommendation state with timestamp"""
         self.state = new_state
         self.updated_at = datetime.now()
 
-        if new_state == InsightState.COMPLETED:
+        if new_state == RecommendationState.COMPLETION:
             self.completed_at = datetime.now()
 
-    def add_insight(self, category: str, insight: Dict[str, Any]) -> None:
-        """Add generated insight"""
-        if category not in self.insights:
-            self.insights[category] = []
-        self.insights[category].append(insight)
-        self.insights_generated += 1
-        self.updated_at = datetime.now()
 
-    def update_metrics(self, metrics_update: Dict[str, Any]) -> None:
-        """Update insight metrics"""
-        self.metrics = InsightMetrics(**{
-            **self.metrics.__dict__,
-            **metrics_update
-        })
-        self.updated_at = datetime.now()
+@dataclass
+class RecommendationCandidate:
+    """Structure for recommendation candidates"""
+    candidate_id: str
+    source_engine: RecommendationType
+    confidence_score: float
+    features: Dict[str, Any]
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    ranking_scores: Dict[str, float] = field(default_factory=dict)
+    diversity_score: Optional[float] = None
+
+
+@dataclass
+class RankedRecommendation:
+    """Structure for ranked recommendations"""
+    recommendation_id: str
+    candidate: RecommendationCandidate
+    final_score: float
+    rank: int
+    confidence: float
+    ranking_factors: Dict[str, float]
+    diversity_contribution: float = 0.0
+    personalization_score: float = 0.0
+    validation_status: Optional[str] = None
+
+
+@dataclass
+class RecommendationMetrics:
+    """Metrics for recommendation process"""
+    pipeline_id: str
+    total_candidates: int = 0
+    filtered_count: int = 0
+    engine_metrics: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    ranking_metrics: Dict[str, float] = field(default_factory=dict)
+    diversity_score: float = 0.0
+    relevance_score: float = 0.0
+    average_confidence: float = 0.0
+    processing_time: Dict[str, float] = field(default_factory=dict)
+    validation_scores: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -1163,273 +1657,344 @@ class RecommendationState(Enum):
 
 
 @dataclass
-class RecommendationContext(BaseContext):
-    """Enhanced recommendation context for message-based processing"""
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    control_point_id: Optional[str] = None
-    staged_id: Optional[str] = None
+class RecommendationItem:
+    """Structure for individual recommendations"""
+    source_engine: str
+    score: float
+    confidence: float
+    rationale: str
+    item_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.now)
+    validated: bool = False
+    ranking_features: Dict[str, float] = field(default_factory=dict)
+    feedback: Optional[Dict[str, Any]] = None
 
-    # Core properties
-    source_component: str = field(default="recommendation_system")
-    request_type: str = field(default="general_recommendation")
-    target_type: str = field(default="default_target")
-
-    # Processing state
-    candidate_limits: Dict[str, int] = field(default_factory=lambda: {"max_candidates": 10})
-    state: RecommendationState = field(default_factory=lambda: RecommendationState.INITIALIZING)  # Changed this line
-    engine_results: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    aggregated_results: List[Dict[str, Any]] = field(default_factory=list)
-
-    # Configuration
-    enabled_engines: List[str] = field(default_factory=list)
-    engine_weights: Dict[str, float] = field(default_factory=dict)
-    filtering_rules: Dict[str, Any] = field(default_factory=dict)
-    ranking_criteria: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    diversity_settings: Dict[str, Any] = field(default_factory=lambda: {"enabled": False})
-
-    # Performance tracking
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
-    min_confidence: float = 0.5
-    max_recommendations: int = 10
-    timeout_seconds: Optional[int] = None
-
-    # Contextual information
-    user_context: Dict[str, Any] = field(default_factory=dict)
-    temporal_context: Dict[str, Any] = field(default_factory=dict)
-    business_context: Dict[str, Any] = field(default_factory=dict)
-
-    def update_state(self, new_state: RecommendationState) -> None:
-        """Update process state with timestamp"""
-        self.state = new_state
-        self.updated_at = datetime.now()
-
-        if new_state == RecommendationState.COMPLETED:
-            self.completed_at = datetime.now()
-
-    def add_engine_results(self, engine: str, results: List[Dict[str, Any]]) -> None:
-        """Add results from a recommendation engine"""
-        self.engine_results[engine] = results
-        self.updated_at = datetime.now()
-
-
-# Add to event_types.py
 
 @dataclass
-class PipelineState(Enum):
-    """States specific to pipeline processing"""
+class EngineConfig:
+    """Configuration for recommendation engines"""
+    engine_id: str
+    weight: float = 1.0
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    thresholds: Dict[str, float] = field(default_factory=dict)
+    constraints: Dict[str, Any] = field(default_factory=dict)
+    enabled: bool = True
+
+
+@dataclass
+class ReportSection:
+    """Structure for report sections"""
+    section_type: str
+    title: str
+    content: Dict[str, Any]
+    section_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    generated_at: datetime = field(default_factory=datetime.now)
+    status: str = "pending"
+    dependencies: List[str] = field(default_factory=list)
+    visualizations: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class ReportMetrics:
+    """Metrics for report generation"""
+    total_sections: int = 0
+    completed_sections: int = 0
+    visualization_count: int = 0
+    processing_time: Dict[str, float] = field(default_factory=dict)
+    data_points: Dict[str, int] = field(default_factory=dict)
+    section_sizes: Dict[str, int] = field(default_factory=dict)
+    error_counts: Dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ReportConfig:
+    """Configuration for report generation"""
+    template_id: str
+    sections: List[str]
+    formatting: Dict[str, Any] = field(default_factory=dict)
+    visualization_config: Dict[str, Any] = field(default_factory=dict)
+    output_formats: List[str] = field(default_factory=list)
+    custom_settings: Dict[str, Any] = field(default_factory=dict)
+
+
+class ReportState(Enum):
+    """States for report processing"""
     INITIALIZING = "initializing"
-    RUNNING = "running"
-    PAUSED = "paused"
+    DATA_PREPARATION = "data_preparation"
+    SECTION_GENERATION = "section_generation"
+    VISUALIZATION_CREATION = "visualization_creation"
+    FORMATTING = "formatting"
+    REVIEW = "review"
+    EXPORT = "export"
     COMPLETED = "completed"
     FAILED = "failed"
-    CANCELLED = "cancelled"
+
+
+class ReportType(Enum):
+    """Types of reports"""
+    QUALITY_REPORT = "quality_report"
+    INSIGHT_REPORT = "insight_report"
+    ANALYTICS_REPORT = "analytics_report"
+    SUMMARY_REPORT = "summary_report"
+    CUSTOM_REPORT = "custom_report"
+
+
+class ReportFormat(Enum):
+    """Output formats for reports"""
+    HTML = "html"
+    PDF = "pdf"
+    DOCX = "docx"
+    MARKDOWN = "markdown"
+    JSON = "json"
 
 
 @dataclass
-class PipelineContext:
-    """Enhanced pipeline context for orchestration"""
+class ReportContext:
+    """Enhanced report processing context"""
+    # Report Configuration
     pipeline_id: str
+    report_type: ReportType
+    report_format: ReportFormat
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: Optional[str] = None
+    state: ReportState = field(default_factory=lambda: ReportState.INITIALIZING)
+    template_name: Optional[str] = None
+    style_config: Dict[str, Any] = field(default_factory=dict)
 
-    # Progress tracking
-    component_states: Dict[str, str] = field(default_factory=dict)
-    progress: Dict[str, float] = field(default_factory=lambda: {"overall": 0.0})
+    # Content Management
+    sections: List[Dict[str, Any]] = field(default_factory=list)
+    visualizations: Dict[str, Any] = field(default_factory=dict)
+    data_sources: Dict[str, Any] = field(default_factory=dict)
 
-    # Stage management
-    current_stage: ProcessingStage = field(default=ProcessingStage.INITIAL_VALIDATION)
-    stage_configs: Dict[str, Any] = field(default_factory=dict)
-    stages_completed: List[str] = field(default_factory=list)
-    failed_stage: Optional[str] = None
+    # Processing State
+    current_section: Optional[str] = None
+    completed_sections: List[str] = field(default_factory=list)
+    section_status: Dict[str, str] = field(default_factory=dict)
 
-    # State management
-    state: PipelineState = field(default=PipelineState.INITIALIZING)
-    error: Optional[str] = None
+    # Content Validation
+    validation_rules: Dict[str, Any] = field(default_factory=dict)
+    validation_results: Dict[str, Any] = field(default_factory=dict)
 
-    # Decision handling
-    pending_decision: Optional[Dict[str, Any]] = None
-    pause_reason: Optional[str] = None
-
-    # Metrics tracking
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    # Export Configuration
+    export_config: Dict[str, Any] = field(default_factory=dict)
+    delivery_options: Dict[str, Any] = field(default_factory=dict)
 
     # Timestamps
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
-    def update_stage(self, new_stage: ProcessingStage) -> None:
-        """Update current stage with timestamp"""
-        self.current_stage = new_stage
-        self.updated_at = datetime.now()
-
-    def complete_stage(self, stage: str) -> None:
-        """Record stage completion"""
-        if stage not in self.stages_completed:
-            self.stages_completed.append(stage)
-            self.updated_at = datetime.now()
-
-    def update_metrics(self, metrics_update: Dict[str, Any]) -> None:
-        """Update pipeline metrics"""
-        self.metrics.update(metrics_update)
-        self.updated_at = datetime.now()
-
-    def add_completed_stage(self, stage: str) -> None:
-        """Record completed stage"""
-        if stage not in self.stages_completed:
-            self.stages_completed.append(stage)
-            self.updated_at = datetime.now()
-
-    def update_progress(self, stage: str, progress: float) -> None:
-        """Update stage progress"""
-        self.progress[stage] = progress
-        self.progress["overall"] = sum(self.progress.values()) / len(self.stage_configs)
-        self.updated_at = datetime.now()
-
-
-@dataclass
-class StageMetadata:
-    """Metadata for pipeline stages"""
-    stage_type: str
-    stage_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    config: Dict[str, Any] = field(default_factory=dict)
-    timeout_minutes: Optional[int] = None
-    retry_count: int = 0
-    max_retries: int = 3
-    current_stage: str = field(default="initial")
-    stage_sequence: List[str] = field(default_factory=list)
-    stage_dependencies: Dict[str, List[str]] = field(default_factory=dict)
-    stage_configs: Dict[str, Any] = field(default_factory=dict)
-    component_states: Dict[str, str] = field(default_factory=dict)
-    progress: Dict[str, float] = field(default_factory=lambda: {"overall": 0.0})
-    error_handling_rules: Dict[str, Any] = field(default_factory=lambda: {"default_action": "log"})
-
-
-@dataclass
-class PipelineMetrics:
-    """Metrics for pipeline processing"""
-    total_stages: int = 0
-    completed_stages: int = 0
-    failed_stages: int = 0
-    total_decisions: int = 0
-    average_stage_duration: float = 0.0
-    processing_time: float = 0.0
-    completion_percentage: float = 0.0
-
-
-@dataclass
-class ReportState(Enum):
-    """States specific to report generation"""
-    INITIALIZING = "initializing"
-    GATHERING_DATA = "gathering_data"
-    GENERATING = "generating"
-    FORMATTING = "formatting"
-    REVIEWING = "reviewing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-@dataclass
-class ReportContext(BaseContext):
-    """Enhanced report context for message-based processing"""
-    # Core tracking
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    control_point_id: Optional[str] = None
-    staged_id: Optional[str] = None
-
-    # Report configuration
-    report_type: str = field(default="default_report")
-    report_id: uuid.UUID = field(default_factory=uuid.uuid4)
-    format: str = field(default="html")
-    template_name: Optional[str] = None
-    templates: List[str] = field(default_factory=list)
-    data_sources: List[str] = field(default_factory=list)
-    sections: List[ReportSectionType] = field(default_factory=lambda: [
-        ReportSectionType.OVERVIEW,
-        ReportSectionType.SUMMARY
-    ])
-
-    # Processing state
-    state: ReportState = field(default_factory=lambda: ReportState.INITIALIZING)  # Changed this line
-    section_status: Dict[str, str] = field(default_factory=lambda: {
-        "overall_status": "not_started"
-    })
-    report_metadata: Dict[str, Any] = field(default_factory=lambda: {
-        "version": "1.0",
-        "generated_at": datetime.now().isoformat()
-    })
-
-    # Content tracking
-    collected_data: Dict[str, Any] = field(default_factory=dict)
-    generated_sections: Dict[str, Any] = field(default_factory=dict)
-
-    # Error handling
-    error: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
-
     def update_state(self, new_state: ReportState) -> None:
-        """Update process state with timestamp"""
+        """Update report state with timestamp"""
         self.state = new_state
         self.updated_at = datetime.now()
 
         if new_state == ReportState.COMPLETED:
             self.completed_at = datetime.now()
 
-    def add_section_data(self, section: str, data: Any) -> None:
-        """Add data for a report section"""
-        self.collected_data[section] = data
-        self.section_status[section] = "data_ready"
-        self.updated_at = datetime.now()
 
-    # Formatting and presentation
-    formatting_rules: Dict[str, Any] = field(default_factory=lambda: {
-        "theme": "default",
-        "font": "Arial",
-        "font_size": 12
-    })
-    output_formats: List[str] = field(default_factory=lambda: ["pdf", "html"])
-
-    # Component integration
-    components_included: List[str] = field(default_factory=list)
-    aggregation_rules: Dict[str, Any] = field(default_factory=dict)
-
-    # Data references
-    quality_data_ref: Optional[str] = None
-    insight_data_ref: Optional[str] = None
-    analytics_data_ref: Optional[str] = None
-
-    # Visualization and formatting
-    visualization_config: Dict[str, Any] = field(default_factory=lambda: {
-        "color_scheme": "default",
-        "chart_type": "auto"
-    })
-    style_config: Dict[str, Any] = field(default_factory=lambda: {
-        "layout": "standard",
-        "theme": "light"
-    })
-
-    # Distribution and access
-    distribution_rules: Optional[Dict[str, Any]] = None
-    access_control: Dict[str, Any] = field(default_factory=lambda: {
-        "default_access": "restricted"
-    })
-
-    # User customization
-    user_preferences: Dict[str, Any] = field(default_factory=dict)
+@dataclass
+class ReportSection:
+    """Structure for report sections"""
+    section_id: str
+    title: str
+    content: Dict[str, Any]
+    order: int
+    section_type: str
+    visualizations: List[str] = field(default_factory=list)
+    dependencies: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class MonitoringContext(BaseContext):
-    """
-    Comprehensive monitoring context for tracking system health and performance
+class Visualization:
+    """Structure for report visualizations"""
+    visualization_id: str
+    visualization_type: str
+    data: Dict[str, Any]
+    config: Dict[str, Any]
+    dependencies: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    Provides detailed configuration and tracking for monitoring workflows
-    """
-    # Core monitoring configuration
-    source_component: str = field(default="system_monitor")
-    monitoring_type: str = field(default="comprehensive")
+
+@dataclass
+class ReportTemplate:
+    """Structure for report templates"""
+    template_id: str
+    template_type: ReportType
+    sections: List[Dict[str, Any]]
+    style_config: Dict[str, Any]
+    validation_rules: Dict[str, Any]
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+class MonitoringState(Enum):
+    """States for monitoring processing"""
+    INITIALIZING = "initializing"
+    COLLECTING = "collecting"
+    PROCESSING = "processing"
+    ANALYZING = "analyzing"
+    EXPORTING = "exporting"
+    ALERTING = "alerting"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AlertSeverity(Enum):
+    """Severity levels for monitoring alerts"""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class MetricType(Enum):
+    """Types of metrics collected"""
+    SYSTEM = "system"
+    PERFORMANCE = "performance"
+    RESOURCE = "resource"
+    BUSINESS = "business"
+    CUSTOM = "custom"
+
+
+@dataclass
+class MetricsAggregate:
+    """Structure for aggregated metrics"""
+    metric_id: str
+    metric_type: MetricType
+    value: float
+    timestamp: datetime
+    source: str
+    aggregation_type: str
+    dimensions: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MonitoringAlert:
+    """Structure for monitoring alerts"""
+    alert_id: str
+    severity: AlertSeverity
+    source: str
+    message: str
+    timestamp: datetime
+    metric_id: Optional[str] = None
+    context: Dict[str, Any] = field(default_factory=dict)
+    resolution: Optional[Dict[str, Any]] = None
+    escalation_level: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class MonitoringState(Enum):
+    """Detailed states for monitoring operations"""
+    INITIALIZING = "initializing"
+    COLLECTING = "collecting"
+    ANALYZING = "analyzing"
+    ALERTING = "alerting"
+    REPORTING = "reporting"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class MonitoringMetrics:
+    """Comprehensive metrics for system monitoring"""
+    system_metrics: Dict[str, float] = field(default_factory=dict)
+    performance_metrics: Dict[str, float] = field(default_factory=dict)
+    resource_metrics: Dict[str, float] = field(default_factory=dict)
+    error_rates: Dict[str, float] = field(default_factory=dict)
+    alert_counts: Dict[str, int] = field(default_factory=dict)
+    response_times: Dict[str, float] = field(default_factory=dict)
+    component_health: Dict[str, str] = field(default_factory=dict)
+    collection_timestamps: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class AlertContext:
+    """Context for system alerts"""
+    alert_id: str
+    source: str
+    severity: str
+    message: str
+    component: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
+    acknowledgment: Optional[Dict[str, Any]] = None
+    resolution: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class MonitoringContext:
+    """Enhanced monitoring context"""
+    pipeline_id: str
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    state: MonitoringState = field(default_factory=lambda: MonitoringState.INITIALIZING)
+
+    # Collection Configuration
+    metric_types: List[MetricType] = field(default_factory=list)
+    collectors_enabled: List[str] = field(default_factory=list)
+    collection_interval: int = 60
+
+    # Metrics Storage
+    collected_metrics: Dict[str, Any] = field(default_factory=dict)
+    aggregated_metrics: Dict[str, Any] = field(default_factory=dict)
+    historical_metrics: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Alert Management
+    active_alerts: List[Dict[str, Any]] = field(default_factory=list)
+    alert_history: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Export Configuration
+    export_targets: List[str] = field(default_factory=list)
+    export_format: str = "json"
+
+    # Timestamps and Duration
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+
+    def update_state(self, new_state: MonitoringState) -> None:
+        """Update monitoring state with timestamp"""
+        self.state = new_state
+        self.updated_at = datetime.now()
+
+        if new_state == MonitoringState.COMPLETED:
+            self.completed_at = datetime.now()
+
+    monitor_state: MonitoringState = field(default_factory=lambda: MonitoringState.INITIALIZING)
+    metrics: MonitoringMetrics = field(default_factory=MonitoringMetrics)
+
+    # Monitoring configuration
+    monitored_components: List[str] = field(default_factory=list)
+    source_component: str = field(default_factory=lambda: "system_monitor")
+    monitoring_type: str = field(default_factory=lambda: "comprehensive")
+
+    # Alert and Anomaly Configuration
+    alert_thresholds: Dict[str, float] = field(default_factory=dict)
+    alert_rules: Dict[str, Any] = field(default_factory=lambda: {
+        "severity_levels": ["info", "warning", "critical"],
+        "notification_channels": []
+    })
+
+    # Resource tracking
+    resource_quotas: Dict[str, float] = field(default_factory=dict)
+    resource_usage: Dict[str, float] = field(default_factory=dict)
+
+    # Performance and Resource Tracking
+    performance_metrics: Dict[str, Any] = field(default_factory=dict)
+    resource_limits: Dict[str, Any] = field(default_factory=lambda: {
+        "max_cpu_cores": None,
+        "max_memory_gb": None,
+        "max_disk_gb": None
+    })
+    performance_baselines: Dict[str, float] = field(default_factory=dict)
+    performance_trends: Dict[str, List[float]] = field(default_factory=dict)
+
+    # Health checking
+    health_check_results: Dict[str, bool] = field(default_factory=dict)
+    last_health_check: Optional[datetime] = None
 
     # Metrics Collection Configuration
     metrics_types: List[str] = field(default_factory=list)
@@ -1441,22 +2006,6 @@ class MonitoringContext(BaseContext):
         "memory_usage": {"warning": 85, "critical": 95},
         "disk_space": {"warning": 80, "critical": 90}
     })
-
-    # Performance and Resource Tracking
-    performance_metrics: Dict[str, Any] = field(default_factory=dict)
-    resource_limits: Dict[str, Any] = field(default_factory=lambda: {
-        "max_cpu_cores": None,
-        "max_memory_gb": None,
-        "max_disk_gb": None
-    })
-
-    # Alert and Anomaly Configuration
-    alert_rules: Dict[str, Any] = field(default_factory=lambda: {
-        "severity_levels": ["info", "warning", "critical"],
-        "notification_channels": []
-    })
-
-    # Monitoring Scope and Focus
     target_systems: List[str] = field(default_factory=list)
     excluded_systems: List[str] = field(default_factory=list)
 
@@ -1482,6 +2031,39 @@ class MonitoringContext(BaseContext):
         "frequency": "hourly",
         "export_targets": []
     })
+
+    def update_metrics(self, new_metrics: Dict[str, Any]) -> None:
+        """Update monitoring metrics"""
+        for category, values in new_metrics.items():
+            if hasattr(self.metrics, category):
+                current = getattr(self.metrics, category)
+                if isinstance(current, dict):
+                    current.update(values)
+                else:
+                    setattr(self.metrics, category, values)
+        self.updated_at = datetime.now()
+
+    def add_alert(self, alert: AlertContext) -> None:
+        """Add new alert to active alerts"""
+        self.active_alerts.append(alert)
+        self.updated_at = datetime.now()
+
+    def resolve_alert(self, alert_id: str, resolution: Dict[str, Any]) -> None:
+        """Resolve an active alert"""
+        for alert in self.active_alerts:
+            if alert.alert_id == alert_id:
+                alert.status = "resolved"
+                alert.resolution = resolution
+                self.alert_history.append(alert)
+                self.active_alerts.remove(alert)
+                break
+        self.updated_at = datetime.now()
+
+    def update_health_check(self, results: Dict[str, bool]) -> None:
+        """Update health check results"""
+        self.health_check_results.update(results)
+        self.last_health_check = datetime.now()
+        self.updated_at = datetime.now()
 
 
 @dataclass
@@ -1653,6 +2235,33 @@ class ProcessingContext:
 
 
 @dataclass
+class StagingMetrics:
+    """Metrics for staging operations"""
+    active_stages: int = 0
+    total_stored_bytes: int = 0
+    total_retrieved_bytes: int = 0
+    storage_operations: int = 0
+    retrieval_operations: int = 0
+    error_count: int = 0
+    cleanup_count: int = 0
+    current_storage_usage: float = 0.0
+    max_storage_usage: float = 0.0
+    average_storage_time: float = 0.0
+
+
+@dataclass
+class PipelineMetrics:
+    """Metrics for pipeline processing"""
+    total_stages: int = 0
+    completed_stages: int = 0
+    failed_stages: int = 0
+    total_decisions: int = 0
+    average_stage_duration: float = 0.0
+    processing_time: float = 0.0
+    completion_percentage: float = 0.0
+
+
+@dataclass
 class StagingState(Enum):
     """States for staging operations"""
     INITIALIZING = "initializing"
@@ -1665,10 +2274,19 @@ class StagingState(Enum):
 
 @dataclass
 class StagingContext:
-    """Context for staged data"""
-    stage_id: str
+    """Context for pipeline stage execution"""
     pipeline_id: str
-    state: StagingState = field(default=StagingState.INITIALIZING)
+    stage_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    stage_type: ProcessingStage = field(default_factory=lambda: ProcessingStage.INITIAL_VALIDATION)
+    start_time: datetime = field(default_factory=datetime.now)
+    completion_time: Optional[datetime] = None
+    status: ProcessingStatus = field(default_factory=lambda: ProcessingStatus.PENDING)
+    retries: int = 0
+    max_retries: int = 3
+    results: Dict[str, Any] = field(default_factory=dict)
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+    dependencies_met: bool = False
+    state: StagingState = field(default_factory=lambda: StagingState.INITIALIZING)
     storage_path: Optional[Path] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     access_control: Set[str] = field(default_factory=set)
@@ -1683,4 +2301,235 @@ class StagingContext:
 
     def has_access(self, component_id: str) -> bool:
         return component_id in self.access_control
+
+
+@dataclass
+class PipelineState(Enum):
+    """Detailed states for pipeline execution"""
+    INITIALIZING = "initializing"
+    STAGE_TRANSITION = "stage_transition"
+    STAGE_PROCESSING = "stage_processing"
+    STAGE_VALIDATING = "stage_validating"
+    AWAITING_DECISION = "awaiting_decision"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RUNNING = "running"
+
+
+@dataclass
+class PipelineContext(BaseContext):
+    """Enhanced context for pipeline execution tracking"""
+    pipeline_state: PipelineState = field(default_factory=lambda: PipelineState.INITIALIZING)
+
+    # Stage management
+    current_stage: Optional[StagingContext] = None
+    stage_configs: Dict[str, Any] = field(default_factory=dict)
+    stages_completed: List[str] = field(default_factory=list)
+    failed_stage: Optional[str] = None
+    completed_stages: List[StagingContext] = field(default_factory=list)
+    stage_sequence: List[ProcessingStage] = field(default_factory=list)
+    stage_dependencies: Dict[str, List[str]] = field(default_factory=dict)
+
+    # Progress tracking
+    component_states: Dict[str, str] = field(default_factory=dict)
+    progress: Dict[str, float] = field(default_factory=lambda: {"overall": 0.0})
+    stage_timeouts: Dict[str, datetime] = field(default_factory=dict)
+    retry_counts: Dict[str, int] = field(default_factory=dict)
+
+    # Error handling
+    error_history: List[Dict[str, Any]] = field(default_factory=list)
+    recovery_attempts: Dict[str, int] = field(default_factory=dict)
+
+    # Resource tracking
+    resource_allocation: Dict[str, Any] = field(default_factory=dict)
+    resource_usage: Dict[str, float] = field(default_factory=dict)
+
+    pipeline_id: str
+    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
+
+    # State management
+    state: PipelineState = field(default_factory=lambda: PipelineState.INITIALIZING)
+    error: Optional[str] = None
+
+    # Decision handling
+    pending_decision: Optional[Dict[str, Any]] = None
+    pause_reason: Optional[str] = None
+
+    # Metrics tracking
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+    # Timestamps
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+
+    def update_stage(self, new_stage: ProcessingStage) -> None:
+        """Update current stage with timestamp"""
+        self.current_stage = new_stage
+        self.updated_at = datetime.now()
+
+    def complete_stage(self, stage: str) -> None:
+        """Record stage completion"""
+        if stage not in self.stages_completed:
+            self.stages_completed.append(stage)
+            self.updated_at = datetime.now()
+
+    def update_metrics(self, metrics_update: Dict[str, Any]) -> None:
+        """Update pipeline metrics"""
+        self.metrics.update(metrics_update)
+        self.updated_at = datetime.now()
+
+    def add_completed_stage(self, stage: str) -> None:
+        """Record completed stage"""
+        if stage not in self.stages_completed:
+            self.stages_completed.append(stage)
+            self.updated_at = datetime.now()
+
+    def update_progress(self, stage: str, progress: float) -> None:
+        """Update stage progress"""
+        self.progress[stage] = progress
+        self.progress["overall"] = sum(self.progress.values()) / len(self.stage_configs)
+        self.updated_at = datetime.now()
+
+    def add_error(self, stage: str, error: str, details: Dict[str, Any]) -> None:
+        """Record pipeline error"""
+        self.error_history.append({
+            'stage': stage,
+            'error': error,
+            'details': details,
+            'timestamp': datetime.now().isoformat()
+        })
+        self.updated_at = datetime.now()
+
+    def can_proceed_to_stage(self, stage: ProcessingStage) -> bool:
+        """Check if pipeline can proceed to given stage"""
+        if not self.stage_dependencies:
+            return True
+
+        dependencies = self.stage_dependencies.get(stage.value, [])
+        completed_stages = {s.stage_type.value for s in self.completed_stages}
+        return all(dep in completed_stages for dep in dependencies)
+
+
+class EventTypeRegistry:
+    """Central registry for managing domain event types"""
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(EventTypeRegistry, cls).__new__(cls)
+            cls._instance.initialize()
+        return cls._instance
+
+    def initialize(self):
+        """Initialize the registry"""
+        self._registry = {}
+        self._patterns = {}
+        self._validators = {}
+        self._metadata = {}
+
+    def register_domain(self, domain: str, event_types: List[MessageType],
+                        pattern_validator: Optional[callable] = None,
+                        metadata: Optional[Dict[str, Any]] = None):
+        """Register a domain's event types"""
+        self._registry[domain] = event_types
+        if pattern_validator:
+            self._validators[domain] = pattern_validator
+        if metadata:
+            self._metadata[domain] = metadata
+
+    def get_domain_events(self, domain: str) -> Optional[List[MessageType]]:
+        """Get event types for a domain"""
+        return self._registry.get(domain)
+
+    def validate_event(self, domain: str, event_type: str) -> bool:
+        """Validate event type against domain patterns"""
+        validator = self._validators.get(domain)
+        if validator:
+            return validator(event_type)
+        return True
+
+
+@dataclass
+class EventMetadata:
+    """Event metadata with versioning support"""
+    version: str
+    domain: str
+    deprecated: bool = False
+    supported_versions: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    deprecation_date: Optional[datetime] = None
+    replacement_event: Optional[str] = None
+
+
+class EventPatternValidator:
+    """Validates event patterns across domains"""
+
+    @staticmethod
+    def validate_pattern(event_type: str) -> bool:
+        """Validate event type follows domain pattern"""
+        pattern = r'^[a-z]+\.[a-z]+\.(request|complete|progress|failed|notify)$'
+        return bool(re.match(pattern, event_type))
+
+    @staticmethod
+    def create_domain_validator(domain: str, custom_pattern: Optional[str] = None):
+        """Create domain-specific validator"""
+
+        def validator(event_type: str) -> bool:
+            pattern = custom_pattern or f'^{domain}\.[a-z]+\.(request|complete|progress|failed|notify)$'
+            return bool(re.match(pattern, event_type))
+
+        return validator
+
+
+class EventTypeManager:
+    """Manages event type lifecycle and evolution"""
+
+    def __init__(self):
+        self.registry = EventTypeRegistry()
+        self.deprecated_events = {}
+        self.event_metadata = {}
+
+    def deprecate_event(self, event_type: MessageType, replacement: MessageType,
+                        deprecation_date: Optional[datetime] = None):
+        """Handle event deprecation"""
+        metadata = self.event_metadata.get(event_type.value, EventMetadata(
+            version="1.0",
+            domain=event_type.domain
+        ))
+        metadata.deprecated = True
+        metadata.replacement_event = replacement.value
+        metadata.deprecation_date = deprecation_date
+
+        self.deprecated_events[event_type.value] = replacement.value
+        self.event_metadata[event_type.value] = metadata
+
+    def register_event_type(self, domain: str, event_type: MessageType,
+                            version: str = "1.0",
+                            metadata: Optional[Dict[str, Any]] = None):
+        """Register new event type"""
+        event_metadata = EventMetadata(
+            version=version,
+            domain=domain,
+            **(metadata or {})
+        )
+        self.event_metadata[event_type.value] = event_metadata
+
+
+# Initialize global event management
+event_manager = EventTypeManager()
+event_registry = EventTypeRegistry()
+
+# Register all domains and their events
+for enum_value in MessageType:
+    domain = enum_value.domain
+    if domain not in event_registry._registry:
+        event_registry.register_domain(
+            domain,
+            [msg for msg in MessageType if msg.domain == domain],
+            EventPatternValidator.create_domain_validator(domain)
+        )
 

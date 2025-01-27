@@ -39,7 +39,7 @@ def create_data_pipeline_structure():
         ],
         'visualization': [
             'chart_generator.py',
-            'plot_creator.py',
+            'graph_generator.py',
             'dashboard_builder.py'
         ]
     }

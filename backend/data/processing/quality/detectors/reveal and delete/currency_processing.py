@@ -97,7 +97,11 @@
 #             if re.search(pattern, column_lower)
 #         )
 
+<<<<<<< HEAD
 #         # Value format insight
+=======
+#         # Value format analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         valid_values = sum(
 #             self._is_currency_value(val)
 #             for val in values
@@ -348,12 +352,21 @@
 #         )
 
 #     def run(self) -> Dict[str, ColumnClassification]:
+<<<<<<< HEAD
 #         """Run insight on all columns with currency potential."""
 #         results = {}
 #         for column in self.data.columns:
 #             insight = self.analyze_column(column)
 #             if insight is not None:
 #                 results[column] = insight
+=======
+#         """Run analysis on all columns with currency potential."""
+#         results = {}
+#         for column in self.data.columns:
+#             analysis = self.analyze_column(column)
+#             if analysis is not None:
+#                 results[column] = analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 #         return results
 
@@ -367,6 +380,7 @@
 #     report = detector.run()
 
 #     # Detailed reporting
+<<<<<<< HEAD
 #     for column, insight in report.items():
 #         print(f"\nColumn: {column}")
 #         print(f"Confidence Level: {insight.confidence_level}")
@@ -383,6 +397,24 @@
 #         if insight.recommendations:
 #             print("\nRecommendations:")
 #             for rec in insight.recommendations:
+=======
+#     for column, analysis in report.items():
+#         print(f"\nColumn: {column}")
+#         print(f"Confidence Level: {analysis.confidence_level}")
+#         print(f"Confidence Score: {analysis.confidence_score:.2f}%")
+
+#         if analysis.detected_currencies:
+#             print(f"Detected Currencies: {analysis.detected_currencies}")
+
+#         if analysis.issues:
+#             print("\nIssues Detected:")
+#             for issue, count in analysis.issues.items():
+#                 print(f"- {issue}: {count} occurrences")
+
+#         if analysis.recommendations:
+#             print("\nRecommendations:")
+#             for rec in analysis.recommendations:
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #                 print(f"- {rec}")
 
 #         print("-" * 50)

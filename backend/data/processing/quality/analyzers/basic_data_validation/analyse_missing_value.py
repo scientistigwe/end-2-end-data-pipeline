@@ -70,7 +70,11 @@ class MissingValueStats:
 
 @dataclass
 class AnalysisResult:
+<<<<<<< HEAD
     """Results of missing value insight for a single column."""
+=======
+    """Results of missing value analysis for a single column."""
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     field_name: str
     total_count: int
     missing_count: int
@@ -242,7 +246,11 @@ class MissingValueAnalyzer:
     def _calculate_confidence(self, stats: MissingValueStats,
                               pattern: MissingValuePattern,
                               mechanism: MissingMechanism) -> float:
+<<<<<<< HEAD
         """Calculate confidence score for the insight."""
+=======
+        """Calculate confidence score for the analysis."""
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
         base_confidence = min(np.log10(stats.total_count) / 5, 1.0)
 
         pattern_strength = self._calculate_pattern_strength(stats.field_name, pattern)
@@ -889,8 +897,13 @@ class MissingValueAnalyzer:
             if stats.missing_ratio > 0.7:
                 return {
                     'action': 'evaluate_importance',
+<<<<<<< HEAD
                     'description': "Consider if this field is still needed for your insight",
                     'reason': "Most of the data is missing. It might be better to exclude this field unless it's absolutely crucial for your insight"
+=======
+                    'description': "Consider if this field is still needed for your analysis",
+                    'reason': "Most of the data is missing. It might be better to exclude this field unless it's absolutely crucial for your analysis"
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
                 }
 
             if stats.data_type in ('int64', 'float64'):

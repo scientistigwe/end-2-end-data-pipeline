@@ -41,7 +41,11 @@
 #
 # @dataclass
 # class DetectionResult:
+<<<<<<< HEAD
 #     """Stores detection results for each value pattern insight"""
+=======
+#     """Stores detection results for each value pattern analysis"""
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #     column_type: str
 #     match_percentage: float
 #     consistent_samples: List[str]
@@ -903,7 +907,11 @@
 #         'A properly detailed technical explanation of an important system component that requires documentation.',
 #         'The quick brown fox jumps over the lazy dog multiple times creating a lengthy description.',
 #         'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
+<<<<<<< HEAD
 #         'Detailed insight of system performance metrics indicating several areas for potential improvement.',
+=======
+#         'Detailed analysis of system performance metrics indicating several areas for potential improvement.',
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         'In-depth review of project milestones and deliverables including timeline and resource allocation.'
 #     ],
 #
@@ -1039,7 +1047,11 @@
 # # Create detector instance
 # detector = DataQualityDetector(df)
 #
+<<<<<<< HEAD
 # # Run insight
+=======
+# # Run analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 # results = detector.analyze()
 #
 # # Record end time

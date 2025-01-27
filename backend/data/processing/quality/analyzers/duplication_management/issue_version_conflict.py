@@ -6,7 +6,11 @@ from dataclasses import dataclass
 
 @dataclass
 class AnalysisResult:
+<<<<<<< HEAD
     """Data class for storing insight results"""
+=======
+    """Data class for storing analysis results"""
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     detected_issues: Dict[str, List[str]]
     pattern_analysis: Dict[str, List[Any]]
     recommendations: List[Dict[str, Any]]
@@ -81,7 +85,11 @@ class VersionConflictIssueAnalyzer:
 
     def get_analysis_report(self) -> Dict[str, Any]:
         if not self.analysis_results:
+<<<<<<< HEAD
             return {'error': 'No insight results available'}
+=======
+            return {'error': 'No analysis results available'}
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
         return {
             'summary': {},

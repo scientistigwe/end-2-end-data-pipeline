@@ -54,7 +54,11 @@ class MissingValueDetector:
                     logger.info(f"Detected missing values in column: {column} | Missing Count: {missing_count}")
                     detection_results.append(
                         DetectionResult(
+<<<<<<< HEAD
                             issue_type='templates',
+=======
+                            issue_type='missing_value',
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
                             field_name=column,
                             field_type=str(data[column].dtype),
                             total_rows=total_rows,
@@ -67,7 +71,11 @@ class MissingValueDetector:
 
         logger.info(f"Detection complete. Found {len(detection_results)} columns with missing values.")
         return {
+<<<<<<< HEAD
             'issue_type': 'templates',
+=======
+            'issue_type': 'missing_value',
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
             'detected_items': detection_results
         }
 

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # backend/infrastructure/celery/tasks.py
 
 from celery import shared_task
@@ -28,15 +29,24 @@ class TaskBase:
             }
         )
         raise task_instance.retry(exc=exc)
+=======
+# tasks.py
+from celery import shared_task
+from .config import celery_app
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 @shared_task(
     bind=True,
+<<<<<<< HEAD
     base=TaskBase,
+=======
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     max_retries=3,
     soft_time_limit=300,
     name='tasks.process_file'
 )
+<<<<<<< HEAD
 def process_file(self, file_id: str) -> Dict[str, Any]:
     """
     Process uploaded file through the data pipeline.
@@ -64,15 +74,28 @@ def process_file(self, file_id: str) -> Dict[str, Any]:
 
     except Exception as exc:
         self.handle_error(self, exc, 'process_file', file_id=file_id)
+=======
+def process_file(self, file_id: str):
+    """Process uploaded file"""
+    try:
+        # File processing logic here
+        pass
+    except Exception as exc:
+        self.retry(exc=exc, countdown=60)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 @shared_task(
     bind=True,
+<<<<<<< HEAD
     base=TaskBase,
+=======
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     max_retries=3,
     soft_time_limit=600,
     name='tasks.analyze_data'
 )
+<<<<<<< HEAD
 def analyze_data(self, file_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyze processed data with given context parameters.
@@ -101,15 +124,28 @@ def analyze_data(self, file_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as exc:
         self.handle_error(self, exc, 'analyze_data', file_id=file_id, context=context)
+=======
+def analyze_data(self, file_id: str, context: dict):
+    """Analyze processed data"""
+    try:
+        # Analysis logic here
+        pass
+    except Exception as exc:
+        self.retry(exc=exc, countdown=120)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 @shared_task(
     bind=True,
+<<<<<<< HEAD
     base=TaskBase,
+=======
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     max_retries=3,
     soft_time_limit=300,
     name='tasks.generate_insights'
 )
+<<<<<<< HEAD
 def generate_insights(self, analysis_id: str) -> Dict[str, Any]:
     """
     Generate insights from completed analysis.
@@ -136,3 +172,12 @@ def generate_insights(self, analysis_id: str) -> Dict[str, Any]:
 
     except Exception as exc:
         self.handle_error(self, exc, 'generate_insights', analysis_id=analysis_id)
+=======
+def generate_insights(self, analysis_id: str):
+    """Generate insights from analysis"""
+    try:
+        # Insight generation logic here
+        pass
+    except Exception as exc:
+        self.retry(exc=exc, countdown=60)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce

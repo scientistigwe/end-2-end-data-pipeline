@@ -146,7 +146,11 @@
 #         total_values = len(valid_values)
 #         all_formats = []
 
+<<<<<<< HEAD
 #         # Sample up to 100 values for insight
+=======
+#         # Sample up to 100 values for analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         sample_size = min(100, total_values)
 #         sample_values = valid_values.sample(n=sample_size) if total_values > sample_size else valid_values
 
@@ -206,7 +210,11 @@
 
 #     def _calculate_confidence(self, column: str, values: pd.Series) -> float:
 #         """
+<<<<<<< HEAD
 #         Calculate confidence score for date identification using multiple insight methods.
+=======
+#         Calculate confidence score for date identification using multiple analysis methods.
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 #         Args:
 #             column (str): Column name to analyze
@@ -221,7 +229,11 @@
 
 #         # Initialize weights for different components
 #         weights = {
+<<<<<<< HEAD
 #             'column_name': 20,  # Column name insight
+=======
+#             'column_name': 20,  # Column name analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #             'pattern_match': 30,  # Pattern matching
 #             'parse_success': 30,  # Successful parsing
 #             'statistical': 20  # Statistical validation
@@ -231,7 +243,11 @@
 #         sample_size = min(100, len(values))
 #         sample_values = values.dropna().sample(n=sample_size) if len(values) > sample_size else values.dropna()
 
+<<<<<<< HEAD
 #         # 1. Column name insight (20%)
+=======
+#         # 1. Column name analysis (20%)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         column_lower = column.lower()
 #         date_indicators = ['date', 'dt', 'day', 'month', 'year', 'time', 'timestamp']
 #         if any(indicator in column_lower for indicator in date_indicators):
@@ -241,7 +257,11 @@
 #         if 'id' in column_lower or column_lower.endswith('_id'):
 #             return 0
 
+<<<<<<< HEAD
 #         # 2. Pattern matching insight (30%)
+=======
+#         # 2. Pattern matching analysis (30%)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         pattern_matches = 0
 #         total_checked = 0
 
@@ -273,7 +293,11 @@
 #             pattern_score = (pattern_matches / total_checked) * weights['pattern_match']
 #             score += pattern_score
 
+<<<<<<< HEAD
 #         # 3. Parse success insight (30%)
+=======
+#         # 3. Parse success analysis (30%)
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         parse_successes = 0
 #         total_attempts = 0
 
@@ -293,7 +317,11 @@
 #         # 4. Statistical validation (20%)
 #         if parse_successes > 0:
 #             try:
+<<<<<<< HEAD
 #                 # Convert to datetime for statistical insight
+=======
+#                 # Convert to datetime for statistical analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #                 dates = pd.to_datetime(sample_values, errors='coerce')
 #                 valid_dates = dates.dropna()
 
@@ -841,7 +869,11 @@
 #                 "pd.to_datetime(column, format='mixed', errors='coerce')")
 
 #     def generate_report(self) -> str:
+<<<<<<< HEAD
 #         """Generate a comprehensive report of datetime quality insight."""
+=======
+#         """Generate a comprehensive report of datetime quality analysis."""
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         if not hasattr(self, 'identification_info'):
 #             return "No identification process has been run yet."
 

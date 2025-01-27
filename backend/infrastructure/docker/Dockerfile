@@ -24,7 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create non-root user
+<<<<<<< HEAD
 RUN useradd -m appuser && chown -R appuser:appuser /flask_app
+=======
+RUN useradd -m appuser && chown -R appuser:appuser /app
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 USER appuser
 
 # Run the application

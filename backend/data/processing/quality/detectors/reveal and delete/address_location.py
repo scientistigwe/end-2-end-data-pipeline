@@ -79,11 +79,19 @@
 #             'statistical': 20
 #         }
 
+<<<<<<< HEAD
 #         # Column name insight
 #         if any(re.search(pattern, column_lower) for pattern in self.column_patterns):
 #             score += weights['column_name']
 
 #         # Value format insight
+=======
+#         # Column name analysis
+#         if any(re.search(pattern, column_lower) for pattern in self.column_patterns):
+#             score += weights['column_name']
+
+#         # Value format analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         valid_values = sum(self._is_address_format(val) for val in values if pd.notna(val))
 #         if len(values) > 0:
 #             format_score = (valid_values / len(values)) * weights['value_format']
@@ -97,7 +105,11 @@
 #             geocoding_score = (geocoded / sample_size) * weights['geocoding']
 #             score += geocoding_score
 
+<<<<<<< HEAD
 #         # Statistical insight
+=======
+#         # Statistical analysis
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #         stats = self._calculate_statistics(values)
 #         if stats:
 #             avg_word_count = stats.get("avg_word_count", 0)
@@ -295,10 +307,17 @@
 #         )
 
 #     def run(self) -> Dict[str, AddressAnalysis]:
+<<<<<<< HEAD
 #         """Run insight on all columns."""
 #         all_results = {column: self.analyze_column(column) for column in self.data.columns}
 #         return {col: insight for col, insight in all_results.items()
 #                 if insight.identified_as == "ADDRESS"}
+=======
+#         """Run analysis on all columns."""
+#         all_results = {column: self.analyze_column(column) for column in self.data.columns}
+#         return {col: analysis for col, analysis in all_results.items()
+#                 if analysis.identified_as == "ADDRESS"}
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 # def format_time(seconds):
@@ -349,6 +368,7 @@
 #     report = detector.run()
 
 #     # Display detailed results for address columns only
+<<<<<<< HEAD
 #     for column, insight in report.items():
 #         print(f"\nColumn: {column}")
 #         print(f"Classification: {insight.identified_as}")
@@ -371,6 +391,30 @@
 #         if insight.statistics:
 #             print("\nStatistics:")
 #             for stat, value in insight.statistics.items():
+=======
+#     for column, analysis in report.items():
+#         print(f"\nColumn: {column}")
+#         print(f"Classification: {analysis.identified_as}")
+#         print(f"Confidence: {analysis.confidence:.2f}%")
+#         print(f"Sample Values: {analysis.sample_values}")
+
+#         if analysis.detected_countries:
+#             print(f"Detected Countries: {analysis.detected_countries}")
+
+#         if analysis.issues:
+#             print("\nIssues Detected:")
+#             for issue, count in analysis.issues.items():
+#                 print(f"- {issue}: {count} occurrences")
+
+#         if analysis.recommendations:
+#             print("\nRecommendations:")
+#             for rec in analysis.recommendations:
+#                 print(f"- {rec}")
+
+#         if analysis.statistics:
+#             print("\nStatistics:")
+#             for stat, value in analysis.statistics.items():
+>>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 #                 print(f"- {stat}: {value}")
 
 #         print("-" * 50)

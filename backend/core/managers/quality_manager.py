@@ -28,8 +28,14 @@ class QualityManager(BaseManager):
     """
 
     def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
+        # Explicitly call parent constructor with all required parameters
+        super().__init__(
+            message_broker=message_broker, 
+            component_name="quality_manager", 
+            domain_type="quality"
+        )
 
+        # Additional initialization specific to QualityManager
         self.module_identifier = ModuleIdentifier(
             component_name="quality_manager",
             component_type=ComponentType.QUALITY_MANAGER,
@@ -42,6 +48,16 @@ class QualityManager(BaseManager):
 
         # Setup message handlers
         self._setup_message_handlers()
+
+    def __del__(self):
+        """
+        Override deletion method to add extra safety
+        Ensures parent class deletion logic is maintained
+        """
+        try:
+            super().__del__()
+        except Exception as e:
+            logger.error(f"QualityManager deletion failed: {e}")
 
     def _setup_message_handlers(self) -> None:
         """Setup handlers for CPM messages"""

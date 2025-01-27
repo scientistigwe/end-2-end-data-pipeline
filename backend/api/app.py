@@ -150,53 +150,50 @@ class ApplicationFactory:
             raise
 
     async def _init_core_components(self, db_session: scoped_session) -> None:
-        """Initialize core application components with proper separation of concerns."""
         try:
             # Initialize message broker first as it's the communication backbone
             message_broker = MessageBroker()
             self.components['message_broker'] = message_broker
 
-            # Initialize StagingManager with only its core dependencies
-            staging_manager = StagingManager(
-                message_broker=message_broker,
-                # base_path=self.app.config['STAGING_FOLDER'],
-                # cleanup_interval=self.app.config.get('STAGING_CLEANUP_INTERVAL', 3600),
-                # max_age_hours=self.app.config.get('STAGING_MAX_AGE_HOURS', 24),
-                # max_size_bytes=self.app.config.get('STAGING_MAX_SIZE_BYTES', 10_737_418_240)
-            )
-            self.components['staging_manager'] = staging_manager
+            # Create StagingRepository
+            staging_repository = StagingRepository(db_session)
 
-            # Initialize repositories for database operations
-            staging_repo = StagingRepository(db_session)
+            # Define storage path
+            storage_path = Path(self.app.config.get('STAGING_FOLDER', './staged_data'))
 
-            # Initialize StagingService to handle database operations
-            staging_service = StagingService(
-                message_broker=message_broker,
-                staging_repository=staging_repo
-            )
-            self.services['staging_service'] = staging_service
+            # Initialize components and services with initialize checks
+            components_to_initialize = [
+                ('staging_manager', StagingManager(
+                    message_broker=message_broker,
+                    repository=staging_repository,
+                    storage_path=storage_path
+                )),
+                ('staging_service', StagingService(message_broker=message_broker)),
+                ('control_point_manager', ControlPointManager(
+                    message_broker=message_broker,
+                    staging_manager=self.components.get('staging_manager')
+                ))
+            ]
 
-            # Initialize Control Point Manager
-            cpm = ControlPointManager(
-                message_broker=message_broker,
-                staging_manager=staging_manager
-            )
-            self.components['control_point_manager'] = cpm
+            # Dynamically initialize components with async initialization
+            async_tasks = []
+            for name, component in components_to_initialize:
+                self.components[name] = component
+                
+                # Check if component has an async initialize method
+                if hasattr(component, 'initialize') and asyncio.iscoroutinefunction(component.initialize):
+                    async_tasks.append(component.initialize())
 
-            # Start async components
-            await asyncio.gather(
-                message_broker.initialize(),
-                staging_manager.initialize(),
-                staging_service.initialize(),
-                cpm.initialize()
-            )
+            # Run async initializations concurrently if any exist
+            if async_tasks:
+                await asyncio.gather(*async_tasks)
 
             self.logger.info("Core components initialized successfully")
 
         except Exception as e:
             self.logger.error(f"Core component initialization failed: {str(e)}")
             raise
-
+        
     def _initialize_services(self, db_session: scoped_session) -> None:
         """Initialize services with proper dependency management."""
         try:

@@ -1,36 +1,36 @@
 # backend/core/services/report_service.py
 
 import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
 
+from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ComponentType,
     ModuleIdentifier,
-    MessageMetadata
+    MessageMetadata,
+    ProcessingStage,
+    ProcessingStatus,
+    ReportContext,
+    ReportState
 )
 
 logger = logging.getLogger(__name__)
 
-def initialize_services(app):
-    services = {
-        'report_service': ReportService(
-            staging_manager=staging_manager,
-            message_broker=message_broker,
-            initialize_async=True
-        )
-    }
-    return services
-
 class ReportService:
     """
-    Service layer for report functionality.
-    Acts as message handler for report-related requests from CPM.
+    Report Service: Orchestrates report generation between Manager and Handler.
+    - Handles business process orchestration
+    - Coordinates data collection
+    - Routes messages between manager and handler
     """
-    def __init__(self, staging_manager, message_broker, initialize_async=False):
-        self.staging_manager = staging_manager
-        self.message_broker = message_broker
 
+    def __init__(self, message_broker: MessageBroker):
+        self.message_broker = message_broker
+        
+        # Service identification
         self.module_identifier = ModuleIdentifier(
             component_name="report_service",
             component_type=ComponentType.REPORT_SERVICE,
@@ -38,255 +38,205 @@ class ReportService:
             role="service"
         )
 
-        self.logger = logger
+        # Active requests
+        self.active_requests: Dict[str, ReportContext] = {}
 
-        if initialize_async:
-            asyncio.run(self._initialize_async())
+        # Setup message handlers
+        self._setup_message_handlers()
 
-    async def _initialize_async(self):
-        await self._initialize_message_handlers()
-
-    async def _initialize_message_handlers(self) -> None:
-        handlers = {
-            MessageType.REPORT_CREATE_REQUEST: self._handle_create_request,
-            MessageType.REPORT_GENERATE_REQUEST: self._handle_generate_request,
-            MessageType.REPORT_STATUS_REQUEST: self._handle_status_request,
-            MessageType.REPORT_TEMPLATE_REQUEST: self._handle_template_request,
-            MessageType.REPORT_SCHEDULE_REQUEST: self._handle_schedule_request,
-            MessageType.REPORT_ERROR: self._handle_error
-        }
-
-        for message_type, handler in handlers.items():
-            await self.message_broker.subscribe(
-                module_identifier=self.module_identifier,
-                message_patterns=f"report.{message_type.value}.#",
-                callback=handler
-            )
     def _setup_message_handlers(self) -> None:
-        """Setup handlers for report-related messages"""
+        """Setup service message handlers"""
         handlers = {
-            MessageType.REPORT_CREATE_REQUEST: self._handle_create_request,
-            MessageType.REPORT_GENERATE_REQUEST: self._handle_generate_request,
-            MessageType.REPORT_STATUS_REQUEST: self._handle_status_request,
-            MessageType.REPORT_TEMPLATE_REQUEST: self._handle_template_request,
-            MessageType.REPORT_SCHEDULE_REQUEST: self._handle_schedule_request,
-            MessageType.REPORT_ERROR: self._handle_error
+            # Manager Messages
+            MessageType.REPORT_SERVICE_START: self._handle_service_start,
+            MessageType.REPORT_SERVICE_UPDATE: self._handle_service_update,
+            MessageType.REPORT_DATA_RECEIVED: self._handle_data_received,
+
+            # Handler Responses
+            MessageType.REPORT_HANDLER_COMPLETE: self._handle_handler_complete,
+            MessageType.REPORT_HANDLER_ERROR: self._handle_handler_error,
+            MessageType.REPORT_HANDLER_STATUS: self._handle_handler_status,
+
+            # Section Messages
+            MessageType.REPORT_SECTION_COMPLETE: self._handle_section_complete,
+            MessageType.REPORT_VISUALIZATION_COMPLETE: self._handle_visualization_complete
         }
 
         for message_type, handler in handlers.items():
             self.message_broker.subscribe(
-                component=self.module_identifier.component_name,
-                pattern=f"report.{message_type.value}.#",
-                callback=handler
+                self.module_identifier,
+                f"report.{message_type.value}.#",
+                handler
             )
 
-    async def _handle_create_request(self, message: ProcessingMessage) -> None:
-        """Handle report creation request"""
+    async def _handle_service_start(self, message: ProcessingMessage) -> None:
+        """Handle service start request from manager"""
         try:
-            request_data = message.content.get('request_data', {})
+            pipeline_id = message.content.get('pipeline_id')
+            config = message.content.get('config', {})
 
-            # Store in staging
-            staged_id = await self.staging_manager.store_incoming_data(
-                pipeline_id=request_data.get('pipeline_id'),
-                data=request_data,
-                source_type='report_config',
-                metadata={
-                    'type': 'report_creation',
-                    'report_type': request_data.get('report_type'),
-                    'template_id': request_data.get('template_id')
-                }
+            # Initialize context
+            context = ReportContext(
+                pipeline_id=pipeline_id,
+                state=ReportState.INITIALIZING,
+                config=config
+            )
+            self.active_requests[pipeline_id] = context
+
+            # Track required data sources
+            context.required_data = {
+                'quality': False,
+                'insight': False,
+                'analytics': False
+            }
+
+            # Forward to handler
+            await self._publish_handler_start(
+                pipeline_id=pipeline_id,
+                config=config
             )
 
-            # Forward to report manager
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.REPORT_CREATE,
-                    content={
-                        'staged_id': staged_id,
-                        'config': request_data,
-                        'pipeline_id': request_data.get('pipeline_id')
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="report_manager",
-                        correlation_id=message.metadata.correlation_id
-                    )
-                )
+            # Update manager on initialization
+            await self._publish_service_status(
+                pipeline_id=pipeline_id,
+                status=ProcessingStatus.INITIALIZING,
+                progress=0.0
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to handle create request: {str(e)}")
-            await self._notify_error(message, str(e))
+            logger.error(f"Service start failed: {str(e)}")
+            await self._handle_error(message, str(e))
 
-    async def _handle_generate_request(self, message: ProcessingMessage) -> None:
-        """Handle report generation request"""
+    async def _handle_data_received(self, message: ProcessingMessage) -> None:
+        """Handle receipt of input data from a source"""
         try:
-            staged_id = message.content.get('staged_id')
-            generation_data = message.content.get('generation_data', {})
+            pipeline_id = message.content.get('pipeline_id')
+            data_type = message.content.get('data_type')
+            data = message.content.get('data')
 
-            # Forward to report manager
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.REPORT_GENERATE,
-                    content={
-                        'staged_id': staged_id,
-                        'generation_data': generation_data,
-                        'sections': generation_data.get('sections', []),
-                        'visualizations': generation_data.get('visualizations', [])
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="report_manager",
-                        correlation_id=message.metadata.correlation_id
-                    )
-                )
+            context = self.active_requests.get(pipeline_id)
+            if not context:
+                raise ValueError(f"No active request for pipeline: {pipeline_id}")
+
+            # Store data in context
+            context.data_sources[data_type] = data
+            context.required_data[data_type] = True
+
+            # Check if all required data is available
+            if all(context.required_data.values()):
+                await self._start_report_generation(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Data handling failed: {str(e)}")
+            await self._handle_error(message, str(e))
+
+    async def _start_report_generation(self, pipeline_id: str) -> None:
+        """Start report generation once all data is available"""
+        try:
+            context = self.active_requests[pipeline_id]
+            
+            # Forward all data to handler
+            await self._publish_handler_generate(
+                pipeline_id=pipeline_id,
+                data_sources=context.data_sources,
+                config=context.config
+            )
+
+            # Update status
+            await self._publish_service_status(
+                pipeline_id=pipeline_id,
+                status=ProcessingStatus.IN_PROGRESS,
+                progress=25.0
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to handle generate request: {str(e)}")
-            await self._notify_error(message, str(e))
+            logger.error(f"Report generation start failed: {str(e)}")
+            await self._handle_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
 
-    async def _handle_status_request(self, message: ProcessingMessage) -> None:
-        """Handle report status request"""
+    async def _handle_section_complete(self, message: ProcessingMessage) -> None:
+        """Handle section completion from handler"""
         try:
-            staged_id = message.content.get('staged_id')
+            pipeline_id = message.content.get('pipeline_id')
+            section_id = message.content.get('section_id')
+            
+            context = self.active_requests.get(pipeline_id)
+            if context:
+                # Track section completion
+                context.completed_sections.append(section_id)
+                progress = (len(context.completed_sections) / len(context.config['sections'])) * 100
 
-            # Get staged data
-            staged_data = await self.staging_manager.retrieve_data(
-                staged_id,
-                'REPORT'
-            )
-            if not staged_data:
-                raise ValueError(f"Report {staged_id} not found")
-
-            # Send status response
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.REPORT_STATUS_RESPONSE,
-                    content={
-                        'staged_id': staged_id,
-                        'status': staged_data.get('status', 'unknown'),
-                        'progress': staged_data.get('progress', 0),
-                        'sections_completed': staged_data.get('sections_completed', []),
-                        'output_url': staged_data.get('output_url'),
-                        'created_at': staged_data.get('created_at'),
-                        'error': staged_data.get('error')
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component=message.metadata.source_component,
-                        correlation_id=message.metadata.correlation_id
-                    )
+                # Update status
+                await self._publish_service_status(
+                    pipeline_id=pipeline_id,
+                    status=ProcessingStatus.IN_PROGRESS,
+                    progress=progress
                 )
-            )
 
         except Exception as e:
-            self.logger.error(f"Failed to handle status request: {str(e)}")
-            await self._notify_error(message, str(e))
+            logger.error(f"Section completion handling failed: {str(e)}")
+            await self._handle_error(message, str(e))
 
-    async def _handle_template_request(self, message: ProcessingMessage) -> None:
-        """Handle report template request"""
+    async def _handle_handler_complete(self, message: ProcessingMessage) -> None:
+        """Handle completion from handler"""
         try:
-            template_data = message.content.get('template_data', {})
+            pipeline_id = message.content.get('pipeline_id')
+            report = message.content.get('report')
 
-            # Store template in staging
-            staged_id = await self.staging_manager.store_incoming_data(
-                pipeline_id=None,
-                data=template_data,
-                source_type='report_template',
-                metadata={
-                    'type': 'template_creation',
-                    'template_type': template_data.get('template_type')
-                }
-            )
-
-            # Forward to report manager
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.REPORT_TEMPLATE_CREATE,
-                    content={
-                        'staged_id': staged_id,
-                        'template_data': template_data
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="report_manager",
-                        correlation_id=message.metadata.correlation_id
-                    )
+            context = self.active_requests.get(pipeline_id)
+            if context:
+                # Forward completion to manager
+                await self._publish_service_complete(
+                    pipeline_id=pipeline_id,
+                    report=report
                 )
-            )
+
+                # Cleanup
+                del self.active_requests[pipeline_id]
 
         except Exception as e:
-            self.logger.error(f"Failed to handle template request: {str(e)}")
-            await self._notify_error(message, str(e))
+            logger.error(f"Handler completion processing failed: {str(e)}")
+            await self._handle_error(message, str(e))
 
-    async def _handle_schedule_request(self, message: ProcessingMessage) -> None:
-        """Handle report schedule request"""
-        try:
-            schedule_data = message.content.get('schedule_data', {})
-
-            # Store schedule in staging
-            staged_id = await self.staging_manager.store_incoming_data(
-                pipeline_id=schedule_data.get('pipeline_id'),
-                data=schedule_data,
-                source_type='report_schedule',
-                metadata={
-                    'type': 'schedule_creation',
-                    'frequency': schedule_data.get('frequency'),
-                    'timezone': schedule_data.get('timezone', 'UTC')
-                }
-            )
-
-            # Forward to report manager
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.REPORT_SCHEDULE_CREATE,
-                    content={
-                        'staged_id': staged_id,
-                        'schedule_data': schedule_data
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="report_manager",
-                        correlation_id=message.metadata.correlation_id
-                    )
-                )
-            )
-
-        except Exception as e:
-            self.logger.error(f"Failed to handle schedule request: {str(e)}")
-            await self._notify_error(message, str(e))
-
-    async def _handle_error(self, message: ProcessingMessage) -> None:
-        """Handle report-related errors"""
-        error = message.content.get('error', 'Unknown error')
-        self.logger.error(f"Report error received: {error}")
-
-        await self._notify_error(message, error)
-
-    async def _notify_error(self, original_message: ProcessingMessage, error: str) -> None:
-        """Notify CPM about errors"""
+    async def _publish_handler_start(
+            self,
+            pipeline_id: str,
+            config: Dict[str, Any]
+    ) -> None:
+        """Publish start request to handler"""
         await self.message_broker.publish(
             ProcessingMessage(
-                message_type=MessageType.SERVICE_ERROR,
+                message_type=MessageType.REPORT_HANDLER_START,
                 content={
-                    'service': self.module_identifier.component_name,
-                    'error': error,
-                    'original_message': original_message.content
+                    'pipeline_id': pipeline_id,
+                    'config': config,
+                    'timestamp': datetime.utcnow().isoformat()
                 },
                 metadata=MessageMetadata(
                     source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager",
-                    correlation_id=original_message.metadata.correlation_id
-                )
+                    target_component="report_handler",
+                    domain_type="report",
+                    processing_stage=ProcessingStage.REPORT_GENERATION
+                ),
+                source_identifier=self.module_identifier
             )
         )
+
+    # ... [Additional publishing methods]
 
     async def cleanup(self) -> None:
         """Cleanup service resources"""
         try:
-            await self.message_broker.unsubscribe_all(
-                self.module_identifier.component_name
-            )
+            # Cleanup active requests
+            for pipeline_id in list(self.active_requests.keys()):
+                await self._handle_error(
+                    ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                    "Service cleanup initiated"
+                )
+                del self.active_requests[pipeline_id]
+
         except Exception as e:
-            self.logger.error(f"Cleanup failed: {str(e)}")
+            logger.error(f"Cleanup failed: {str(e)}")
+            raise

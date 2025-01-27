@@ -2,106 +2,22 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-<<<<<<< HEAD
 from datetime import datetime, timedelta
 import uuid
 import re
 from typing import Dict, Any, Optional, Set, List
 from datetime import datetime
 from pathlib import Path
-=======
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-import uuid
-
-
-class MessageType(Enum):
-    """Enhanced message types with clear component separation"""
-
-    # Data Reception & Validation
-    DATA_RECEIVED = "data.received"
-    DATA_VALIDATED = "data.validated"
-    DATA_REJECTED = "data.rejected"
-    DATA_TRANSFORMATION = "data.transformation"
-    DATA_STORAGE = "data.storage"
-
-    # Quality Analysis
-    QUALITY_START = "quality.start"
-    QUALITY_CONTEXT_ANALYZED = "quality.context.analyzed"
-    QUALITY_ISSUES_DETECTED = "quality.issues.detected"
-    QUALITY_RESOLUTION_SUGGESTED = "quality.resolution.suggested"
-    QUALITY_RESOLUTION_APPLIED = "quality.resolution.applied"
-    QUALITY_APPROVED = "quality.approved"
-    QUALITY_REJECTED = "quality.rejected"
-    QUALITY_UPDATE = "quality.update"
-
-    # Insight Generation
-    INSIGHT_START = "insight.start"
-    INSIGHT_CONTEXT_ANALYZED = "insight.context.analyzed"
-    INSIGHT_GENERATED = "insight.generated"
-    INSIGHT_VERIFIED = "insight.verified"
-    INSIGHT_APPROVED = "insight.approved"
-    INSIGHT_REJECTED = "insight.rejected"
-    INSIGHT_UPDATE = "insight.update"
-
-    # Advanced Analytics
-    ANALYTICS_START = "analytics.start"
-    ANALYTICS_CONTEXT_ANALYZED = "analytics.context.analyzed"
-    ANALYTICS_MODEL_SELECTED = "analytics.model.selected"
-    ANALYTICS_PROCESSING = "analytics.processing"
-    ANALYTICS_COMPLETE = "analytics.complete"
-    ANALYTICS_ERROR = "analytics.error"
-    ANALYTICS_UPDATE = "analytics.update"
-
-    # Decision Operations
-    DECISION_REQUEST = "decision.request"
-    DECISION_OPTIONS = "decision.options"
-    DECISION_SUBMIT = "decision.submit"
-    DECISION_VALIDATE = "decision.validate"
-    DECISION_IMPACT = "decision.impact"
-    DECISION_UPDATE = "decision.update"
-    DECISION_COMPLETE = "decision.complete"
-    DECISION_ERROR = "decision.error"
-    DECISION_TIMEOUT = "decision.timeout"
-
-    # Pipeline Control
-    PIPELINE_START = "pipeline.start"
-    PIPELINE_STAGE_START = "pipeline.stage.start"
-    PIPELINE_STAGE_COMPLETE = "pipeline.stage.complete"
-    PIPELINE_PROGRESS = "pipeline.progress"
-    PIPELINE_PAUSE = "pipeline.pause"
-    PIPELINE_RESUME = "pipeline.resume"
-    PIPELINE_COMPLETE = "pipeline.complete"
-    PIPELINE_ERROR = "pipeline.error"
-
-    # Component Communication
-    COMPONENT_INIT = "component.init"
-    COMPONENT_UPDATE = "component.update"
-    COMPONENT_ERROR = "component.error"
-    COMPONENT_SYNC = "component.sync"
-
-    # Report Generation
-    REPORT_REQUEST = "report.request"
-    REPORT_GENERATING = "report.generating"
-    REPORT_COMPLETE = "report.complete"
-    REPORT_ERROR = "report.error"
-
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 class ProcessingStage(Enum):
     """Pipeline processing stages"""
     RECEPTION = "reception"
-<<<<<<< HEAD
-=======
-    VALIDATION = "validation"
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     QUALITY_CHECK = "quality_check"
     CONTEXT_ANALYSIS = "context_analysis"
     INSIGHT_GENERATION = "insight_generation"
     ADVANCED_ANALYTICS = "advanced_analytics"
     DECISION_MAKING = "decision_making"
     REPORT_GENERATION = "report_generation"
-<<<<<<< HEAD
     RECOMMENDATION = "recommendation"
     USER_REVIEW = "user_review"
     COMPLETION = "completion"
@@ -111,10 +27,6 @@ class ProcessingStage(Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     VALIDATION = "validation"
-=======
-    USER_REVIEW = "user_review"
-    COMPLETION = "completion"
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 class ProcessingStatus(Enum):
@@ -127,7 +39,6 @@ class ProcessingStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
-<<<<<<< HEAD
     ARCHIVED = "archived"
 
 
@@ -303,9 +214,6 @@ class AnalyticsContext(BaseContext):
             self.completed_at = datetime.now()
 
 
-from enum import Enum
-
-
 class MessageType(Enum):
     """
     Comprehensive Message Type System for the Analyst PA
@@ -332,13 +240,14 @@ class MessageType(Enum):
     SYSTEM_CONFIG_UPDATE_REQUEST = "system.config.update.request"
     SYSTEM_CONFIG_UPDATE_COMPLETE = "system.config.update.complete"
 
+#.....................................Control Point Types...........................................
     # Control Point Communication
     CONTROL_POINT_CREATE_REQUEST = "control.point.create.request"
-    CONTROL_POINT_CREATE_COMPLETE = "control.point.create.complete"
+    CONTROL_POINT_CREATED = "control.point.created"
     CONTROL_POINT_UPDATE_REQUEST = "control.point.update.request"
-    CONTROL_POINT_UPDATE_COMPLETE = "control.point.update.complete"
+    CONTROL_POINT_UPDATED = "control.point.updated"
     CONTROL_POINT_DECISION_REQUEST = "control.point.decision.request"
-    CONTROL_POINT_DECISION_SUBMIT = "control.point.decision.submit"
+    CONTROL_POINT_DECISION_SUBMITTED = "control.point.decision.submit"
 
     # Data Lifecycle Management
     DATA_RECEIVE_REQUEST = "data.receive.request"
@@ -725,9 +634,10 @@ class MessageType(Enum):
 
     # Pipeline Stage Management
     PIPELINE_STAGE_START_REQUEST = "pipeline.stage.start.request"
-    PIPELINE_STAGE_START_COMPLETE = "pipeline.stage.start.complete"
+    PIPELINE_STAGE_COMPLETE = "pipeline.stage.complete"
     PIPELINE_STAGE_COMPLETE_NOTIFY = "pipeline.stage.complete.notify"
-    PIPELINE_STAGE_START_FAILED = 'pipeline.stage.start.failed'
+    PIPELINE_STAGE_ERROR = 'pipeline.stage.error'
+    PIPELINE_STAGE_STATUS_UPDATE = "pipeline.stage.status.update"
 
     # Pipeline State Control
     PIPELINE_PAUSE_REQUEST = "pipeline.pause.request"
@@ -747,6 +657,10 @@ class MessageType(Enum):
     # Pipeline Reporting
     PIPELINE_REPORT_REQUEST = "pipeline.report.request"
     PIPELINE_REPORT_RESPONSE = "pipeline.report.response"
+
+    # Pipeline Cleanup
+    PIPELINE_CLEANUP_REQUEST = "pipeline.cleanup.request"
+    PIPELINE_CLEANUP_COMPLETE = "pipeline.cleanup.complete"
 
     #..................................Reporting Types.........................................................
     # Reporting Management
@@ -813,9 +727,24 @@ class MessageType(Enum):
     REPORT_CLEANUP_REQUEST = "report.cleanup.request"
 
     #........................................Staging Types..........................................................
-    # Staging Management
-    STAGING_CREATE_REQUEST = "staging.create.request"
-    STAGING_CREATE_COMPLETE = "staging.create.complete"
+    # Staging Service Management
+    STAGING_SERVICE_START = "staging.service.start" # In use
+    STAGING_SERVICE_STATUS = "staging.service.start" # In use
+    STAGING_SERVICE_COMPLETE = "staging.service.complete" # In use
+    STAGING_SERVICE_ERROR = "staging.service.error" # In use
+    STAGING_SERVICE_DECISION = "staging.service.decision" # In use
+    STAGING_SERVICE_UPDATE = "staging.service.update" # In use
+
+    # Staging Handler Management
+    STAGING_HANDLER_START = "staging.handler.start" # In use
+    STAGING_HANDLER_STORE = "staging.handler.store" # In use
+    STAGING_HANDLER_DELETE = "staging.handler.delete" # In use
+    STAGING_HANDLER_RETRIEVE = "staging.handler.retrieve" # In use
+    STAGING_HANDLER_DECISION = "staging.handler.decision" # In use
+    STAGING_HANDLER_UPDATE = "staging.handler.update" # In use
+    STAGING_HANDLER_COMPLETE = "staging.handler.complete" # In use
+    STAGING_HANDLER_STATUS = "staging.handler.status" # In use
+    STAGING_HANDLER_ERROR = "staging.handler.error" # In use
 
     # Staging Data Operations
     STAGING_STORE_REQUEST = "staging.store.request"
@@ -843,6 +772,7 @@ class MessageType(Enum):
     STAGING_CLEANUP_REQUEST = "staging.cleanup.request"
     STAGING_CLEANUP_COMPLETE = "staging.cleanup.complete"
 
+    #....................................Component Types
     # Component Communication
     COMPONENT_INITIALIZE_REQUEST = "component.initialize.request"
     COMPONENT_INITIALIZE_COMPLETE = "component.initialize.complete"
@@ -1182,25 +1112,15 @@ class ReportSectionType(Enum):
     MODEL = "model"
     DATA = "data"
     METRICS = "metrics"
-=======
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 @dataclass
 class MessageMetadata:
-<<<<<<< HEAD
     """Enhanced message metadata with routing information"""
     timestamp: datetime = field(default_factory=datetime.now)
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     source_component: str = field(default_factory=lambda: "unknown")
     target_component: str = field(default_factory=lambda: "unknown")
-=======
-    """Enhanced message metadata"""
-    timestamp: datetime = field(default_factory=datetime.now)
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    source_component: str = field(default="unknown")
-    target_component: str = field(default="unknown")
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     priority: int = 1
     retry_count: int = 0
     domain_type: Optional[str] = None
@@ -1208,116 +1128,21 @@ class MessageMetadata:
     requires_response: bool = False
     timeout_seconds: Optional[int] = None
 
-<<<<<<< HEAD
     # Added routing fields
     chain_id: Optional[str] = None  # Identifies processing chain
     department: Optional[str] = None  # Department handling the message
     workflow_step: Optional[int] = None  # Step in the workflow
     is_broadcast: bool = False  # Indicates if message is for all components
-=======
-
-@dataclass
-class BaseContext:
-    """Base context for all processing contexts"""
-    pipeline_id: str
-    stage: ProcessingStage
-    status: ProcessingStatus
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class QualityContext(BaseContext):
-    """Quality analysis context"""
-    source_type: str
-    column_types: Dict[str, str]
-    detected_issues: List[Dict[str, Any]]
-    confidence_scores: Dict[str, float]
-    suggested_actions: List[str]
-    validation_rules: Dict[str, Any]
-    resolution_status: Dict[str, str]
-    requires_decision: bool = False
-
-
-@dataclass
-class InsightContext(BaseContext):
-    """Insight generation context"""
-    analysis_type: str
-    target_metrics: List[str]
-    confidence_threshold: float
-    business_rules: Dict[str, Any]
-    validation_criteria: List[str]
-    data_segments: List[str]
-    insight_categories: List[str]
-    priority_rules: Dict[str, Any]
-
-
-@dataclass
-class AnalyticsContext(BaseContext):
-    """Advanced analytics context"""
-    model_type: str
-    features: List[str]
-    parameters: Dict[str, Any]
-    training_config: Dict[str, Any]
-    evaluation_metrics: List[str]
-    model_constraints: Dict[str, Any]
-    performance_requirements: Dict[str, float]
-    data_dependencies: List[str]
-
-
-@dataclass
-class DecisionContext(BaseContext):
-    """Decision processing context"""
-    source_component: str
-    decision_type: str
-    options: List[Dict[str, Any]]
-    impacts: Dict[str, Dict[str, Any]]
-    constraints: Dict[str, Any]
-    required_validations: List[str]
-    timeout_minutes: Optional[int] = None
-    requires_confirmation: bool = True
-
-
-@dataclass
-class ReportContext(BaseContext):
-    """Report generation context"""
-    report_type: str
-    templates: List[str]
-    data_sources: List[str]
-    formatting_rules: Dict[str, Any]
-    components_included: List[str]
-    aggregation_rules: Dict[str, Any]
-    output_formats: List[str]
-    distribution_rules: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class PipelineContext(BaseContext):
-    """Pipeline management context"""
-    stage_sequence: List[str]
-    current_stage: str
-    stage_dependencies: Dict[str, List[str]]
-    stage_configs: Dict[str, Any]
-    component_states: Dict[str, str]
-    progress: Dict[str, float]
-    error_handling_rules: Dict[str, Any]
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
 
 @dataclass
 class ProcessingMessage:
-<<<<<<< HEAD
     """Core message structure with precise routing"""
-=======
-    """Core message structure"""
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     message_type: MessageType
     content: Dict[str, Any]
     metadata: MessageMetadata = field(default_factory=MessageMetadata)
     context: Optional[BaseContext] = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-<<<<<<< HEAD
     # Add source and target identifiers
     source_identifier: Optional[ModuleIdentifier] = None
     target_identifier: Optional[ModuleIdentifier] = None
@@ -1333,24 +1158,11 @@ class ProcessingMessage:
             content=content,
             source_identifier=self.target_identifier,
             target_identifier=self.source_identifier,
-=======
-
-    def create_response(
-            self,
-            message_type: MessageType,
-            content: Dict[str, Any]
-    ) -> 'ProcessingMessage':
-        """Create a response message"""
-        return ProcessingMessage(
-            message_type=message_type,
-            content=content,
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
             metadata=MessageMetadata(
                 correlation_id=self.metadata.correlation_id,
                 source_component=self.metadata.target_component,
                 target_component=self.metadata.source_component,
                 domain_type=self.metadata.domain_type,
-<<<<<<< HEAD
                 processing_stage=self.metadata.processing_stage,
                 chain_id=self.metadata.chain_id
             ),
@@ -2034,6 +1846,7 @@ class ReportTemplate:
     style_config: Dict[str, Any]
     validation_rules: Dict[str, Any]
     metadata: Dict[str, Any] = field(default_factory=dict)
+
 
 class MonitoringState(Enum):
     """States for monitoring processing"""
@@ -2740,9 +2553,3 @@ for enum_value in MessageType:
             EventPatternValidator.create_domain_validator(domain)
         )
 
-=======
-                processing_stage=self.metadata.processing_stage
-            ),
-            context=self.context
-        )
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce

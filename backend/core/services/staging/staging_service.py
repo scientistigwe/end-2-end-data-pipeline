@@ -5,8 +5,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from uuid import uuid4
 
-from core.messaging.broker import MessageBroker
-from core.messaging.event_types import (
+from ...messaging.broker import MessageBroker
+from ...messaging.event_types import (
     MessageType,
     ProcessingMessage,
     ComponentType,
@@ -68,7 +68,7 @@ class StagingService:
             MessageType.STAGING_DELETE_REQUEST: self._handle_delete_request,
 
             # Error Handling
-            MessageType.STAGING_ERROR: self._handle_error
+            MessageType.STAGING_SERVICE_ERROR: self._handle_error
         }
 
         for message_type, handler in handlers.items():
@@ -303,7 +303,7 @@ class StagingService:
 
         await self.message_broker.publish(
             ProcessingMessage(
-                message_type=MessageType.STAGING_ERROR,
+                message_type=MessageType.STAGING_SERVICE_ERROR,
                 content={
                     'error': error,
                     'original_message': original_message.content
@@ -318,7 +318,7 @@ class StagingService:
         """
         try:
             # Unsubscribe from all message types
-            await self.message_broker.unsubscribe_all(
+            await self.message_broker.unsubscribe(
                 self.module_identifier.component_name
             )
 

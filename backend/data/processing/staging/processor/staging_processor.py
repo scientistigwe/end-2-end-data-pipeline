@@ -1,9 +1,8 @@
-# backend/core/processors/staging_processor.py
+# backend/core/processors/report_processor.py
 
 import logging
-import uuid
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List
+from datetime import datetime
 
 from core.messaging.broker import MessageBroker
 from core.messaging.event_types import (
@@ -14,294 +13,298 @@ from core.messaging.event_types import (
     MessageMetadata,
     ProcessingStage,
     ProcessingStatus,
-    ReportSectionType
+    ReportState,
+    ReportContext,
+    ReportSection,
+    ReportFormat
 )
-from core.modules.staging_module import StagingDataModule
-from db.repository.staging_repository import StagingRepository
-from db.models.staging.base_staging_model import BaseStagedOutput
-from db.models.staging.staging_control_model import StagingControlPoint
-from db.models.staging.staging_history_model import StagingProcessingHistory
+
+from data.processing.reports.formatters import (
+    quality_formatter,
+    insight_formatter,
+    analytics_formatter,
+    summary_formatter
+)
+from data.processing.reports.visualization import (
+    chart_generator,
+    graph_generator,
+    dashboard_builder
+)
+from data.processing.reports.templates import template_loader
 
 logger = logging.getLogger(__name__)
 
-
-class StagingProcessor:
+class ReportProcessor:
     """
-    Staging Processor: Coordinates direct resource interactions
-
-    Responsibilities:
-    - Direct interaction with staging modules
-    - Coordinate with database repositories
-    - Handle resource-level operations
-    - Manage data processing workflows
+    Report Processor: Handles actual report generation.
+    - Direct module access
+    - Content generation
+    - Message-based coordination
     """
 
-    def __init__(
-            self,
-            message_broker: MessageBroker,
-            staging_module: StagingDataModule,
-            staging_repository: StagingRepository
-    ):
-        # Core dependencies
+    def __init__(self, message_broker: MessageBroker):
         self.message_broker = message_broker
-        self.staging_module = staging_module
-        self.staging_repository = staging_repository
-
+        
         # Processor identification
         self.module_identifier = ModuleIdentifier(
-            component_name="staging_processor",
-            component_type=ComponentType.STAGING_PROCESSOR,
-            department="staging",
+            component_name="report_processor",
+            component_type=ComponentType.REPORT_PROCESSOR,
+            department="report",
             role="processor"
         )
 
+        # Active processing contexts
+        self.active_contexts: Dict[str, ReportContext] = {}
+        
+        # Initialize components
+        self._initialize_components()
+        
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
-        """Configure message handlers for staging processor"""
-        handlers = {
-            # Processing Requests
-            MessageType.STAGING_PROCESSOR_START: self._handle_processor_start,
-            MessageType.STAGING_PROCESSOR_STORE: self._handle_store_request,
-            MessageType.STAGING_PROCESSOR_RETRIEVE: self._handle_retrieve_request,
-            MessageType.STAGING_PROCESSOR_DELETE: self._handle_delete_request,
-            MessageType.STAGING_PROCESSOR_UPDATE: self._handle_update_request,
-            MessageType.STAGING_PROCESSOR_DECISION: self._handle_decision_request,
-
-            # Resource Management
-            MessageType.STAGING_RESOURCE_VALIDATE: self._handle_resource_validation,
-            MessageType.STAGING_RESOURCE_CLEANUP: self._handle_resource_cleanup,
-
-            # Error Handling
-            MessageType.STAGING_ERROR: self._handle_error
+    def _initialize_components(self) -> None:
+        """Initialize report generation components"""
+        self.formatters = {
+            'quality': quality_formatter,
+            'insight': insight_formatter,
+            'analytics': analytics_formatter,
+            'summary': summary_formatter
         }
 
-        # Subscribe to all processor message types
+        self.visualization_generators = {
+            'chart': chart_generator,
+            'graph': graph_generator,
+            'dashboard': dashboard_builder
+        }
+
+        self.templates = template_loader.load_templates()
+
+    def _setup_message_handlers(self) -> None:
+        """Setup processor message handlers"""
+        handlers = {
+            # Core Processing
+            MessageType.REPORT_PROCESSOR_START: self._handle_processor_start,
+            MessageType.REPORT_PROCESSOR_UPDATE: self._handle_processor_update,
+            
+            # Section Processing
+            MessageType.REPORT_PROCESSOR_SECTION: self._handle_section_generation,
+            MessageType.REPORT_PROCESSOR_VISUALIZATION: self._handle_visualization_generation,
+            
+            # Export
+            MessageType.REPORT_PROCESSOR_EXPORT: self._handle_export,
+            
+            # Control Messages
+            MessageType.REPORT_PROCESSOR_CANCEL: self._handle_cancellation
+        }
+
         for message_type, handler in handlers.items():
             self.message_broker.subscribe(
-                module_identifier=self.module_identifier,
-                message_patterns=f"staging.{message_type.value}.*",
-                callback=handler
+                self.module_identifier,
+                f"report.{message_type.value}.#",
+                handler
             )
 
     async def _handle_processor_start(self, message: ProcessingMessage) -> None:
-        """
-        Initialize staging processing workflow
-        Direct interaction with staging module and repository
-        """
+        """Handle start of report generation"""
         try:
             pipeline_id = message.content.get('pipeline_id')
             config = message.content.get('config', {})
-            component_type = message.content.get('component_type', ComponentType.STAGING_SERVICE)
+            data_sources = message.content.get('data_sources', {})
 
-            # Prepare staging resource
-            staged_output = await self._prepare_staged_output(
+            # Initialize context
+            context = ReportContext(
                 pipeline_id=pipeline_id,
-                component_type=component_type,
-                config=config
+                state=ReportState.INITIALIZING,
+                config=config,
+                data_sources=data_sources
             )
+            self.active_contexts[pipeline_id] = context
 
-            # Notify handler of processing start
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_HANDLER_COMPLETE,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'stage_id': str(staged_output.id),
-                        'status': ProcessingStatus.INITIALIZING.value
-                    },
-                    source_identifier=self.module_identifier
-                )
+            # Load template
+            template = self._load_template(
+                template_name=config.get('template_name'),
+                report_type=config.get('report_type')
             )
+            context.template = template
+
+            # Start section generation
+            await self._generate_sections(pipeline_id)
 
         except Exception as e:
-            await self._handle_error(message, str(e))
+            logger.error(f"Processor start failed: {str(e)}")
+            await self._handle_processing_error(message, str(e))
 
-    async def _handle_store_request(self, message: ProcessingMessage) -> None:
-        """
-        Handle data storage requests
-        Direct interaction with staging module and repository
-        """
+    async def _generate_sections(self, pipeline_id: str) -> None:
+        """Generate report sections"""
         try:
-            pipeline_id = message.content.get('pipeline_id')
-            stage_id = message.content.get('stage_id', str(uuid.uuid4()))
-            data = message.content.get('data')
-            metadata = message.content.get('metadata', {})
-            component_type = message.content.get('component_type', ComponentType.STAGING_SERVICE)
+            context = self.active_contexts[pipeline_id]
+            context.state = ReportState.SECTION_GENERATION
 
-            # Store data in staging module
-            storage_path = await self.staging_module.store_data(
-                stage_id=stage_id,
-                data=data,
-                metadata=metadata
-            )
+            for section in context.template.sections:
+                try:
+                    # Generate section content
+                    if section.section_type in self.formatters:
+                        formatter = self.formatters[section.section_type]
+                        content = await formatter.generate_content(
+                            data=context.data_sources.get(section.section_type),
+                            config=context.config
+                        )
 
-            # Update staged output in repository
-            staged_output = await self.staging_repository.update_staged_output(
-                stage_id=stage_id,
-                data={
-                    'storage_path': str(storage_path),
-                    'data_size': len(str(data)),
-                    'base_stage_metadata': metadata,
-                    'status': ProcessingStatus.STORED,
-                    'component_type': component_type,
-                    'output_type': ReportSectionType.DATA
-                }
-            )
+                        # Generate visualizations if needed
+                        visualizations = await self._generate_visualizations(
+                            section_type=section.section_type,
+                            data=content,
+                            config=context.config
+                        )
 
-            # Create processing history entry
-            await self.staging_repository.create_processing_history(
-                stage_id=stage_id,
-                event_type='store',
-                status=ProcessingStatus.STORED,
-                details={
-                    'storage_path': str(storage_path),
-                    'size': len(str(data))
-                }
-            )
+                        # Store section results
+                        section_result = {
+                            'content': content,
+                            'visualizations': visualizations
+                        }
 
-            # Notify handler of successful storage
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_HANDLER_COMPLETE,
-                    content={
-                        'stage_id': stage_id,
-                        'storage_path': str(storage_path),
-                        'status': ProcessingStatus.STORED.value
-                    },
-                    source_identifier=self.module_identifier
-                )
-            )
+                        context.sections[section.section_id] = section_result
+
+                        # Notify section completion
+                        await self._publish_section_complete(
+                            pipeline_id,
+                            section.section_id,
+                            section_result
+                        )
+
+                except Exception as section_error:
+                    logger.error(f"Section generation failed: {str(section_error)}")
+                    await self._publish_section_error(
+                        pipeline_id,
+                        section.section_id,
+                        str(section_error)
+                    )
+
+            # Start export if all sections complete
+            if len(context.sections) == len(context.template.sections):
+                await self._start_export(pipeline_id)
 
         except Exception as e:
-            await self._handle_error(message, str(e))
+            logger.error(f"Sections generation failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
 
-    async def _handle_retrieve_request(self, message: ProcessingMessage) -> None:
-        """
-        Handle data retrieval requests
-        Direct interaction with staging module and repository
-        """
+    async def _generate_visualizations(
+            self,
+            section_type: str,
+            data: Dict[str, Any],
+            config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Generate visualizations for section"""
+        visualizations = []
+        viz_config = config.get('visualizations', {}).get(section_type, [])
+
+        for viz_spec in viz_config:
+            try:
+                generator = self.visualization_generators.get(viz_spec['type'])
+                if generator:
+                    viz = await generator.generate(
+                        data=data,
+                        config=viz_spec
+                    )
+                    visualizations.append(viz)
+            except Exception as viz_error:
+                logger.error(f"Visualization generation failed: {str(viz_error)}")
+
+        return visualizations
+
+    async def _start_export(self, pipeline_id: str) -> None:
+        """Start report export process"""
         try:
-            stage_id = message.content.get('stage_id')
+            context = self.active_contexts[pipeline_id]
+            context.state = ReportState.EXPORT
 
-            # Validate access (can be expanded with more complex logic)
-            if not await self._validate_access(stage_id):
-                raise PermissionError("Access denied")
+            report_format = context.config.get('format', ReportFormat.HTML)
 
-            # Retrieve data from staging module
-            data = await self.staging_module.retrieve_data(stage_id)
+            # Export based on format
+            if report_format == ReportFormat.HTML:
+                result = await self._export_html(context)
+            elif report_format == ReportFormat.PDF:
+                result = await self._export_pdf(context)
+            else:
+                result = await self._export_markdown(context)
 
-            # Fetch staged output metadata
-            staged_output = await self.staging_repository.get_staged_output(stage_id)
-
-            # Create processing history entry
-            await self.staging_repository.create_processing_history(
-                stage_id=stage_id,
-                event_type='retrieve',
-                status=ProcessingStatus.RETRIEVED,
-                details={'retrieval_time': datetime.utcnow()}
-            )
-
-            # Notify handler of successful retrieval
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_HANDLER_COMPLETE,
-                    content={
-                        'stage_id': stage_id,
-                        'data': data,
-                        'metadata': staged_output.base_stage_metadata,
-                        'status': ProcessingStatus.RETRIEVED.value
-                    },
-                    source_identifier=self.module_identifier
-                )
-            )
+            # Complete processing
+            await self._complete_processing(pipeline_id, result)
 
         except Exception as e:
-            await self._handle_error(message, str(e))
-
-    async def _handle_delete_request(self, message: ProcessingMessage) -> None:
-        """
-        Handle deletion requests
-        Direct interaction with staging module and repository
-        """
-        try:
-            stage_id = message.content.get('stage_id')
-
-            # Delete from staging module
-            await self.staging_module.delete_data(stage_id)
-
-            # Update staged output status
-            await self.staging_repository.update_staged_output(
-                stage_id=stage_id,
-                data={
-                    'status': ProcessingStatus.DELETED,
-                    'is_temporary': True
-                }
+            logger.error(f"Export failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
             )
 
-            # Create processing history entry
-            await self.staging_repository.create_processing_history(
-                stage_id=stage_id,
-                event_type='delete',
-                status=ProcessingStatus.DELETED,
-                details={'deletion_time': datetime.utcnow()}
-            )
-
-            # Notify handler of deletion
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_HANDLER_COMPLETE,
-                    content={
-                        'stage_id': stage_id,
-                        'status': ProcessingStatus.DELETED.value
-                    },
-                    source_identifier=self.module_identifier
-                )
-            )
-
-        except Exception as e:
-            await self._handle_error(message, str(e))
-
-    async def _prepare_staged_output(
+    async def _complete_processing(
             self,
             pipeline_id: str,
-            component_type: ComponentType,
-            config: Dict[str, Any]
-    ) -> BaseStagedOutput:
-        """
-        Prepare staged output with initial configuration
-        """
-        # Create initial staged output entry
-        staged_output = await self.staging_repository.create_staged_output(
-            pipeline_id=pipeline_id,
-            data={
-                'component_type': component_type,
-                'base_stage_metadata': config,
-                'status': ProcessingStatus.INITIALIZING,
-                'expires_at': datetime.utcnow() + timedelta(hours=24)
-            }
+            report: Dict[str, Any]
+    ) -> None:
+        """Complete report generation"""
+        try:
+            context = self.active_contexts[pipeline_id]
+            context.state = ReportState.COMPLETED
+
+            # Publish completion
+            await self._publish_completion(pipeline_id, report)
+
+            # Cleanup
+            del self.active_contexts[pipeline_id]
+
+        except Exception as e:
+            logger.error(f"Completion failed: {str(e)}")
+            await self._handle_processing_error(
+                ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                str(e)
+            )
+
+    async def _publish_completion(
+            self,
+            pipeline_id: str,
+            report: Dict[str, Any]
+    ) -> None:
+        """Publish completion message"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.REPORT_PROCESSOR_COMPLETE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'report': report,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="report_handler",
+                    domain_type="report",
+                    processing_stage=ProcessingStage.REPORT_GENERATION
+                ),
+                source_identifier=self.module_identifier
+            )
         )
-
-        # Create initial processing history
-        await self.staging_repository.create_processing_history(
-            stage_id=str(staged_output.id),
-            event_type='initialization',
-            status=ProcessingStatus.INITIALIZING,
-            details=config
-        )
-
-        return staged_output
-
-    # Remaining methods (error handling, validation, etc.) remain similar to previous implementation
 
     async def cleanup(self) -> None:
-        """
-        Gracefully clean up processor resources
-        """
+        """Cleanup processor resources"""
         try:
-            await self.message_broker.unsubscribe_all(
-                self.module_identifier.component_name
-            )
+            # Export any remaining reports
+            for pipeline_id in list(self.active_contexts.keys()):
+                context = self.active_contexts[pipeline_id]
+                if context.sections:
+                    await self._start_export(pipeline_id)
+                else:
+                    await self._handle_processing_error(
+                        ProcessingMessage(content={'pipeline_id': pipeline_id}),
+                        "Processor cleanup initiated"
+                    )
+
+            # Clear contexts
+            self.active_contexts.clear()
+
         except Exception as e:
-            logger.error(f"Staging processor cleanup failed: {str(e)}")
+            logger.error(f"Processor cleanup failed: {str(e)}")
+            raise

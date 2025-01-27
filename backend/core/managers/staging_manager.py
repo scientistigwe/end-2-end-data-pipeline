@@ -1,43 +1,43 @@
 # backend/core/managers/staging_manager.py
 
 import logging
-import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from uuid import UUID
 from datetime import datetime
-from uuid import uuid4
+from pathlib import Path
 
-from core.messaging.broker import MessageBroker
-from core.messaging.event_types import (
-    MessageType,
-    ProcessingMessage,
-    ComponentType,
-    ModuleIdentifier,
-    MessageMetadata,
-    ProcessingStage,
-    ProcessingStatus,
-    StagingContext,
-    StagingState
+from ..messaging.broker import MessageBroker
+from ..messaging.event_types import (
+    MessageType, ProcessingMessage, ComponentType, ModuleIdentifier,
+    MessageMetadata, ProcessingStage, ProcessingStatus, StagingState
 )
+from db.repository.staging_repository import StagingRepository
 
 logger = logging.getLogger(__name__)
 
 
 class StagingManager:
     """
-    Staging Manager: Coordinates staging workflows via message-driven communication
-
-    Responsibilities:
-    - Subscribe to Control Point Manager messages
-    - Manage high-level staging process state
-    - Route staging-related messages
-    - Track active staging processes
+    Staging Manager:
+    1. Direct interface for data sources and frontend
+    2. Pub/sub for core component communications
+    3. Manages staging area and stored resources
     """
 
-    def __init__(self, message_broker: MessageBroker):
-        # Core dependency
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            repository: StagingRepository,
+            storage_path: Path
+    ):
         self.message_broker = message_broker
+        self.repository = repository
+        self.storage_path = storage_path
 
-        # Manager identification
+        # Ensure storage exists
+        self.storage_path.mkdir(parents=True, exist_ok=True)
+
+        # Module identification for pub/sub
         self.module_identifier = ModuleIdentifier(
             component_name="staging_manager",
             component_type=ComponentType.STAGING_MANAGER,
@@ -45,211 +45,421 @@ class StagingManager:
             role="manager"
         )
 
-        # Active staging contexts
-        self.active_contexts: Dict[str, StagingContext] = {}
+        # Active staging tracking
+        self.active_processes: Dict[str, Dict[str, Any]] = {}
 
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
-        """Configure message handlers for staging manager"""
-        # Message type subscriptions
-        handlers = {
-            # Control Point Manager Messages
-            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
-            MessageType.CONTROL_POINT_UPDATED: self._handle_control_point_updated,
-            MessageType.CONTROL_POINT_DECISION: self._handle_control_point_decision,
+    # -------------------------------------------------------------------------
+    # DIRECT INTERFACE FOR DATA SOURCES AND FRONTEND
+    # -------------------------------------------------------------------------
 
-            # Service Layer Messages
-            MessageType.STAGING_SERVICE_START: self._handle_service_start,
-            MessageType.STAGING_SERVICE_STATUS: self._handle_service_status,
-            MessageType.STAGING_SERVICE_COMPLETE: self._handle_service_complete,
-            MessageType.STAGING_SERVICE_ERROR: self._handle_service_error
+    async def store_data(
+            self,
+            data: Any,
+            metadata: Dict[str, Any],
+            source_type: str
+    ) -> Dict[str, Any]:
+        """Direct store interface for data sources"""
+        try:
+            # Generate storage path
+            storage_ref = f"{datetime.now().timestamp()}_{source_type}"
+            storage_path = self.storage_path / storage_ref
+
+            # Store physical data
+            if isinstance(data, bytes):
+                await self._store_binary(storage_path, data)
+            else:
+                await self._store_text(storage_path, data)
+
+            # Store in repository
+            stored_resource = await self.repository.store_staged_resource(
+                pipeline_id=metadata.get('pipeline_id'),
+                data={
+                    'storage_location': str(storage_path),
+                    'resource_type': source_type,
+                    'size_bytes': storage_path.stat().st_size,
+                    **metadata
+                }
+            )
+
+            return {
+                'status': 'success',
+                'staged_id': str(stored_resource.id),
+                'reference': storage_ref
+            }
+
+        except Exception as e:
+            logger.error(f"Direct store failed: {str(e)}")
+            raise
+
+    async def get_data(
+            self,
+            reference: str,
+            requester_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Direct retrieval interface"""
+        try:
+            # Get resource info
+            resource = await self.repository.get_by_id(reference)
+            if not resource:
+                return {'status': 'not_found'}
+
+            # Check access if requester specified
+            if requester_id and not await self._validate_access(reference, requester_id):
+                return {'status': 'access_denied'}
+
+            # Read data
+            storage_path = Path(resource.storage_location)
+            if not storage_path.exists():
+                return {'status': 'data_missing'}
+
+            data = await self._read_data(storage_path, resource.resource_type)
+
+            return {
+                'status': 'success',
+                'data': data,
+                'metadata': resource.metadata
+            }
+
+        except Exception as e:
+            logger.error(f"Direct retrieval failed: {str(e)}")
+            raise
+
+    async def get_status(
+            self,
+            reference: str
+    ) -> Dict[str, Any]:
+        """Get staging status"""
+        try:
+            resource = await self.repository.get_by_id(reference)
+            if not resource:
+                return {'status': 'not_found'}
+
+            return {
+                'status': resource.status,
+                'staged_at': resource.created_at.isoformat(),
+                'resource_type': resource.resource_type,
+                'metadata': resource.metadata
+            }
+
+        except Exception as e:
+            logger.error(f"Status check failed: {str(e)}")
+            raise
+
+    # -------------------------------------------------------------------------
+    # CORE COMPONENT PUB/SUB INTERFACE
+    # -------------------------------------------------------------------------
+
+    async def _setup_message_handlers(self):
+        """Setup pub/sub message handlers"""
+        handlers = {
+            # Component Outputs
+            MessageType.QUALITY_OUTPUT_STORE: self._handle_quality_output,
+            MessageType.INSIGHT_OUTPUT_STORE: self._handle_insight_output,
+            MessageType.DECISION_OUTPUT_STORE: self._handle_decision_output,
+            MessageType.RECOMMENDATION_OUTPUT_STORE: self._handle_recommendation_output,
+
+            # Access Control
+            MessageType.STAGING_ACCESS_REQUEST: self._handle_access_request,
+
+            # Process Control
+            MessageType.STAGING_CLEANUP_REQUEST: self._handle_cleanup_request,
+            MessageType.STAGING_STATUS_REQUEST: self._handle_status_request
         }
 
-        # Subscribe to all relevant message types
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
-                module_identifier=self.module_identifier,
-                message_patterns=message_type.value,
-                callback=handler
+            await self.message_broker.subscribe(
+                self.module_identifier,
+                message_type.value,
+                handler
             )
 
-    async def _handle_control_point_created(self, message: ProcessingMessage) -> None:
-        """
-        Handle new control point for staging
-        Initiate staging workflow based on message
-        """
+    async def _handle_quality_output(self, message: ProcessingMessage):
+        """Handle quality analysis output storage"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            config = message.content.get('config', {})
-
-            # Create staging context
-            context = StagingContext(
-                pipeline_id=pipeline_id,
-                stage_type=ProcessingStage.INITIAL_VALIDATION,
-                status=ProcessingStatus.PENDING
+            # Store output
+            result = await self.repository.store_staged_resource(
+                pipeline_id=message.content['pipeline_id'],
+                data={
+                    'resource_type': 'quality_output',
+                    'stage_key': 'quality_analysis',
+                    'data': message.content['output'],
+                    **message.content['metadata']
+                }
             )
-            self.active_contexts[pipeline_id] = context
 
-            # Publish service start message
+            # Notify storage complete
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.STAGING_SERVICE_START,
+                    message_type=MessageType.STAGING_OUTPUT_STORED,
                     content={
-                        'pipeline_id': pipeline_id,
-                        'config': config
+                        'component': 'quality',
+                        'reference': str(result.id),
+                        'pipeline_id': message.content['pipeline_id']
                     },
                     source_identifier=self.module_identifier,
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="staging_service"
-                    )
+                    target_identifier=message.source_identifier
                 )
             )
 
         except Exception as e:
-            logger.error(f"Control point handling failed: {str(e)}")
-            await self._publish_error(pipeline_id, str(e))
+            logger.error(f"Quality output storage failed: {str(e)}")
+            await self._publish_error(message, str(e))
 
-    async def _handle_control_point_updated(self, message: ProcessingMessage) -> None:
-        """Handle updates to control point"""
+    async def _handle_insight_output(self, message: ProcessingMessage):
+        """Handle insight analysis output storage"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            context = self.active_contexts.get(pipeline_id)
+            # Store output
+            result = await self.repository.store_staged_resource(
+                pipeline_id=message.content['pipeline_id'],
+                data={
+                    'resource_type': 'insight_output',
+                    'stage_key': 'insight_generation',
+                    'data': message.content['output'],
+                    **message.content['metadata']
+                }
+            )
 
-            if context:
-                # Update context
-                context.status = message.content.get('status', context.status)
-
-                # Publish service update message
-                await self.message_broker.publish(
-                    ProcessingMessage(
-                        message_type=MessageType.STAGING_SERVICE_UPDATE,
-                        content={
-                            'pipeline_id': pipeline_id,
-                            'update': message.content
-                        },
-                        source_identifier=self.module_identifier
-                    )
-                )
-
-        except Exception as e:
-            logger.error(f"Control point update failed: {str(e)}")
-
-    async def _handle_control_point_decision(self, message: ProcessingMessage) -> None:
-        """Handle decisions about staging process"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            decision = message.content['decision']
-
-            # Publish service decision message
+            # Notify storage complete
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.STAGING_SERVICE_DECISION,
+                    message_type=MessageType.STAGING_OUTPUT_STORED,
                     content={
-                        'pipeline_id': pipeline_id,
-                        'decision': decision
+                        'component': 'insight',
+                        'reference': str(result.id),
+                        'pipeline_id': message.content['pipeline_id']
                     },
-                    source_identifier=self.module_identifier
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
                 )
             )
 
         except Exception as e:
-            logger.error(f"Control point decision handling failed: {str(e)}")
+            logger.error(f"Insight output storage failed: {str(e)}")
+            await self._publish_error(message, str(e))
 
-    async def _handle_service_start(self, message: ProcessingMessage) -> None:
-        """Handle service start notification"""
-        pipeline_id = message.content.get('pipeline_id')
-
-        # Update context state
-        context = self.active_contexts.get(pipeline_id)
-        if context:
-            context.state = StagingState.INITIALIZING
-
-    async def _handle_service_status(self, message: ProcessingMessage) -> None:
-        """Handle status updates from service"""
-        pipeline_id = message.content.get('pipeline_id')
-
-        # Publish status update message
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_STATUS_UPDATE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.INITIAL_VALIDATION,
-                    'status': message.content
-                },
-                source_identifier=self.module_identifier
+    async def _handle_decision_output(self, message: ProcessingMessage):
+        """Handle decision making output storage"""
+        try:
+            # Store output
+            result = await self.repository.store_staged_resource(
+                pipeline_id=message.content['pipeline_id'],
+                data={
+                    'resource_type': 'decision_output',
+                    'stage_key': 'decision_making',
+                    'data': message.content['output'],
+                    **message.content['metadata']
+                }
             )
-        )
 
-    async def _handle_service_complete(self, message: ProcessingMessage) -> None:
-        """Handle successful service completion"""
-        pipeline_id = message.content.get('pipeline_id')
-
-        # Update context
-        context = self.active_contexts.get(pipeline_id)
-        if context:
-            context.state = StagingState.STORED
-
-        # Publish stage complete message
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_COMPLETE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.INITIAL_VALIDATION,
-                    'results': message.content
-                },
-                source_identifier=self.module_identifier
+            # Notify storage complete
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_OUTPUT_STORED,
+                    content={
+                        'component': 'decision',
+                        'reference': str(result.id),
+                        'pipeline_id': message.content['pipeline_id']
+                    },
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
+                )
             )
-        )
 
-    async def _handle_service_error(self, message: ProcessingMessage) -> None:
-        """Handle errors from service"""
-        pipeline_id = message.content.get('pipeline_id')
-        error = message.content.get('error')
+        except Exception as e:
+            logger.error(f"Decision output storage failed: {str(e)}")
+            await self._publish_error(message, str(e))
 
-        # Update context
-        context = self.active_contexts.get(pipeline_id)
-        if context:
-            context.state = StagingState.ERROR
+    async def _handle_recommendation_output(self, message: ProcessingMessage):
+        """Handle recommendation output storage"""
+        try:
+            # Store output
+            result = await self.repository.store_staged_resource(
+                pipeline_id=message.content['pipeline_id'],
+                data={
+                    'resource_type': 'recommendation_output',
+                    'stage_key': 'recommendation_generation',
+                    'data': message.content['output'],
+                    **message.content['metadata']
+                }
+            )
 
-        # Publish error message
-        await self._publish_error(pipeline_id, error)
+            # Notify storage complete
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_OUTPUT_STORED,
+                    content={
+                        'component': 'recommendation',
+                        'reference': str(result.id),
+                        'pipeline_id': message.content['pipeline_id']
+                    },
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
+                )
+            )
 
-    async def _publish_error(self, pipeline_id: str, error: str) -> None:
+        except Exception as e:
+            logger.error(f"Recommendation output storage failed: {str(e)}")
+            await self._publish_error(message, str(e))
+
+    async def _handle_status_request(self, message: ProcessingMessage):
+        """Handle status request from core components"""
+        try:
+            reference = message.content.get('reference')
+            pipeline_id = message.content.get('pipeline_id')
+
+            # Get resource/pipeline outputs
+            if reference:
+                status = await self.get_status(reference)
+            elif pipeline_id:
+                resources = await self.repository.get_pipeline_resources(
+                    pipeline_id,
+                    resource_type=message.content.get('resource_type')
+                )
+                status = {
+                    'pipeline_id': pipeline_id,
+                    'resources': [
+                        {
+                            'id': str(r.id),
+                            'type': r.resource_type,
+                            'status': r.status,
+                            'created_at': r.created_at.isoformat()
+                        }
+                        for r in resources
+                    ]
+                }
+            else:
+                raise ValueError("Either reference or pipeline_id required")
+
+            # Send status response
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_STATUS_RESPONSE,
+                    content=status,
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Status request failed: {str(e)}")
+            await self._publish_error(message, str(e))
+
+    async def _handle_access_request(self, message: ProcessingMessage):
+        """Handle component data access requests"""
+        try:
+            reference = message.content['reference']
+            requester = message.source_identifier.component_name
+
+            # Validate access
+            access_granted = await self._validate_access(reference, requester)
+
+            event_type = MessageType.STAGING_ACCESS_GRANT if access_granted \
+                else MessageType.STAGING_ACCESS_DENY
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=event_type,
+                    content={
+                        'reference': reference,
+                        'granted': access_granted
+                    },
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Access request failed: {str(e)}")
+            await self._publish_error(message, str(e))
+
+    async def _handle_cleanup_request(self, message: ProcessingMessage):
+        """Handle cleanup requests"""
+        try:
+            # Run cleanup
+            expired_ids = await self.repository.cleanup_expired_resources()
+
+            # Clean storage
+            for resource_id in expired_ids:
+                resource = await self.repository.get_by_id(resource_id)
+                if resource and resource.storage_location:
+                    storage_path = Path(resource.storage_location)
+                    if storage_path.exists():
+                        storage_path.unlink()
+
+            # Notify cleanup complete
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_CLEANUP_COMPLETE,
+                    content={
+                        'cleaned_resources': len(expired_ids),
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    source_identifier=self.module_identifier,
+                    target_identifier=message.source_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Cleanup failed: {str(e)}")
+            await self._publish_error(message, str(e))
+
+    # -------------------------------------------------------------------------
+    # UTILITY METHODS
+    # -------------------------------------------------------------------------
+
+    async def _store_binary(self, path: Path, data: bytes) -> None:
+        """Store binary data"""
+        async with aiofiles.open(path, 'wb') as f:
+            await f.write(data)
+
+    async def _store_text(self, path: Path, data: str) -> None:
+        """Store text data"""
+        async with aiofiles.open(path, 'w') as f:
+            await f.write(data)
+
+    async def _read_data(self, path: Path, resource_type: str) -> Any:
+        """Read stored data"""
+        mode = 'rb' if resource_type in ['file', 'binary'] else 'r'
+        async with aiofiles.open(path, mode) as f:
+            return await f.read()
+
+    async def _validate_access(
+            self,
+            reference: str,
+            requester: str
+    ) -> bool:
+        """Validate access to resource"""
+        try:
+            resource = await self.repository.get_by_id(reference)
+            if not resource:
+                return False
+
+            # Add your access control logic here
+            # For now, basic component-type checking
+            allowed_components = resource.metadata.get('allowed_components', [])
+            return not allowed_components or requester in allowed_components
+
+        except Exception as e:
+            logger.error(f"Access validation failed: {str(e)}")
+            return False
+
+    async def _publish_error(
+            self,
+            original_message: ProcessingMessage,
+            error: str
+    ) -> None:
         """Publish error message"""
         await self.message_broker.publish(
             ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_ERROR,
+                message_type=MessageType.STAGING_ERROR,
                 content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.INITIAL_VALIDATION,
-                    'error': error
+                    'error': error,
+                    'original_request': original_message.content
                 },
-                source_identifier=self.module_identifier
+                source_identifier=self.module_identifier,
+                target_identifier=original_message.source_identifier
             )
         )
-
-    async def cleanup(self) -> None:
-        """Clean up manager resources"""
-        try:
-            # Publish cleanup messages for active contexts
-            for pipeline_id in list(self.active_contexts.keys()):
-                await self.message_broker.publish(
-                    ProcessingMessage(
-                        message_type=MessageType.PIPELINE_STAGE_COMPLETE,
-                        content={
-                            'pipeline_id': pipeline_id,
-                            'stage': ProcessingStage.INITIAL_VALIDATION,
-                            'status': 'cleaned'
-                        },
-                        source_identifier=self.module_identifier
-                    )
-                )
-                del self.active_contexts[pipeline_id]
-
-        except Exception as e:
-            logger.error(f"Staging manager cleanup failed: {str(e)}")

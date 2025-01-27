@@ -2,15 +2,9 @@
 
 import asyncio
 import logging
-<<<<<<< HEAD
 from typing import Dict, List, Any, Optional, Callable, Union, Set, Coroutine
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-=======
-from typing import Dict, List, Any, Optional, Callable, Union, Set
-from datetime import datetime, timedelta
-from dataclasses import dataclass
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 import uuid
 
 from .event_types import (
@@ -18,18 +12,12 @@ from .event_types import (
     MessageType,
     ProcessingStage,
     ProcessingStatus,
-<<<<<<< HEAD
     MessageMetadata,
     ModuleIdentifier,
     ComponentType
 )
 
 
-=======
-    MessageMetadata
-)
-
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +33,6 @@ class SubscriptionInfo:
     is_active: bool = True
 
 
-<<<<<<< HEAD
 @dataclass
 class SubscriptionInfo:
     """Enhanced subscription information"""
@@ -61,10 +48,6 @@ class SubscriptionInfo:
 
 class MessageBroker:
     """Enhanced message broker with department-based routing"""
-=======
-class MessageBroker:
-    """Enhanced message broker with comprehensive message handling"""
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
     def __init__(self):
         # Core storage
@@ -72,23 +55,16 @@ class MessageBroker:
         self.active_messages: Dict[str, ProcessingMessage] = {}
         self.message_history: Dict[str, List[ProcessingMessage]] = {}
 
-<<<<<<< HEAD
         # Department routing
         self.department_routes: Dict[str, Set[str]] = {}  # Department to component mapping
         self.processing_chains: Dict[str, Dict[str, ModuleIdentifier]] = {}  # Chain tracking
 
-=======
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
         # Performance tracking
         self.stats = {
             'messages_processed': 0,
             'messages_failed': 0,
-<<<<<<< HEAD
             'active_subscriptions': 0,
             'departments_active': 0
-=======
-            'active_subscriptions': 0
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
         }
 
         # Async support
@@ -100,7 +76,38 @@ class MessageBroker:
         self._cleanup_task = None
         self._start_background_tasks()
 
-<<<<<<< HEAD
+        async def initialize(self) -> None:
+            """
+            Initialize the message broker with any startup tasks
+            Can be used to set up initial subscriptions, warm up caches, etc.
+            """
+            try:
+                logger.info("Initializing Message Broker")
+                
+                # Start background tasks
+                self._start_background_tasks()
+
+                # Optional: Add any initial setup tasks
+                # For example, registering default system-wide subscriptions
+                # or performing initial health checks
+
+                logger.info("Message Broker initialization completed")
+            except Exception as e:
+                logger.error(f"Message Broker initialization failed: {str(e)}")
+                raise
+
+        # Add a synchronous initialization method for compatibility
+        def initialize_sync(self) -> None:
+            """
+            Synchronous wrapper for initialization to support various startup scenarios
+            """
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(self.initialize())
+            except Exception as e:
+                logger.error(f"Synchronous Message Broker initialization failed: {str(e)}")
+                raise
+
     async def subscribe(
             self,
             module_identifier: ModuleIdentifier,
@@ -111,38 +118,12 @@ class MessageBroker:
         async with self._lock:
             try:
                 # Normalize patterns
-=======
-    def _start_background_tasks(self):
-        """Initialize background tasks"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        self._cleanup_task = loop.create_task(self._periodic_cleanup())
-
-    async def subscribe(
-            self,
-            component_id: str,
-            message_patterns: Union[str, List[str]],
-            callback: Union[Callable, Coroutine]
-    ) -> None:
-        """Subscribe to message patterns"""
-        async with self._lock:
-            try:
-                # Normalize patterns to list
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
                 patterns = [message_patterns] if isinstance(message_patterns, str) else message_patterns
 
                 # Create subscription info
                 sub_info = SubscriptionInfo(
-<<<<<<< HEAD
                     component_id=str(uuid.uuid4()),
                     module_identifier=module_identifier,
-=======
-                    component_id=component_id,
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
                     patterns=set(patterns),
                     callback=callback
                 )
@@ -153,7 +134,6 @@ class MessageBroker:
                         self.subscriptions[pattern] = []
                     self.subscriptions[pattern].append(sub_info)
 
-<<<<<<< HEAD
                 # Update department routes
                 if module_identifier.department:
                     dept_routes = self.department_routes.setdefault(
@@ -171,25 +151,13 @@ class MessageBroker:
                     f"Component {module_identifier.component_name} "
                     f"subscribed to patterns: {patterns}"
                 )
-=======
-                # Create message queue if needed
-                if component_id not in self._message_queues:
-                    self._message_queues[component_id] = asyncio.Queue()
-
-                self.stats['active_subscriptions'] += 1
-                logger.info(f"Component {component_id} subscribed to patterns: {patterns}")
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
 
             except Exception as e:
                 logger.error(f"Subscription failed: {str(e)}")
                 raise
 
     async def publish(self, message: ProcessingMessage) -> None:
-<<<<<<< HEAD
         """Enhanced publish with improved routing"""
-=======
-        """Publish a message to subscribers"""
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
         try:
             # Store active message
             self.active_messages[message.id] = message
@@ -201,14 +169,11 @@ class MessageBroker:
                 )
                 history.append(message)
 
-<<<<<<< HEAD
             # Handle broadcast messages
             if message.metadata.is_broadcast:
                 await self._handle_broadcast(message)
                 return
 
-=======
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
             # Find matching subscribers
             matched_subscriptions = self._find_matching_subscriptions(message)
 
@@ -229,7 +194,6 @@ class MessageBroker:
             self.stats['messages_failed'] += 1
             raise
 
-<<<<<<< HEAD
     async def _handle_broadcast(self, message: ProcessingMessage) -> None:
         """Handle broadcast messages to all relevant components"""
         try:
@@ -375,8 +339,6 @@ class MessageBroker:
             logger.error(f"Error during message broker cleanup: {str(e)}")
             raise
 
-=======
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     async def _deliver_message(
             self,
             sub_info: SubscriptionInfo,
@@ -397,26 +359,6 @@ class MessageBroker:
             logger.error(f"Message delivery failed: {str(e)}")
             await self._handle_delivery_error(sub_info, message, e)
 
-<<<<<<< HEAD
-=======
-    def _find_matching_subscriptions(
-            self,
-            message: ProcessingMessage
-    ) -> List[SubscriptionInfo]:
-        """Find subscriptions matching a message"""
-        matched = []
-
-        # Create message routing key
-        routing_key = f"{message.metadata.source_component}.{message.message_type.value}"
-
-        # Check all patterns
-        for pattern, subs in self.subscriptions.items():
-            if self._matches_pattern(routing_key, pattern):
-                matched.extend([sub for sub in subs if sub.is_active])
-
-        return matched
-
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     def _matches_pattern(self, routing_key: str, pattern: str) -> bool:
         """Check if routing key matches pattern"""
         if pattern == "#":
@@ -462,21 +404,6 @@ class MessageBroker:
         except Exception as e:
             logger.error(f"Error handling failed: {str(e)}")
 
-<<<<<<< HEAD
-=======
-    async def _periodic_cleanup(self):
-        """Periodic cleanup of expired messages and inactive subscriptions"""
-        while self._is_running:
-            try:
-                await self._cleanup_expired_messages()
-                await self._cleanup_inactive_subscriptions()
-                await asyncio.sleep(300)  # Run every 5 minutes
-
-            except Exception as e:
-                logger.error(f"Cleanup error: {str(e)}")
-                await asyncio.sleep(60)
-
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     async def _cleanup_expired_messages(self):
         """Clean up expired messages"""
         current_time = datetime.now()
@@ -506,24 +433,6 @@ class MessageBroker:
             if not self.subscriptions[pattern]:
                 del self.subscriptions[pattern]
 
-<<<<<<< HEAD
-=======
-    async def cleanup(self):
-        """Clean up broker resources"""
-        self._is_running = False
-
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-
-        # Clear all storage
-        self.subscriptions.clear()
-        self.active_messages.clear()
-        self.message_history.clear()
-        self._message_queues.clear()
-
-        logger.info("Message Broker cleaned up successfully")
-
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce
     def get_stats(self) -> Dict[str, Any]:
         """Get broker statistics"""
         return {
@@ -550,7 +459,6 @@ class MessageBroker:
         return {
             'component_id': component_id,
             'subscriptions': subscriptions
-<<<<<<< HEAD
         } if subscriptions else None
 
     def sync_cleanup(self) -> None:
@@ -681,6 +589,3 @@ class MessageBroker:
 
         except Exception as e:
             logger.error(f"Error clearing storage: {str(e)}")
-=======
-        } if subscriptions else None
->>>>>>> 7d1206c3f3fa3bbf7c91fb7ae42a8171039851ce

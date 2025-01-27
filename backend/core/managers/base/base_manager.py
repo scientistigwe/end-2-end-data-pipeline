@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from typing import Dict, Any, Callable, Coroutine
+from typing import Dict, Any, Callable, Coroutine, Optional
 from datetime import datetime
 import uuid
 
@@ -28,49 +28,106 @@ class BaseManager:
             component_name: str,
             domain_type: str
     ):
-        self.message_broker = message_broker
-        self.logger = logging.getLogger(f"{component_name}_manager")
-
-        # Initialize context
-        self.context = ManagerContext(
-            pipeline_id=str(uuid.uuid4()),  # Manager instance ID
-            component_name=component_name,
-            domain_type=domain_type,
-            state=ManagerState.INITIALIZING,
-            metrics=ManagerMetrics()
-        )
+        # Use a protected attribute to store context
+        self._context: Optional[ManagerContext] = None
+        
+        # Ensure context is initialized before any other operations
+        self._initialize_context(message_broker, component_name, domain_type)
 
         # Message handling
         self._message_handlers: Dict[MessageType, Callable] = {}
         self._async_lock = asyncio.Lock()
 
         # Setup base handlers
-        self._setup_base_handlers()
+        asyncio.create_task(self._setup_base_handlers())
+
+    def _initialize_context(
+            self, 
+            message_broker: MessageBroker, 
+            component_name: str, 
+            domain_type: str
+    ) -> None:
+        """
+        Safely initialize context with fallback mechanism
+        """
+        try:
+            # Assign message broker and logger
+            self.message_broker = message_broker
+            self.logger = logging.getLogger(f"{component_name}_manager")
+
+            # Create context with comprehensive initialization
+            self._context = ManagerContext(
+                pipeline_id=str(uuid.uuid4()),
+                component_name=component_name,
+                domain_type=domain_type,
+                stage="initializing",  # Example stage
+                status="active",       # Example status
+                state=ManagerState.INITIALIZING,
+                metrics=ManagerMetrics()
+            )
+
+        except Exception as e:
+            logger.error(f"Context initialization failed: {e}")
+            raise
+
+    @property
+    def context(self) -> ManagerContext:
+        """
+        Safely access context with explicit check
+        
+        Returns:
+            ManagerContext: The current context
+        
+        Raises:
+            AttributeError: If context has not been initialized
+        """
+        if self._context is None:
+            raise AttributeError(f"{self.__class__.__name__} context has not been initialized")
+        return self._context
+
+    def __del__(self):
+        """
+        Safely handle cleanup during object deletion
+        """
+        try:
+            # Check if _context exists and is not None
+            if hasattr(self, '_context') and self._context is not None:
+                # Only attempt cleanup if not already shut down
+                if self._context.state != ManagerState.SHUTDOWN:
+                    # Create a task to perform async cleanup
+                    asyncio.create_task(self.cleanup())
+        except Exception as e:
+            # Log the error without re-raising
+            logger.error(f"Error during manager cleanup: {e}")
 
     async def _setup_base_handlers(self) -> None:
         """Setup base message handlers"""
-        handlers = {
-            MessageType.COMPONENT_INIT: self._handle_component_init,
-            MessageType.COMPONENT_UPDATE: self._handle_component_update,
-            MessageType.COMPONENT_ERROR: self._handle_component_error,
-            MessageType.COMPONENT_SYNC: self._handle_component_sync
-        }
+        try:
+            handlers = {
+                MessageType.COMPONENT_INIT: self._handle_component_init,
+                MessageType.COMPONENT_UPDATE: self._handle_component_update,
+                MessageType.COMPONENT_ERROR: self._handle_component_error,
+                MessageType.COMPONENT_SYNC: self._handle_component_sync
+            }
 
-        for message_type, handler in handlers.items():
-            await self.register_message_handler(message_type, handler)
+            for message_type, handler in handlers.items():
+                await self.register_message_handler(message_type, handler)
 
-        # Notify system about initialization
-        await self.message_broker.publish(ProcessingMessage(
-            message_type=MessageType.COMPONENT_INIT,
-            content={
-                'component_name': self.context.component_name,
-                'domain_type': self.context.domain_type
-            },
-            metadata=MessageMetadata(
-                source_component=self.context.component_name,
-                target_component="system"
-            )
-        ))
+            # Notify system about initialization
+            await self.message_broker.publish(ProcessingMessage(
+                message_type=MessageType.COMPONENT_INIT,
+                content={
+                    'component_name': self.context.component_name,
+                    'domain_type': self.context.domain_type
+                },
+                metadata=MessageMetadata(
+                    source_component=self.context.component_name,
+                    target_component="system"
+                )
+            ))
+        except Exception as e:
+            logger.error(f"Base handlers setup failed: {e}")
+            raise
 
     async def register_message_handler(
             self,

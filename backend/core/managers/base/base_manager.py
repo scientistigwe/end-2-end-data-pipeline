@@ -1,13 +1,13 @@
-# backend/core/sub_managers/base_manager.py
+# backend/core/managers/base/manager_base.py
 
+from typing import Dict, Any, Optional, Callable, Coroutine
 import logging
 import asyncio
-from typing import Dict, Any, Callable, Coroutine, Optional
 from datetime import datetime
 import uuid
 
-from ...messaging.broker import MessageBroker
-from ...messaging.event_types import (
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import (
     MessageType,
     ProcessingMessage,
     MessageMetadata,
@@ -15,12 +15,11 @@ from ...messaging.event_types import (
     ManagerState,
     ManagerMetrics
 )
-
-logger = logging.getLogger(__name__)
+from .manager_types import ChannelManager
 
 
 class BaseManager:
-    """Base manager implementation using message broker architecture"""
+    """Base manager implementation with comprehensive message handling"""
 
     def __init__(
             self,
@@ -28,125 +27,111 @@ class BaseManager:
             component_name: str,
             domain_type: str
     ):
-        # Use a protected attribute to store context
+        # Core components
+        self.message_broker = message_broker
+        self.logger = logging.getLogger(f"{component_name}_manager")
+
+        # Context initialization
         self._context: Optional[ManagerContext] = None
-        
-        # Ensure context is initialized before any other operations
-        self._initialize_context(message_broker, component_name, domain_type)
+        self._initialize_context(component_name, domain_type)
+
+        # Channel management
+        self.channel_manager = ChannelManager(logger=self.logger)
 
         # Message handling
         self._message_handlers: Dict[MessageType, Callable] = {}
         self._async_lock = asyncio.Lock()
 
-        # Setup base handlers
-        asyncio.create_task(self._setup_base_handlers())
+        # Background tasks
+        self._background_tasks: List[asyncio.Task] = []
 
-    def _initialize_context(
-            self, 
-            message_broker: MessageBroker, 
-            component_name: str, 
-            domain_type: str
-    ) -> None:
-        """
-        Safely initialize context with fallback mechanism
-        """
+        # Initialize manager
+        asyncio.create_task(self._initialize_manager())
+
+    def _initialize_context(self, component_name: str, domain_type: str) -> None:
+        """Initialize manager context"""
         try:
-            # Assign message broker and logger
-            self.message_broker = message_broker
-            self.logger = logging.getLogger(f"{component_name}_manager")
-
-            # Create context with comprehensive initialization
             self._context = ManagerContext(
                 pipeline_id=str(uuid.uuid4()),
                 component_name=component_name,
                 domain_type=domain_type,
-                stage="initializing",  # Example stage
-                status="active",       # Example status
+                stage="initializing",
+                status="active",
                 state=ManagerState.INITIALIZING,
                 metrics=ManagerMetrics()
             )
-
         except Exception as e:
-            logger.error(f"Context initialization failed: {e}")
+            self.logger.error(f"Context initialization failed: {e}")
             raise
 
     @property
     def context(self) -> ManagerContext:
-        """
-        Safely access context with explicit check
-        
-        Returns:
-            ManagerContext: The current context
-        
-        Raises:
-            AttributeError: If context has not been initialized
-        """
+        """Access manager context safely"""
         if self._context is None:
-            raise AttributeError(f"{self.__class__.__name__} context has not been initialized")
+            raise AttributeError(f"{self.__class__.__name__} context not initialized")
         return self._context
 
-    def __del__(self):
-        """
-        Safely handle cleanup during object deletion
-        """
+    async def _initialize_manager(self) -> None:
+        """Initialize manager components"""
         try:
-            # Check if _context exists and is not None
-            if hasattr(self, '_context') and self._context is not None:
-                # Only attempt cleanup if not already shut down
-                if self._context.state != ManagerState.SHUTDOWN:
-                    # Create a task to perform async cleanup
-                    asyncio.create_task(self.cleanup())
+            # Setup message handling
+            await self._setup_base_handlers()
+            await self._setup_domain_handlers()
+
+            # Start monitoring
+            self._start_background_tasks()
+
+            # Mark as active
+            self.context.state = ManagerState.ACTIVE
+
         except Exception as e:
-            # Log the error without re-raising
-            logger.error(f"Error during manager cleanup: {e}")
+            self.logger.error(f"Manager initialization failed: {e}")
+            raise
 
     async def _setup_base_handlers(self) -> None:
         """Setup base message handlers"""
-        try:
-            handlers = {
-                MessageType.COMPONENT_INIT: self._handle_component_init,
-                MessageType.COMPONENT_UPDATE: self._handle_component_update,
-                MessageType.COMPONENT_ERROR: self._handle_component_error,
-                MessageType.COMPONENT_SYNC: self._handle_component_sync
-            }
+        base_handlers = {
+            MessageType.COMPONENT_INIT: self._handle_component_init,
+            MessageType.COMPONENT_UPDATE: self._handle_component_update,
+            MessageType.COMPONENT_ERROR: self._handle_component_error,
+            MessageType.COMPONENT_SYNC: self._handle_component_sync
+        }
 
-            for message_type, handler in handlers.items():
-                await self.register_message_handler(message_type, handler)
+        for message_type, handler in base_handlers.items():
+            await self.register_message_handler(message_type, handler)
 
-            # Notify system about initialization
-            await self.message_broker.publish(ProcessingMessage(
-                message_type=MessageType.COMPONENT_INIT,
-                content={
-                    'component_name': self.context.component_name,
-                    'domain_type': self.context.domain_type
-                },
-                metadata=MessageMetadata(
-                    source_component=self.context.component_name,
-                    target_component="system"
-                )
-            ))
-        except Exception as e:
-            logger.error(f"Base handlers setup failed: {e}")
-            raise
+    async def _setup_domain_handlers(self) -> None:
+        """Setup domain-specific handlers - to be implemented by subclasses"""
+        raise NotImplementedError
+
+    def _start_background_tasks(self) -> None:
+        """Start background monitoring tasks"""
+        tasks = [
+            self._monitor_process_timeouts(),
+            self._monitor_resource_usage(),
+            self._monitor_system_health()
+        ]
+
+        for task in tasks:
+            self._background_tasks.append(asyncio.create_task(task))
 
     async def register_message_handler(
             self,
             message_type: MessageType,
             handler: Callable[[ProcessingMessage], Coroutine]
     ) -> None:
-        """Register handler for message type"""
+        """Register a message handler"""
         async with self._async_lock:
             self._message_handlers[message_type] = handler
             self.context.handlers[message_type.value] = handler.__name__
-
             await self.message_broker.subscribe(
                 self.context.component_name,
-                f"{self.context.domain_type}.{message_type.value}",
+                message_type.value,
                 self._handle_message
             )
 
     async def _handle_message(self, message: ProcessingMessage) -> None:
-        """Central message handling"""
+        """Central message handling logic"""
         try:
             self.context.state = ManagerState.PROCESSING
             start_time = datetime.now()
@@ -162,31 +147,12 @@ class BaseManager:
             )
 
         except Exception as e:
-            self.logger.error(f"Message handling failed: {str(e)}")
+            self.logger.error(f"Message handling failed: {e}")
             await self._handle_error(message, e)
             self._update_metrics(success=False)
 
         finally:
             self.context.state = ManagerState.ACTIVE
-
-    async def _handle_error(
-            self,
-            message: ProcessingMessage,
-            error: Exception
-    ) -> None:
-        """Handle processing errors"""
-        await self.message_broker.publish(ProcessingMessage(
-            message_type=MessageType.COMPONENT_ERROR,
-            content={
-                'error': str(error),
-                'component_name': self.context.component_name,
-                'original_message': message.content
-            },
-            metadata=MessageMetadata(
-                source_component=self.context.component_name,
-                target_component="system"
-            )
-        ))
 
     def _update_metrics(self, processing_time: float = 0.0, success: bool = True) -> None:
         """Update performance metrics"""
@@ -195,32 +161,45 @@ class BaseManager:
         if not success:
             metrics.errors_encountered += 1
 
-        total_time = (metrics.average_processing_time *
-                      (metrics.messages_processed - 1) + processing_time)
-        metrics.average_processing_time = total_time / metrics.messages_processed
+        if metrics.messages_processed > 0:
+            total_time = (metrics.average_processing_time *
+                          (metrics.messages_processed - 1) + processing_time)
+            metrics.average_processing_time = total_time / metrics.messages_processed
+
         metrics.last_activity = datetime.now()
 
     async def cleanup(self) -> None:
-        """Cleanup resources"""
+        """Cleanup manager resources"""
         try:
+            # Update state
             self.context.state = ManagerState.SHUTDOWN
-            await self.message_broker.publish(ProcessingMessage(
-                message_type=MessageType.COMPONENT_CLEANUP,
-                content={
-                    'component_name': self.context.component_name,
-                    'reason': 'Manager shutdown'
-                },
-                metadata=MessageMetadata(
-                    source_component=self.context.component_name,
-                    target_component="system"
-                )
-            ))
-            self._message_handlers.clear()
-        except Exception as e:
-            self.logger.error(f"Cleanup failed: {str(e)}")
-            raise
 
-    def __del__(self):
-        """Cleanup on deletion"""
-        if self.context.state != ManagerState.SHUTDOWN:
-            asyncio.create_task(self.cleanup())
+            # Cancel background tasks
+            for task in self._background_tasks:
+                if not task.done():
+                    task.cancel()
+
+            # Cleanup channels
+            self.channel_manager.cleanup_channels()
+
+            # Notify cleanup
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.COMPONENT_CLEANUP,
+                    content={
+                        'component_name': self.context.component_name,
+                        'reason': 'Manager shutdown'
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.context.component_name,
+                        target_component="system"
+                    )
+                )
+            )
+
+            # Clear handlers
+            self._message_handlers.clear()
+
+        except Exception as e:
+            self.logger.error(f"Cleanup failed: {e}")
+            raise

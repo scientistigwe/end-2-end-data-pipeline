@@ -14,37 +14,85 @@ from ..messaging.event_types import (
     MessageMetadata,
     ProcessingStage,
     ProcessingStatus,
+    ManagerState,
     ReportContext,
     ReportState
 )
 
+from .base.base_manager import BaseManager
+
 logger = logging.getLogger(__name__)
 
-
-class ReportManager:
+class ReportManager(BaseManager):
     """
     Report Manager: Coordinates high-level report workflow.
     - Communicates with CPM
     - Tracks data dependencies
     - Coordinates through messages
     """
-
-    def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
-
-        # Manager identification
-        self.module_identifier = ModuleIdentifier(
-            component_name="report_manager",
-            component_type=ComponentType.REPORT_MANAGER,
-            department="report",
-            role="manager"
+    def __init__(
+        self,
+        message_broker: MessageBroker,
+        component_name: str,
+        domain_type: str
+    ):
+        super().__init__(
+            message_broker=message_broker,
+            component_name=component_name,
+            domain_type=domain_type
         )
+        self.report_contexts: Dict[str, Dict[str, Any]] = {}
 
-        # Active processes
-        self.active_processes: Dict[str, ReportContext] = {}
+    async def _setup_domain_handlers(self) -> None:
+        """Setup report-specific message handlers"""
+        handlers = {
+            # Report generation
+            MessageType.REPORT_GENERATE_REQUEST: self._handle_generate_request,
+            MessageType.REPORT_SECTION_GENERATE_REQUEST: self._handle_section_generate,
+            MessageType.REPORT_VISUALIZATION_GENERATE_REQUEST: self._handle_visualization_generate,
 
-        # Setup message handlers
-        self._setup_message_handlers()
+            # Report validation
+            MessageType.REPORT_VALIDATE_REQUEST: self._handle_validate_request,
+            MessageType.REPORT_VALIDATE_COMPLETE: self._handle_validate_complete,
+            MessageType.REPORT_VALIDATE_REJECT: self._handle_validate_reject,
+
+            # Report delivery
+            MessageType.REPORT_EXPORT_REQUEST: self._handle_export_request,
+            MessageType.REPORT_DELIVERY_REQUEST: self._handle_delivery_request,
+
+            # Report formatting
+            MessageType.REPORT_FORMAT_REQUEST: self._handle_format_request,
+            MessageType.REPORT_STYLE_UPDATE: self._handle_style_update,
+            MessageType.REPORT_TEMPLATE_UPDATE: self._handle_template_update
+        }
+
+        for message_type, handler in handlers.items():
+            await self.register_message_handler(message_type, handler)
+
+    async def _handle_generate_request(self, message: ProcessingMessage) -> None:
+        """Handle report generation request"""
+        try:
+            pipeline_id = message.content['pipeline_id']
+            report_config = message.content.get('config', {})
+
+            # Initialize report context
+            self.report_contexts[pipeline_id] = {
+                'status': 'initializing',
+                'config': report_config,
+                'sections': [],
+                'visualizations': [],
+                'created_at': datetime.now()
+            }
+
+            # Start report generation
+            await self._generate_report_sections(pipeline_id, report_config)
+
+        except Exception as e:
+            await self._handle_error(message, e)
+
+    async def _generate_report_sections(self, pipeline_id: str, config: Dict[str, Any]) -> None:
+        """Generate report sections based on config"""
+        raise NotImplementedError
 
     def _setup_message_handlers(self) -> None:
         """Setup message handlers"""

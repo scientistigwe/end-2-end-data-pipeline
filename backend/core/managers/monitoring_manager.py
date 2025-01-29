@@ -1,9 +1,8 @@
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 import uuid
 import asyncio
-from datetime import timedelta
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -22,87 +21,99 @@ from .base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
-class MonitoringManager(BaseManager):
-    """
-    Monitoring Manager that coordinates monitoring workflow through message broker.
-    Maintains state and manages transitions through message-based communication.
-    """
 
-    def __init__(self, message_broker: MessageBroker):
+class MonitoringManager(BaseManager):
+    """Enhanced Monitoring Manager for system-wide monitoring and metrics collection"""
+
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            component_name: str = "monitoring_manager",
+            domain_type: str = "monitoring"
+    ):
         super().__init__(
             message_broker=message_broker,
-            component_name="monitoring_manager",
-            domain_type="monitoring"
+            component_name=component_name,
+            domain_type=domain_type
         )
 
+        # Module identification
         self.module_identifier = ModuleIdentifier(
-            component_name="monitoring_manager",
+            component_name=component_name,
             component_type=ComponentType.MONITORING_MANAGER,
-            department="monitoring",
+            department=domain_type,
             role="manager"
         )
 
-        # State management
+        # Active monitoring processes
         self.active_processes: Dict[str, MonitoringContext] = {}
-        self.state = ManagerState.INITIALIZING
 
-        # Initialize manager
-        self._initialize_manager()
+        # Monitoring configuration
+        self.collection_intervals: Dict[str, int] = {}
+        self.alert_thresholds: Dict[str, Dict[str, float]] = {
+            "cpu_usage": {"warning": 80, "critical": 95},
+            "memory_usage": {"warning": 85, "critical": 95},
+            "disk_space": {"warning": 80, "critical": 90},
+            "latency_ms": {"warning": 1000, "critical": 5000}
+        }
 
-    def _initialize_manager(self) -> None:
-        """Initialize manager components"""
-        self._setup_message_handlers()
-        self._start_monitoring_tasks()
-        self.state = ManagerState.ACTIVE
-
-    def _setup_message_handlers(self) -> None:
-        """Setup subscriptions for all monitoring-related messages"""
+    async def _setup_domain_handlers(self) -> None:
+        """Initialize monitoring-specific message handlers"""
         handlers = {
-            # Service Layer Responses
-            MessageType.MONITORING_SERVICE_COMPLETE: self._handle_service_complete,
-            MessageType.MONITORING_SERVICE_ERROR: self._handle_service_error,
-            MessageType.MONITORING_SERVICE_STATUS: self._handle_service_status,
+            # Core monitoring flow
+            MessageType.MONITORING_PROCESS_START: self._handle_monitoring_start,
+            MessageType.MONITORING_PROCESS_PROGRESS: self._handle_monitoring_progress,
+            MessageType.MONITORING_PROCESS_COMPLETE: self._handle_monitoring_complete,
+            MessageType.MONITORING_PROCESS_FAILED: self._handle_monitoring_failed,
 
-            # Monitoring Flow Messages
-            MessageType.MONITORING_METRICS_READY: self._handle_metrics_ready,
-            MessageType.MONITORING_HEALTH_STATUS: self._handle_health_status,
-            MessageType.MONITORING_ALERT_NOTIFY: self._handle_alert_notification,
-            MessageType.MONITORING_THRESHOLD_BREACH: self._handle_threshold_breach,
+            # Metrics handling
+            MessageType.MONITORING_METRICS_COLLECT: self._handle_metrics_collect,
+            MessageType.MONITORING_METRICS_UPDATE: self._handle_metrics_update,
+            MessageType.MONITORING_METRICS_AGGREGATE: self._handle_metrics_aggregate,
+            MessageType.MONITORING_METRICS_EXPORT: self._handle_metrics_export,
 
-            # Control Point Messages
-            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
-            MessageType.CONTROL_POINT_UPDATED: self._handle_control_point_updated,
-            MessageType.CONTROL_POINT_DECISION_SUBMIT: self._handle_control_point_decision,
+            # Performance monitoring
+            MessageType.MONITORING_PERFORMANCE_CHECK: self._handle_performance_check,
+            MessageType.MONITORING_PERFORMANCE_ALERT: self._handle_performance_alert,
+            MessageType.MONITORING_PERFORMANCE_REPORT: self._handle_performance_report,
 
-            # Resource Messages
-            MessageType.RESOURCE_ALLOCATED: self._handle_resource_allocated,
-            MessageType.RESOURCE_RELEASED: self._handle_resource_released,
+            # Resource monitoring
+            MessageType.MONITORING_RESOURCE_CHECK: self._handle_resource_check,
+            MessageType.MONITORING_RESOURCE_ALERT: self._handle_resource_alert,
+            MessageType.MONITORING_RESOURCE_THRESHOLD: self._handle_resource_threshold,
 
-            # System Messages
+            # Health monitoring
             MessageType.MONITORING_HEALTH_CHECK: self._handle_health_check,
-            MessageType.MONITORING_CONFIG_UPDATE: self._handle_config_update
+            MessageType.MONITORING_HEALTH_STATUS: self._handle_health_status,
+            MessageType.MONITORING_HEALTH_ALERT: self._handle_health_alert,
+
+            # Alert management
+            MessageType.MONITORING_ALERT_GENERATE: self._handle_alert_generate,
+            MessageType.MONITORING_ALERT_PROCESS: self._handle_alert_process,
+            MessageType.MONITORING_ALERT_RESOLVE: self._handle_alert_resolve,
+            MessageType.MONITORING_ALERT_ESCALATE: self._handle_alert_escalate,
+
+            # Export handling
+            MessageType.MONITORING_EXPORT_PROMETHEUS: self._handle_prometheus_export,
+            MessageType.MONITORING_EXPORT_INFLUXDB: self._handle_influxdb_export,
+            MessageType.MONITORING_EXPORT_JSON: self._handle_json_export,
+
+            # System operations
+            MessageType.MONITORING_CONFIG_UPDATE: self._handle_config_update,
+            MessageType.MONITORING_CLEANUP_REQUEST: self._handle_cleanup_request,
+            MessageType.MONITORING_BACKUP_REQUEST: self._handle_backup_request
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
-                self.module_identifier,
-                message_type.value,
-                handler
-            )
+            await self.register_message_handler(message_type, handler)
 
-    async def request_monitoring(
-            self,
-            pipeline_id: str,
-            config: Dict[str, Any]
-    ) -> str:
-        """Initiate monitoring process through service layer"""
-        correlation_id = str(uuid.uuid4())
-
+    async def request_monitoring(self, pipeline_id: str, config: Dict[str, Any]) -> str:
+        """Initialize a new monitoring process"""
         try:
             # Create monitoring context
             context = MonitoringContext(
                 pipeline_id=pipeline_id,
-                correlation_id=correlation_id,
+                correlation_id=str(uuid.uuid4()),
                 monitor_state=MonitoringState.INITIALIZING,
                 metric_types=config.get('metric_types', []),
                 collectors_enabled=config.get('collectors', []),
@@ -111,554 +122,609 @@ class MonitoringManager(BaseManager):
 
             self.active_processes[pipeline_id] = context
 
-            # Request through service layer
+            # Request monitoring start
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.MONITORING_SERVICE_START,
+                    message_type=MessageType.MONITORING_PROCESS_START,
                     content={
                         'pipeline_id': pipeline_id,
                         'config': config
                     },
                     metadata=MessageMetadata(
-                        correlation_id=correlation_id,
+                        correlation_id=context.correlation_id,
                         source_component=self.module_identifier.component_name,
-                        target_component="monitoring_service",
                         domain_type="monitoring",
-                        processing_stage=ProcessingStage.MONITORING
+                        processing_stage=ProcessingStage.INITIAL_VALIDATION
                     ),
                     source_identifier=self.module_identifier
                 )
             )
 
-            logger.info(f"Monitoring request initiated for pipeline: {pipeline_id}")
-            return correlation_id
+            logger.info(f"Monitoring initiated for pipeline: {pipeline_id}")
+            return context.correlation_id
 
         except Exception as e:
-            logger.error(f"Failed to initiate monitoring request: {str(e)}")
+            logger.error(f"Failed to initiate monitoring: {str(e)}")
             raise
 
-    async def _handle_metrics_ready(self, message: ProcessingMessage) -> None:
-        """Handle metrics data availability"""
-        pipeline_id = message.content["pipeline_id"]
-        metrics = message.content.get("metrics", {})
-        context = self.active_processes.get(pipeline_id)
-
-        if not context:
-            return
-
-        try:
-            context.update_metrics(metrics)
-
-            # Check thresholds
-            await self._check_thresholds(pipeline_id, metrics)
-
-        except Exception as e:
-            logger.error(f"Metrics handling failed: {str(e)}")
-            await self._handle_error(pipeline_id, str(e))
-
-    async def _handle_health_status(self, message: ProcessingMessage) -> None:
-        """Handle health status update"""
-        pipeline_id = message.content["pipeline_id"]
-        health_status = message.content.get("health_status", {})
-        context = self.active_processes.get(pipeline_id)
-
-        if not context:
-            return
-
-        try:
-            context.update_health_check(health_status)
-
-            if health_status.get("status") != "healthy":
-                await self._handle_health_issue(pipeline_id, health_status)
-
-        except Exception as e:
-            logger.error(f"Health status handling failed: {str(e)}")
-            await self._handle_error(pipeline_id, str(e))
-
-    async def _handle_alert_notification(self, message: ProcessingMessage) -> None:
-        """Handle monitoring alert notification"""
-        pipeline_id = message.content["pipeline_id"]
-        alert = message.content.get("alert", {})
-        context = self.active_processes.get(pipeline_id)
-
-        if not context:
-            return
-
-        try:
-            context.add_alert(alert)
-
-            if alert.get("severity") in ["critical", "high"]:
-                await self._handle_critical_alert(pipeline_id, alert)
-
-        except Exception as e:
-            logger.error(f"Alert handling failed: {str(e)}")
-            await self._handle_error(pipeline_id, str(e))
-
-    async def _handle_service_complete(self, message: ProcessingMessage) -> None:
-        """Handle completion message from service layer"""
-        pipeline_id = message.content["pipeline_id"]
-        context = self.active_processes.get(pipeline_id)
-
-        if not context:
-            return
-
-        try:
-            # Update context
-            context.monitor_state = MonitoringState.COMPLETED
-            context.completed_at = datetime.now()
-            context.metrics = message.content.get("metrics", {})
-
-            # Notify completion
-            await self._notify_completion(pipeline_id, context.metrics)
-
-            # Cleanup
-            await self._cleanup_process(pipeline_id)
-
-        except Exception as e:
-            logger.error(f"Service completion handling failed: {str(e)}")
-            await self._handle_error(pipeline_id, str(e))
-
-    async def _handle_error(self, pipeline_id: str, error: str) -> None:
-        """Handle errors in monitoring process"""
-        context = self.active_processes.get(pipeline_id)
-        if not context:
-            return
-
-        try:
-            context.monitor_state = MonitoringState.FAILED
-            context.error = error
-
-            # Notify error
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.MONITORING_ERROR,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'error': error,
-                        'state': context.monitor_state.value
-                    },
-                    metadata=MessageMetadata(
-                        correlation_id=context.correlation_id,
-                        source_component=self.module_identifier.component_name,
-                        target_component="control_point_manager"
-                    ),
-                    source_identifier=self.module_identifier
-                )
-            )
-
-            # Cleanup
-            await self._cleanup_process(pipeline_id)
-
-        except Exception as e:
-            logger.error(f"Error handling failed: {str(e)}")
-
-    async def _notify_completion(self, pipeline_id: str, metrics: Dict[str, Any]) -> None:
-        """Notify monitoring completion"""
-        context = self.active_processes.get(pipeline_id)
-        if not context:
-            return
-
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.MONITORING_COMPLETE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'metrics': metrics,
-                    'completion_time': datetime.now().isoformat()
-                },
-                metadata=MessageMetadata(
-                    correlation_id=context.correlation_id,
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager"
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-    async def _cleanup_process(self, pipeline_id: str) -> None:
-        """Clean up process resources"""
-        if pipeline_id in self.active_processes:
-            del self.active_processes[pipeline_id]
-
-    async def cleanup(self) -> None:
-        """Clean up manager resources"""
-        self.state = ManagerState.SHUTDOWN
-
-        try:
-            # Clean up all active processes
-            for pipeline_id in list(self.active_processes.keys()):
-                await self._cleanup_process(pipeline_id)
-
-            # Unsubscribe from all messages
-            await self.message_broker.unsubscribe_all(self.module_identifier)
-
-        except Exception as e:
-            logger.error(f"Manager cleanup failed: {str(e)}")
-            raise
-
-    async def _handle_service_error(self, message: ProcessingMessage) -> None:
-        """
-        Handle error message from service layer
-
-        Args:
-            message (ProcessingMessage): Error message from service
-        """
+    async def _handle_monitoring_start(self, message: ProcessingMessage) -> None:
+        """Handle monitoring process start"""
         pipeline_id = message.content.get("pipeline_id")
-        error = message.content.get("error", "Unknown service error")
+        config = message.content.get("config", {})
 
         try:
             context = self.active_processes.get(pipeline_id)
             if not context:
-                logger.warning(f"No context found for pipeline {pipeline_id}")
                 return
 
-            # Update context
-            context.monitor_state = MonitoringState.FAILED
-            context.error = error
+            # Initialize collectors
+            for collector in context.collectors_enabled:
+                await self._initialize_collector(collector, config)
 
-            # Publish error
-            await self._handle_error(pipeline_id, error)
+            # Start collection interval
+            self.collection_intervals[pipeline_id] = asyncio.create_task(
+                self._collect_metrics_interval(pipeline_id, context.collection_interval)
+            )
+
+            context.monitor_state = MonitoringState.COLLECTING
+            await self._notify_state_change(pipeline_id, context)
 
         except Exception as e:
-            logger.error(f"Service error handling failed: {str(e)}")
+            logger.error(f"Monitoring start failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
 
-
-    async def _handle_service_status(self, message: ProcessingMessage) -> None:
-        """
-        Handle status update from service layer
-
-        Args:
-            message (ProcessingMessage): Status update message
-        """
+    async def _handle_metrics_collect(self, message: ProcessingMessage) -> None:
+        """Handle metrics collection request"""
         pipeline_id = message.content.get("pipeline_id")
-        status = message.content.get("status")
-        progress = message.content.get("progress", 0.0)
+        metrics_type = message.content.get("metrics_type")
 
         try:
-            context = self.active_processes.get(pipeline_id)
-            if not context:
-                logger.warning(f"No context found for pipeline {pipeline_id}")
-                return
+            # Collect metrics based on type
+            metrics = await self._collect_system_metrics(metrics_type)
 
-            # Update context
-            context.status = status
-            context.progress = progress
-
-            # Publish status update
             await self.message_broker.publish(
                 ProcessingMessage(
-                    message_type=MessageType.MONITORING_STATUS_UPDATE,
+                    message_type=MessageType.MONITORING_METRICS_UPDATE,
                     content={
                         'pipeline_id': pipeline_id,
-                        'status': status,
-                        'progress': progress,
+                        'metrics': metrics,
                         'timestamp': datetime.now().isoformat()
                     },
-                    metadata=MessageMetadata(
-                        correlation_id=context.correlation_id,
-                        source_component=self.module_identifier.component_name,
-                        target_component="control_point_manager"
-                    ),
                     source_identifier=self.module_identifier
                 )
             )
 
         except Exception as e:
-            logger.error(f"Service status handling failed: {str(e)}")
+            logger.error(f"Metrics collection failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
 
-
-    async def _handle_threshold_breach(self, message: ProcessingMessage) -> None:
-        """
-        Handle monitoring threshold breaches
-
-        Args:
-            message (ProcessingMessage): Threshold breach message
-        """
-        pipeline_id = message.content.get("pipeline_id")
-        breach_details = message.content.get("breach", {})
-
-        try:
-            context = self.active_processes.get(pipeline_id)
-            if not context:
-                logger.warning(f"No context found for pipeline {pipeline_id}")
-                return
-
-            # Log threshold breach
-            context.add_threshold_breach(breach_details)
-
-            # Publish threshold breach notification
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.MONITORING_ALERT,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'breach': breach_details,
-                        'timestamp': datetime.now().isoformat()
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="control_point_manager"
-                    ),
-                    source_identifier=self.module_identifier
-                )
-            )
-
-            # Potentially trigger corrective action
-            await self._trigger_corrective_action(pipeline_id, breach_details)
-
-        except Exception as e:
-            logger.error(f"Threshold breach handling failed: {str(e)}")
-
-
-    async def _trigger_corrective_action(self, pipeline_id: str, breach_details: Dict[str, Any]) -> None:
-        """
-        Trigger corrective actions for threshold breaches
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            breach_details (Dict[str, Any]): Details of the threshold breach
-        """
-        try:
-            # Determine corrective action based on breach type
-            corrective_actions = {
-                'cpu_usage': self._handle_cpu_breach,
-                'memory_usage': self._handle_memory_breach,
-                'network_latency': self._handle_network_breach,
-                # Add more specific handlers as needed
-            }
-
-            breach_type = breach_details.get('type')
-            action_handler = corrective_actions.get(breach_type)
-
-            if action_handler:
-                await action_handler(pipeline_id, breach_details)
-            else:
-                logger.warning(f"No corrective action defined for breach type: {breach_type}")
-
-        except Exception as e:
-            logger.error(f"Corrective action triggering failed: {str(e)}")
-
-
-    async def _handle_cpu_breach(self, pipeline_id: str, breach_details: Dict[str, Any]) -> None:
-        """
-        Handle CPU usage threshold breach
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            breach_details (Dict[str, Any]): CPU breach details
-        """
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.SYSTEM_RESOURCE_ADJUSTMENT,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'resource_type': 'cpu',
-                    'action': 'scale_down',
-                    'current_usage': breach_details.get('current_usage'),
-                    'timestamp': datetime.now().isoformat()
-                },
-                source_identifier=self.module_identifier
-            )
-        )
-
-
-    async def _handle_memory_breach(self, pipeline_id: str, breach_details: Dict[str, Any]) -> None:
-        """
-        Handle memory usage threshold breach
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            breach_details (Dict[str, Any]): Memory breach details
-        """
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.SYSTEM_RESOURCE_ADJUSTMENT,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'resource_type': 'memory',
-                    'action': 'release_cache',
-                    'current_usage': breach_details.get('current_usage'),
-                    'timestamp': datetime.now().isoformat()
-                },
-                source_identifier=self.module_identifier
-            )
-        )
-
-
-    async def _handle_network_breach(self, pipeline_id: str, breach_details: Dict[str, Any]) -> None:
-        """
-        Handle network latency threshold breach
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            breach_details (Dict[str, Any]): Network breach details
-        """
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.SYSTEM_NETWORK_ADJUSTMENT,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'action': 'switch_route',
-                    'current_latency': breach_details.get('current_latency'),
-                    'timestamp': datetime.now().isoformat()
-                },
-                source_identifier=self.module_identifier
-            )
-        )
-
-
-    async def _check_thresholds(self, pipeline_id: str, metrics: Dict[str, Any]) -> None:
-        """
-        Check metrics against predefined thresholds
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            metrics (Dict[str, Any]): Collected metrics
-        """
-        context = self.active_processes.get(pipeline_id)
-        if not context:
-            return
-
-        try:
-            # Define threshold configuration
-            thresholds = {
-                'cpu_usage': 90,  # 90% CPU usage
-                'memory_usage': 85,  # 85% memory usage
-                'network_latency': 200  # 200ms latency
-            }
-
-            # Check each metric against thresholds
-            for metric, threshold in thresholds.items():
-                if metric in metrics and metrics[metric] > threshold:
-                    await self._handle_threshold_breach(
-                        ProcessingMessage(
-                            message_type=MessageType.MONITORING_THRESHOLD_BREACH,
-                            content={
-                                'pipeline_id': pipeline_id,
-                                'breach': {
-                                    'type': metric,
-                                    'current_usage': metrics[metric],
-                                    'threshold': threshold
-                                }
-                            }
-                        )
-                    )
-
-        except Exception as e:
-            logger.error(f"Threshold checking failed: {str(e)}")
-
-
-    async def _handle_critical_alert(self, pipeline_id: str, alert: Dict[str, Any]) -> None:
-        """
-        Handle critical monitoring alerts
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            alert (Dict[str, Any]): Alert details
-        """
-        try:
-            # Publish high-priority alert
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.CRITICAL_MONITORING_ALERT,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'alert': alert,
-                        'timestamp': datetime.now().isoformat()
-                    },
-                    metadata=MessageMetadata(
-                        source_component=self.module_identifier.component_name,
-                        target_component="incident_response_system"
-                    ),
-                    source_identifier=self.module_identifier
-                )
-            )
-
-            # Log critical alert
-            logger.critical(f"Critical alert for pipeline {pipeline_id}: {alert}")
-
-        except Exception as e:
-            logger.error(f"Critical alert handling failed: {str(e)}")
-
-
-    def _start_monitoring_tasks(self) -> None:
-        """
-        Start background monitoring tasks
-        """
-        import asyncio
-
-        # Periodic health checks
-        asyncio.create_task(self._periodic_health_checks())
-
-        # Long-running process monitoring
-        asyncio.create_task(self._monitor_long_running_processes())
-
-
-    async def _periodic_health_checks(self) -> None:
-        """
-        Perform periodic system health checks
-        """
-        while self.state == ManagerState.ACTIVE:
-            try:
-                # Collect system health metrics
-                system_health = await self._collect_system_health_metrics()
-
-                # Check overall system health
-                if not system_health.get('is_healthy', True):
-                    await self._handle_system_health_issue(system_health)
-
-                # Wait before next check
-                await asyncio.sleep(600)  # Check every 10 minutes
-
-            except Exception as e:
-                logger.error(f"Periodic health check failed: {str(e)}")
-                await asyncio.sleep(300)  # Wait 5 minutes before retry
-
-
-    async def _collect_system_health_metrics(self) -> Dict[str, Any]:
-        """
-        Collect comprehensive system health metrics
-
-        Returns:
-            Dict[str, Any]: System health metrics
-        """
+    async def _collect_system_metrics(self, metrics_type: str) -> Dict[str, Any]:
+        """Collect system metrics based on type"""
         try:
             import psutil
 
-            return {
-                'cpu_usage': psutil.cpu_percent(),
-                'memory_usage': psutil.virtual_memory().percent,
-                'disk_usage': psutil.disk_usage('/').percent,
-                'network_connections': len(psutil.net_connections()),
-                'is_healthy': all([
-                    psutil.cpu_percent() < 90,
-                    psutil.virtual_memory().percent < 85,
-                    psutil.disk_usage('/').percent < 90
-                ])
-            }
+            if metrics_type == "system":
+                return {
+                    'cpu_usage': psutil.cpu_percent(),
+                    'memory_usage': psutil.virtual_memory().percent,
+                    'disk_usage': psutil.disk_usage('/').percent,
+                    'network_connections': len(psutil.net_connections())
+                }
+            elif metrics_type == "process":
+                process = psutil.Process()
+                return {
+                    'process_cpu': process.cpu_percent(),
+                    'process_memory': process.memory_percent(),
+                    'open_files': len(process.open_files()),
+                    'threads': process.num_threads()
+                }
+            else:
+                raise ValueError(f"Unsupported metrics type: {metrics_type}")
+
         except Exception as e:
             logger.error(f"System metrics collection failed: {str(e)}")
-            return {'is_healthy': False, 'error': str(e)}
+            return {}
 
+    async def _handle_alert_generate(self, message: ProcessingMessage) -> None:
+        """Handle alert generation"""
+        pipeline_id = message.content.get("pipeline_id")
+        alert_data = message.content.get("alert", {})
 
-    async def _monitor_long_running_processes(self) -> None:
-        """
-        Monitor and handle long-running monitoring processes
-        """
-        while self.state == ManagerState.ACTIVE:
-            try:
-                current_time = datetime.now()
-                timeout_threshold = current_time - timedelta(hours=4)  # 4-hour timeout
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
 
-                # Check for and handle timed-out processes
-                for pipeline_id, context in list(self.active_processes.items()):
-                    if context.created_at < timeout_threshold:
-                        await self._handle_error(
-                            pipeline_id,
-                            "Monitoring process exceeded maximum time limit"
-                        )
+            # Process alert
+            severity = self._determine_alert_severity(alert_data)
+            if severity in ["critical", "high"]:
+                await self._handle_high_priority_alert(pipeline_id, alert_data, severity)
+            else:
+                await self._handle_standard_alert(pipeline_id, alert_data, severity)
 
-                await asyncio.sleep(300)  # Check every 5 minutes
+        except Exception as e:
+            logger.error(f"Alert generation failed: {str(e)}")
 
-            except Exception as e:
-                logger.error(f"Long-running process monitoring failed: {str(e)}")
+    async def _handle_resource_threshold(self, message: ProcessingMessage) -> None:
+        """Handle resource threshold breaches"""
+        pipeline_id = message.content.get("pipeline_id")
+        threshold_data = message.content.get("threshold", {})
+
+        try:
+            # Check threshold type and severity
+            resource_type = threshold_data.get("resource_type")
+            current_value = threshold_data.get("current_value")
+
+            if resource_type and current_value:
+                thresholds = self.alert_thresholds.get(resource_type, {})
+
+                if current_value >= thresholds.get("critical", float('inf')):
+                    await self._handle_critical_threshold_breach(pipeline_id, threshold_data)
+                elif current_value >= thresholds.get("warning", float('inf')):
+                    await self._handle_warning_threshold_breach(pipeline_id, threshold_data)
+
+        except Exception as e:
+            logger.error(f"Threshold handling failed: {str(e)}")
+
+    async def _handle_performance_check(self, message: ProcessingMessage) -> None:
+        """Handle performance check requests"""
+        pipeline_id = message.content.get("pipeline_id")
+        check_type = message.content.get("check_type")
+
+        try:
+            # Collect performance metrics
+            performance_data = await self._collect_performance_metrics(check_type)
+
+            # Analyze performance
+            issues = self._analyze_performance(performance_data)
+
+            if issues:
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.MONITORING_PERFORMANCE_ALERT,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'issues': issues,
+                            'performance_data': performance_data
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Performance check failed: {str(e)}")
+
+    async def _collect_performance_metrics(self, check_type: str) -> Dict[str, Any]:
+        """Collect performance metrics based on type"""
+        try:
+            if check_type == "system":
+                return await self._collect_system_performance()
+            elif check_type == "application":
+                return await self._collect_application_performance()
+            elif check_type == "network":
+                return await self._collect_network_performance()
+            else:
+                raise ValueError(f"Unsupported check type: {check_type}")
+
+        except Exception as e:
+            logger.error(f"Performance metrics collection failed: {str(e)}")
+            return {}
+
+    def _analyze_performance(self, performance_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Analyze performance data for issues"""
+        issues = []
+
+        # CPU analysis
+        if cpu_usage := performance_data.get('cpu_usage'):
+            if cpu_usage > 90:
+                issues.append({
+                    'type': 'cpu',
+                    'severity': 'critical',
+                    'message': f'CPU usage critically high: {cpu_usage}%'
+                })
+            elif cpu_usage > 80:
+                issues.append({
+                    'type': 'cpu',
+                    'severity': 'warning',
+                    'message': f'CPU usage high: {cpu_usage}%'
+                })
+
+        # Memory analysis
+        if mem_usage := performance_data.get('memory_usage'):
+            if mem_usage > 90:
+                issues.append({
+                    'type': 'memory',
+                    'severity': 'critical',
+                    'message': f'Memory usage critically high: {mem_usage}%'
+                })
+            elif mem_usage > 80:
+                issues.append({
+                    'type': 'memory',
+                    'severity': 'warning',
+                    'message': f'Memory usage high: {mem_usage}%'
+                })
+
+        return issues
+
+    async def _handle_health_check(self, message: ProcessingMessage) -> None:
+        """Handle health check requests"""
+        pipeline_id = message.content.get("pipeline_id")
+
+        try:
+            # Perform health checks
+            health_status = await self._check_system_health()
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_HEALTH_STATUS,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'health_status': health_status,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Check for health issues
+            if not health_status.get('healthy', False):
+                await self._handle_health_issues(pipeline_id, health_status)
+
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
+
+    async def _export_metrics(self, format_type: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Export metrics in specified format"""
+        if format_type == "prometheus":
+            return await self._export_prometheus_format(metrics)
+        elif format_type == "influxdb":
+            return await self._export_influxdb_format(metrics)
+        else:
+            return await self._export_json_format(metrics)
+
+    async def _export_prometheus_format(self, metrics: Dict[str, Any]) -> str:
+        """Export metrics in Prometheus format"""
+        output = []
+        timestamp = int(datetime.now().timestamp() * 1000)
+
+        for metric_name, value in metrics.items():
+            if isinstance(value, (int, float)):
+                output.append(f"{metric_name} {value} {timestamp}")
+
+        return "\n".join(output)
+
+    async def _export_influxdb_format(self, metrics: Dict[str, Any]) -> str:
+        """Export metrics in InfluxDB line protocol format"""
+        output = []
+        timestamp = int(datetime.now().timestamp() * 1000000000)  # nanoseconds
+
+        for metric_name, value in metrics.items():
+            if isinstance(value, (int, float)):
+                output.append(f"system_metrics,metric={metric_name} value={value} {timestamp}")
+
+        return "\n".join(output)
+
+    async def _export_json_format(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Export metrics in JSON format"""
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'metrics': metrics,
+            'metadata': {
+                'version': '1.0',
+                'source': self.module_identifier.component_name
+            }
+        }
+
+    async def _handle_metrics_aggregate(self, message: ProcessingMessage) -> None:
+        """Handle metrics aggregation requests"""
+        pipeline_id = message.content.get("pipeline_id")
+        metric_names = message.content.get("metrics", [])
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            # Aggregate specified metrics
+            aggregated = {}
+            for metric in metric_names:
+                values = [
+                    m.get(metric)
+                    for m in context.collected_metrics.values()
+                    if isinstance(m.get(metric), (int, float))
+                ]
+
+                if values:
+                    aggregated[metric] = {
+                        'avg': sum(values) / len(values),
+                        'min': min(values),
+                        'max': max(values),
+                        'count': len(values)
+                    }
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_METRICS_UPDATE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'aggregated_metrics': aggregated,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Metrics aggregation failed: {str(e)}")
+
+    async def _handle_backup_request(self, message: ProcessingMessage) -> None:
+        """Handle monitoring data backup requests"""
+        pipeline_id = message.content.get("pipeline_id")
+        backup_type = message.content.get("backup_type", "full")
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            # Create backup based on type
+            if backup_type == "full":
+                backup_data = {
+                    'metrics': context.collected_metrics,
+                    'aggregates': context.aggregated_metrics,
+                    'alerts': context.active_alerts,
+                    'timestamp': datetime.now().isoformat()
+                }
+            else:  # incremental
+                backup_data = {
+                    'metrics': context.collected_metrics,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+            # Store backup
+            await self._store_backup(pipeline_id, backup_data)
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_BACKUP_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'backup_id': str(uuid.uuid4()),
+                        'backup_type': backup_type,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Backup creation failed: {str(e)}")
+
+    async def _store_backup(self, pipeline_id: str, backup_data: Dict[str, Any]) -> None:
+        """Store monitoring backup data"""
+        try:
+            # Implementation would depend on storage backend
+            # For example, could store in filesystem, database, or cloud storage
+            pass
+        except Exception as e:
+            logger.error(f"Backup storage failed: {str(e)}")
+
+    async def _check_system_health(self) -> Dict[str, Any]:
+        """Perform comprehensive system health check"""
+        try:
+            # System metrics
+            system_health = await self._collect_system_metrics("system")
+
+            # Component health
+            component_health = {
+                component: await self._check_component_health(component)
+                for component in self.active_processes.keys()
+            }
+
+            # Resource health
+            resource_health = await self._check_resource_health()
+
+            # Determine overall health
+            is_healthy = all([
+                all(system_health.values()),
+                all(component_health.values()),
+                all(resource_health.values())
+            ])
+
+            return {
+                'healthy': is_healthy,
+                'system': system_health,
+                'components': component_health,
+                'resources': resource_health,
+                'timestamp': datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
+            return {'healthy': False, 'error': str(e)}
+
+    async def _check_component_health(self, component_id: str) -> Dict[str, bool]:
+        """Check health of specific component"""
+        try:
+            # Check component responsiveness
+            is_responsive = await self._ping_component(component_id)
+
+            # Check component metrics
+            metrics = await self._collect_component_metrics(component_id)
+            metrics_healthy = all(
+                value < threshold
+                for value, threshold in self.alert_thresholds.items()
+            )
+
+            return {
+                'responsive': is_responsive,
+                'metrics_healthy': metrics_healthy
+            }
+
+        except Exception as e:
+            logger.error(f"Component health check failed: {str(e)}")
+            return {'responsive': False, 'metrics_healthy': False}
+
+    async def _check_resource_health(self) -> Dict[str, bool]:
+        """Check health of system resources"""
+        try:
+            import psutil
+
+            # Get resource usage
+            cpu_usage = psutil.cpu_percent()
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+
+            return {
+                'cpu_healthy': cpu_usage < self.alert_thresholds['cpu_usage']['warning'],
+                'memory_healthy': memory.percent < self.alert_thresholds['memory_usage']['warning'],
+                'disk_healthy': disk.percent < self.alert_thresholds['disk_space']['warning']
+            }
+
+        except Exception as e:
+            logger.error(f"Resource health check failed: {str(e)}")
+            return {
+                'cpu_healthy': False,
+                'memory_healthy': False,
+                'disk_healthy': False
+            }
+
+    async def _handle_alert_escalate(self, message: ProcessingMessage) -> None:
+        """Handle alert escalation"""
+        pipeline_id = message.content.get("pipeline_id")
+        alert = message.content.get("alert", {})
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            # Update alert severity
+            alert['severity'] = 'critical'
+            alert['escalated_at'] = datetime.now().isoformat()
+
+            # Notify about escalation
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_ALERT_GENERATE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'alert': alert,
+                        'escalated': True
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Trigger emergency procedures if needed
+            if alert.get('type') in ['system_failure', 'security_breach']:
+                await self._trigger_emergency_procedures(pipeline_id, alert)
+
+        except Exception as e:
+            logger.error(f"Alert escalation failed: {str(e)}")
+
+    async def _handle_config_update(self, message: ProcessingMessage) -> None:
+        """Handle monitoring configuration updates"""
+        pipeline_id = message.content.get("pipeline_id")
+        config_updates = message.content.get("config", {})
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            # Update thresholds if provided
+            if thresholds := config_updates.get('thresholds'):
+                self.alert_thresholds.update(thresholds)
+
+            # Update collection interval if provided
+            if interval := config_updates.get('collection_interval'):
+                context.collection_interval = interval
+
+                # Restart collection if needed
+                if pipeline_id in self.collection_intervals:
+                    self.collection_intervals[pipeline_id].cancel()
+                    self.collection_intervals[pipeline_id] = asyncio.create_task(
+                        self._collect_metrics_interval(pipeline_id, interval)
+                    )
+
+            # Update other context configurations
+            context.metric_types = config_updates.get('metric_types', context.metric_types)
+            context.collectors_enabled = config_updates.get('collectors', context.collectors_enabled)
+
+            await self._notify_config_update(pipeline_id, config_updates)
+
+        except Exception as e:
+            logger.error(f"Configuration update failed: {str(e)}")
+
+    async def _notify_config_update(self, pipeline_id: str, updates: Dict[str, Any]) -> None:
+        """Notify about configuration updates"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.MONITORING_CONFIG_UPDATE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'updates': updates,
+                    'timestamp': datetime.now().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+        )
+
+    async def _ping_component(self, component_id: str) -> bool:
+        """Check if component is responsive"""
+        try:
+            response = await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_HEALTH_CHECK,
+                    content={'timestamp': datetime.now().isoformat()},
+                    target_identifier=ModuleIdentifier(
+                        component_name=component_id,
+                        component_type=ComponentType.CORE
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+            return response is not None
+        except Exception:
+            return False
+
+    async def _trigger_emergency_procedures(self, pipeline_id: str, alert: Dict[str, Any]) -> None:
+        """Handle emergency situations"""
+        try:
+            # Stop all non-essential processes
+            await self._stop_non_essential_processes()
+
+            # Save system state
+            await self._save_system_state(pipeline_id)
+
+            # Notify emergency contacts
+            await self._notify_emergency_contacts(alert)
+
+        except Exception as e:
+            logger.error(f"Emergency procedures failed: {str(e)}")
+
+    async def _collect_metrics_interval(self, pipeline_id: str, interval: int) -> None:
+        """Continuously collect metrics at specified interval"""
+        try:
+            while True:
+                metrics = await self._collect_system_metrics("system")
+
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.MONITORING_METRICS_UPDATE,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'metrics': metrics,
+                            'timestamp': datetime.now().isoformat()
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+                await asyncio.sleep(interval)
+
+        except asyncio.CancelledError:
+            logger.info(f"Metrics collection stopped for pipeline: {pipeline_id}")
+        except Exception as e:
+            logger.error(f"Metrics collection failed: {str(e)}")

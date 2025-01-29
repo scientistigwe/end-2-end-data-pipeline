@@ -1,8 +1,7 @@
-# backend/core/managers/recommendation_manager.py
-
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+import asyncio
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 import uuid
 
 from ..messaging.broker import MessageBroker
@@ -14,265 +13,417 @@ from ..messaging.event_types import (
     MessageMetadata,
     RecommendationContext,
     RecommendationState,
-    ModuleIdentifier,
-    ComponentType
+    ManagerState
 )
+from .base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
-class RecommendationManager:
+
+class RecommendationManager(BaseManager):
     """
     Recommendation Manager: Coordinates high-level recommendation workflow.
-    - Communicates with CPM
-    - Maintains process state
-    - Coordinates workflow through messages
+    Manages recommendation generation, filtering, and ranking process.
     """
 
-    def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
-
-        # Manager identification
-        self.module_identifier = ModuleIdentifier(
-            component_name="recommendation_manager",
-            component_type=ComponentType.RECOMMENDATION_MANAGER,
-            department="recommendation",
-            role="manager"
+    def __init__(
+            self,
+            message_broker: MessageBroker,
+            component_name: str = "recommendation_manager",
+            domain_type: str = "recommendation"
+    ):
+        super().__init__(
+            message_broker=message_broker,
+            component_name=component_name,
+            domain_type=domain_type
         )
 
-        # Active processes tracking
+        # Active processes and contexts
         self.active_processes: Dict[str, RecommendationContext] = {}
+        self.process_timeouts: Dict[str, datetime] = {}
 
-        # Setup message handlers
+        # Recommendation configuration
+        self.recommendation_thresholds = {
+            "minimum_confidence": 0.7,
+            "minimum_diversity": 0.3,
+            "maximum_processing_time": 1800,  # 30 minutes
+            "maximum_candidates": 100
+        }
+
+        # Initialize state
+        self.state = ManagerState.INITIALIZING
+        self._initialize_manager()
+
+    def _initialize_manager(self) -> None:
+        """Initialize recommendation manager components"""
         self._setup_message_handlers()
+        self._start_background_tasks()
+        self.state = ManagerState.ACTIVE
 
-    def _setup_message_handlers(self) -> None:
-        """Setup message handlers"""
+    async def _setup_domain_handlers(self) -> None:
+        """Setup recommendation-specific message handlers"""
         handlers = {
-            # CPM Messages
-            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
-            MessageType.CONTROL_POINT_UPDATE: self._handle_control_point_update,
-            MessageType.CONTROL_POINT_DECISION: self._handle_control_point_decision,
+            # Core Process Flow
+            MessageType.RECOMMENDATION_GENERATE_REQUEST: self._handle_generate_request,
+            MessageType.RECOMMENDATION_GENERATE_COMPLETE: self._handle_generate_complete,
+            MessageType.RECOMMENDATION_PROCESS_START: self._handle_process_start,
+            MessageType.RECOMMENDATION_PROCESS_PROGRESS: self._handle_process_progress,
+            MessageType.RECOMMENDATION_PROCESS_COMPLETE: self._handle_process_complete,
+            MessageType.RECOMMENDATION_PROCESS_FAILED: self._handle_process_failed,
 
-            # Service Messages
-            MessageType.RECOMMENDATION_SERVICE_STATUS: self._handle_service_status,
-            MessageType.RECOMMENDATION_SERVICE_COMPLETE: self._handle_service_complete,
-            MessageType.RECOMMENDATION_SERVICE_ERROR: self._handle_service_error,
+            # Candidate Management
+            MessageType.RECOMMENDATION_CANDIDATES_GENERATE_REQUEST: self._handle_candidates_generate,
+            MessageType.RECOMMENDATION_CANDIDATES_GENERATE_PROGRESS: self._handle_candidates_progress,
+            MessageType.RECOMMENDATION_CANDIDATES_GENERATE_COMPLETE: self._handle_candidates_complete,
+            MessageType.RECOMMENDATION_CANDIDATES_MERGE_REQUEST: self._handle_candidates_merge,
 
-            # Status Messages
+            # Filtering and Ranking
+            MessageType.RECOMMENDATION_FILTER_REQUEST: self._handle_filter_request,
+            MessageType.RECOMMENDATION_FILTER_COMPLETE: self._handle_filter_complete,
+            MessageType.RECOMMENDATION_RANK_REQUEST: self._handle_rank_request,
+            MessageType.RECOMMENDATION_RANK_COMPLETE: self._handle_rank_complete,
+
+            # Validation
+            MessageType.RECOMMENDATION_VALIDATE_REQUEST: self._handle_validate_request,
+            MessageType.RECOMMENDATION_VALIDATE_COMPLETE: self._handle_validate_complete,
+            MessageType.RECOMMENDATION_VALIDATE_APPROVE: self._handle_validate_approve,
+            MessageType.RECOMMENDATION_VALIDATE_REJECT: self._handle_validate_reject,
+
+            # Engine-Specific Processing
+            MessageType.RECOMMENDATION_ENGINE_CONTENT: self._handle_content_engine,
+            MessageType.RECOMMENDATION_ENGINE_COLLABORATIVE: self._handle_collaborative_engine,
+            MessageType.RECOMMENDATION_ENGINE_CONTEXTUAL: self._handle_contextual_engine,
+            MessageType.RECOMMENDATION_ENGINE_HYBRID: self._handle_hybrid_engine,
+
+            # Advanced Features
+            MessageType.RECOMMENDATION_PERSONALIZE: self._handle_personalize,
+            MessageType.RECOMMENDATION_DIVERSITY_ENSURE: self._handle_diversity_ensure,
+            MessageType.RECOMMENDATION_FEEDBACK_INCORPORATE: self._handle_feedback_incorporate,
+            MessageType.RECOMMENDATION_BUSINESS_RULES: self._handle_business_rules,
+
+            # System Operations
             MessageType.RECOMMENDATION_METRICS_UPDATE: self._handle_metrics_update,
-            MessageType.RECOMMENDATION_ENGINE_ERROR: self._handle_engine_error
+            MessageType.RECOMMENDATION_CONFIG_UPDATE: self._handle_config_update
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
-                self.module_identifier,
-                message_type.value,
-                handler
-            )
+            await self.register_message_handler(message_type, handler)
 
     async def initiate_recommendation_process(
             self,
             pipeline_id: str,
             config: Dict[str, Any]
     ) -> str:
-        """Initiate new recommendation process"""
-        correlation_id = str(uuid.uuid4())
-
-        # Request control point creation
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.CONTROL_POINT_CREATE_REQUEST,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.RECOMMENDATION,
-                    'config': config
-                },
-                metadata=MessageMetadata(
-                    correlation_id=correlation_id,
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager"
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-        # Initialize context
-        self.active_processes[pipeline_id] = RecommendationContext(
-            pipeline_id=pipeline_id,
-            correlation_id=correlation_id,
-            state=RecommendationState.INITIALIZING,
-            config=config
-        )
-
-        return correlation_id
-
-    async def _handle_control_point_created(self, message: ProcessingMessage) -> None:
-        """Handle control point creation confirmation"""
+        """Initiate a new recommendation process"""
         try:
-            pipeline_id = message.content['pipeline_id']
-            control_point_id = message.content['control_point_id']
+            correlation_id = str(uuid.uuid4())
 
+            # Validate configuration
+            if not self._validate_recommendation_config(config):
+                raise ValueError("Invalid recommendation configuration")
+
+            # Create recommendation context
+            context = RecommendationContext(
+                pipeline_id=pipeline_id,
+                correlation_id=correlation_id,
+                state=RecommendationState.INITIALIZING,
+                config=config,
+                created_at=datetime.now()
+            )
+
+            self.active_processes[pipeline_id] = context
+
+            # Start recommendation process
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_PROCESS_START,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'config': config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=correlation_id,
+                        source_component=self.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation",
+                        processing_stage=ProcessingStage.RECOMMENDATION
+                    )
+                )
+            )
+
+            logger.info(f"Recommendation process initiated for pipeline: {pipeline_id}")
+            return correlation_id
+
+        except Exception as e:
+            logger.error(f"Failed to initiate recommendation process: {str(e)}")
+            raise
+
+    def _validate_recommendation_config(self, config: Dict[str, Any]) -> bool:
+        """Validate recommendation configuration"""
+        try:
+            required_fields = ['recommendation_type', 'engines', 'filters']
+            if not all(field in config for field in required_fields):
+                return False
+
+            # Validate engines configuration
+            if not self._validate_engines_config(config['engines']):
+                return False
+
+            # Validate filters configuration
+            if not self._validate_filters_config(config['filters']):
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Configuration validation failed: {str(e)}")
+            return False
+
+    def _validate_engines_config(self, engines_config: Dict[str, Any]) -> bool:
+        """Validate engines configuration"""
+        try:
+            required_engine_fields = ['type', 'weight', 'parameters']
+            return all(
+                all(field in engine for field in required_engine_fields)
+                for engine in engines_config.values()
+            )
+        except Exception as e:
+            logger.error(f"Engines configuration validation failed: {str(e)}")
+            return False
+
+    def _validate_filters_config(self, filters_config: Dict[str, Any]) -> bool:
+        """Validate filters configuration"""
+        try:
+            required_filter_fields = ['type', 'parameters', 'order']
+            return all(
+                all(field in filter_config for field in required_filter_fields)
+                for filter_config in filters_config.values()
+            )
+        except Exception as e:
+            logger.error(f"Filters configuration validation failed: {str(e)}")
+            return False
+
+    async def _handle_process_start(self, message: ProcessingMessage) -> None:
+        """Handle recommendation process start"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context state
+            context.state = RecommendationState.INITIALIZING
+            context.updated_at = datetime.now()
+
+            # Start candidate generation
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_CANDIDATES_GENERATE_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'config': context.config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Process start failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_candidates_generate(self, message: ProcessingMessage) -> None:
+        """Handle candidate generation request"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context state
+            context.state = RecommendationState.GENERATING
+            context.updated_at = datetime.now()
+
+            # Start engines based on configuration
+            for engine_type in context.config['engines']:
+                await self._start_engine(pipeline_id, engine_type)
+
+        except Exception as e:
+            logger.error(f"Candidate generation failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _start_engine(self, pipeline_id: str, engine_type: str) -> None:
+        """Start recommendation engine"""
+        try:
             context = self.active_processes.get(pipeline_id)
             if not context:
                 return
 
-            context.control_point_id = control_point_id
+            engine_config = context.config['engines'][engine_type]
 
-            # Start service processing
-            await self._publish_service_start(pipeline_id, context.config)
+            message_type = self._get_engine_message_type(engine_type)
+            if not message_type:
+                raise ValueError(f"Invalid engine type: {engine_type}")
 
-        except Exception as e:
-            logger.error(f"Control point handling failed: {str(e)}")
-            await self._publish_error(pipeline_id, str(e))
-
-    async def _handle_service_status(self, message: ProcessingMessage) -> None:
-        """Handle status update from service"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            status = message.content['status']
-            progress = message.content.get('progress', 0)
-
-            context = self.active_processes.get(pipeline_id)
-            if context:
-                # Update context
-                context.status = status
-                context.progress = progress
-
-                # Notify CPM
-                await self._publish_status_update(
-                    pipeline_id=pipeline_id,
-                    status=status,
-                    progress=progress
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=message_type,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'engine_config': engine_config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation"
+                    )
                 )
+            )
 
         except Exception as e:
-            logger.error(f"Status update failed: {str(e)}")
-
-    async def _handle_service_complete(self, message: ProcessingMessage) -> None:
-        """Handle completion from service"""
-        try:
-            pipeline_id = message.content['pipeline_id']
-            results = message.content.get('results', {})
-
-            context = self.active_processes.get(pipeline_id)
-            if context:
-                # Notify CPM of completion
-                await self._publish_completion(
-                    pipeline_id=pipeline_id,
-                    results=results
-                )
-
-                # Cleanup
-                del self.active_processes[pipeline_id]
-
-        except Exception as e:
-            logger.error(f"Completion handling failed: {str(e)}")
-
-    async def _publish_service_start(
-            self,
-            pipeline_id: str,
-            config: Dict[str, Any]
-    ) -> None:
-        """Publish service start request"""
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.RECOMMENDATION_SERVICE_START,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'config': config,
-                    'timestamp': datetime.utcnow().isoformat()
-                },
-                metadata=MessageMetadata(
-                    source_component=self.module_identifier.component_name,
-                    target_component="recommendation_service",
-                    domain_type="recommendation",
-                    processing_stage=ProcessingStage.RECOMMENDATION
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-    async def _publish_status_update(
-            self,
-            pipeline_id: str,
-            status: str,
-            progress: float
-    ) -> None:
-        """Publish status update to CPM"""
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_STATUS,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.RECOMMENDATION,
-                    'status': status,
-                    'progress': progress,
-                    'timestamp': datetime.utcnow().isoformat()
-                },
-                metadata=MessageMetadata(
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager",
-                    domain_type="recommendation"
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-    async def _publish_completion(
-            self,
-            pipeline_id: str,
-            results: Dict[str, Any]
-    ) -> None:
-        """Publish completion to CPM"""
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_COMPLETE,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.RECOMMENDATION,
-                    'results': results,
-                    'timestamp': datetime.utcnow().isoformat()
-                },
-                metadata=MessageMetadata(
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager",
-                    domain_type="recommendation"
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-    async def _publish_error(self, pipeline_id: str, error: str) -> None:
-        """Publish error to CPM"""
-        await self.message_broker.publish(
-            ProcessingMessage(
-                message_type=MessageType.PIPELINE_STAGE_ERROR,
-                content={
-                    'pipeline_id': pipeline_id,
-                    'stage': ProcessingStage.RECOMMENDATION,
-                    'error': error,
-                    'timestamp': datetime.utcnow().isoformat()
-                },
-                metadata=MessageMetadata(
-                    source_component=self.module_identifier.component_name,
-                    target_component="control_point_manager",
-                    domain_type="recommendation"
-                ),
-                source_identifier=self.module_identifier
-            )
-        )
-
-    async def cleanup(self) -> None:
-        """Cleanup manager resources"""
-        try:
-            # Notify cleanup for active processes
-            for pipeline_id in list(self.active_processes.keys()):
-                await self._publish_error(
-                    pipeline_id,
-                    "Manager cleanup initiated"
-                )
-                del self.active_processes[pipeline_id]
-
-        except Exception as e:
-            logger.error(f"Cleanup failed: {str(e)}")
+            logger.error(f"Engine start failed: {str(e)}")
             raise
+
+    def _get_engine_message_type(self, engine_type: str) -> Optional[MessageType]:
+        """Get message type for engine type"""
+        engine_types = {
+            'content': MessageType.RECOMMENDATION_ENGINE_CONTENT,
+            'collaborative': MessageType.RECOMMENDATION_ENGINE_COLLABORATIVE,
+            'contextual': MessageType.RECOMMENDATION_ENGINE_CONTEXTUAL,
+            'hybrid': MessageType.RECOMMENDATION_ENGINE_HYBRID
+        }
+        return engine_types.get(engine_type)
+
+    async def _handle_filter_request(self, message: ProcessingMessage) -> None:
+        """Handle recommendation filtering request"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context state
+            context.state = RecommendationState.FILTERING
+            context.updated_at = datetime.now()
+
+            # Apply filters in order
+            filters = sorted(
+                context.config['filters'].items(),
+                key=lambda x: x[1]['order']
+            )
+
+            for filter_name, filter_config in filters:
+                await self._apply_filter(pipeline_id, filter_name, filter_config)
+
+        except Exception as e:
+            logger.error(f"Filter request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _apply_filter(self, pipeline_id: str, filter_name: str, filter_config: Dict[str, Any]) -> None:
+        """Apply recommendation filter"""
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_FILTER_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'filter_name': filter_name,
+                        'filter_config': filter_config,
+                        'candidates': context.candidates
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="recommendation_service",
+                        domain_type="recommendation"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Filter application failed: {str(e)}")
+            raise
+
+    async def _handle_process_complete(self, message: ProcessingMessage) -> None:
+        """Handle process completion"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Generate final recommendations
+            final_recommendations = self._generate_final_recommendations(context)
+
+            # Update context
+            context.state = RecommendationState.COMPLETED
+            context.completed_at = datetime.now()
+
+            # Notify completion
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.RECOMMENDATION_PROCESS_COMPLETE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'recommendations': final_recommendations,
+                        'metrics': context.metrics.__dict__,
+                        'completion_time': context.completed_at.isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="recommendation"
+                    )
+                )
+            )
+
+            # Cleanup
+            await self._cleanup_process(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process completion failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    def _generate_final_recommendations(self, context: RecommendationContext) -> List[Dict[str, Any]]:
+        """Generate final recommendations based on filtered and ranked candidates"""
+        try:
+            # Apply final scoring
+            scored_candidates = [
+                {
+                    **candidate,
+                    'final_score': self._calculate_final_score(candidate, context)
+                }
+                for candidate in context.candidates
+            ]
+
+            # Sort by final score
+            sorted_recommendations = sorted(
+                scored_candidates,
+                key=lambda x: x['final_score'],
+                reverse=True
+            )
+
+            # Apply diversity if enabled
+            if context.config.get('ensure_diversity', False):
+                sorted_recommendations = self._ensure_diversity(sorted_recommendations)
+
+            # Return top N recommendations
+            max_recommendations = context.config.get('max_recommendations', 10)
+            return sorted_recommendations[:max_recommendations]
+
+        except Exception as e:
+            logger.error(f"Final recommendations generation failed: {str(e)}")

@@ -1,4 +1,4 @@
-# backend/core/sub_managers/base/manage_types.py
+# backend/core/sub_managers/base/manager_types.py
 
 from queue import Queue
 from typing import Dict, Callable, Optional, Any
@@ -6,7 +6,7 @@ import logging
 import threading
 from datetime import datetime
 
-from backend.core.messaging.types import ProcessingMessage
+from core.messaging.event_types import ProcessingMessage
 from .bm_constants import ChannelType, ManagerConstants
 from .bm_metrics import ChannelMetrics
 

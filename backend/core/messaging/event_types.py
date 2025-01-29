@@ -281,49 +281,14 @@ class MessageType(Enum):
     WORKFLOW_ROLLBACK_COMPLETE = "workflow.rollback.complete"
 
     #............................................Quality Types..........................................................
-    # Quality Analysis
-    QUALITY_ANALYZE_REQUEST = "quality.analyze.request"
-    QUALITY_ANALYZE_COMPLETE = "quality.analyze.complete"
-
-    # Quality Issue Detection
-    QUALITY_ISSUE_DETECT_REQUEST = "quality.issue.detect.request"
-    QUALITY_ISSUE_DETECT_COMPLETE = "quality.issue.detect.complete"
-    QUALITY_ISSUE_DETECTED = "quality.issue.detect.notify"
-
-    # Quality Issue Resolution
-    QUALITY_ISSUE_RESOLVE_REQUEST = "quality.issue.resolve.request"
-    QUALITY_ISSUE_RESOLVE_SUGGEST = "quality.issue.resolve.suggest"
-    QUALITY_ISSUE_RESOLVE_COMPLETE = "quality.issue.resolve.complete"
-
-    # Quality Validation
-    QUALITY_VALIDATE_REQUEST = "quality.validate.request"
-    QUALITY_VALIDATE_COMPLETE = "quality.validate.complete"
-    QUALITY_VALIDATE_APPROVE = "quality.validate.approve"
-    QUALITY_VALIDATE_REJECT = "quality.validate.reject"
-
-    # Quality Process Management
-    QUALITY_PROCESS_START_REQUEST = "quality.process.start.request"
-    QUALITY_PROCESS_STATE_UPDATE = "quality.process.state.update"
-    QUALITY_PROCESS_COMPLETE = "quality.process.complete"
-
-    # Quality Reporting
-    QUALITY_STATUS_REQUEST = "quality.status.request"
-    QUALITY_STATUS_RESPONSE = "quality.status.response"
-    QUALITY_REPORT_REQUEST = "quality.report.request"
-    QUALITY_REPORT_RESPONSE = "quality.report.response"
-
-    # Quality Advanced Checks
-    QUALITY_ANOMALY_DETECT = "quality.anomaly.detect"
-    QUALITY_PATTERN_RECOGNIZE = "quality.pattern.recognize"
-
-    # Quality Cleanup
-    QUALITY_CLEANUP_REQUEST = "quality.cleanup.request"
-    QUALITY_CLEANUP_COMPLETE = "quality.cleanup.complete"
-
     # Core Process Flow
+    QUALITY_PROCESS_START_REQUEST = "quality.process.start.request"
     QUALITY_PROCESS_START = "quality.process.start"
+    QUALITY_PROCESS_STATE_UPDATE = "quality.process.state.update"
+    QUALITY_PROCESS_STATUS = "quality.service_status"
     QUALITY_PROCESS_PROGRESS = "quality.process.progress"
     QUALITY_PROCESS_FAILED = "quality.process.failed"
+    QUALITY_PROCESS_COMPLETE = "quality.process.complete"
 
     # Context Analysis
     QUALITY_CONTEXT_ANALYZE_REQUEST = "quality.context.analyze.request"
@@ -331,33 +296,58 @@ class MessageType(Enum):
     QUALITY_CONTEXT_ANALYZE_COMPLETE = "quality.context.analyze.complete"
 
     # Detection Process
+    QUALITY_DETECTION_REQUEST = "quality.detection.request"
     QUALITY_DETECTION_START = "quality.detection.start"
     QUALITY_DETECTION_PROGRESS = "quality.detection.progress"
     QUALITY_DETECTION_COMPLETE = "quality.detection.complete"
+    QUALITY_ISSUE_DETECTED = "quality.issue.detected"
 
-    # Issue Management
-    QUALITY_ISSUE_DETECT = "quality.issue.detect"
-    QUALITY_ISSUE_ANALYZE = "quality.issue.analyze"
-    QUALITY_ISSUE_VALIDATE = "quality.issue.validate"
+    # Analysis Process
+    QUALITY_ANALYSE_REQUEST = "quality.analyse.request"
+    QUALITY_ANALYSE_START = "quality.analyse.start"
+    QUALITY_ANALYSE_PROGRESS = "quality.analyse.progress"
+    QUALITY_ANALYSE_COMPLETE = "quality.analyse.complete"
 
-    # Resolution Management
+    # Resolution Process
     QUALITY_RESOLUTION_REQUEST = "quality.resolution.request"
     QUALITY_RESOLUTION_APPLY = "quality.resolution.apply"
     QUALITY_RESOLUTION_VALIDATE = "quality.resolution.validate"
     QUALITY_RESOLUTION_COMPLETE = "quality.resolution.complete"
+    QUALITY_RESOLUTION_SUGGEST = "quality.resolution.suggest"
 
-    # Validation Flow
-    QUALITY_VALIDATE_PROGRESS = "quality.validate.progress"
+    # Quality Validation
+    QUALITY_VALIDATE_REQUEST = "quality.validate.request"
+    QUALITY_VALIDATE_COMPLETE = "quality.validate.complete"
+    QUALITY_VALIDATE_APPROVE = "quality.validate.approve"
+    QUALITY_VALIDATE_REJECT = "quality.validate.reject"
+
     # Quality Reporting
-    QUALITY_REPORT_GENERATE = "quality.report.generate"
+    QUALITY_STATUS_REQUEST = "quality.status.request"
+    QUALITY_STATUS_RESPONSE = "quality.status.response"
+    QUALITY_REPORT_REQUEST = "quality.report.request"
+    QUALITY_REPORT_RESPONSE = "quality.report.response"
+    QUALITY_RESOLUTION_REPORT = "quality.resolution.report"
+    QUALITY_ANALYSE_REPORT = "quality.analyse.report"
     QUALITY_METRICS_UPDATE = "quality.metrics.update"
+
+    # Quality Advanced Checks
+    QUALITY_ANOMALY_DETECT = "quality.anomaly.detect"
+    QUALITY_PATTERN_RECOGNIZE = "quality.pattern.recognize"
+
     # System Operations
     QUALITY_CONFIG_UPDATE = "quality.config.update"
     QUALITY_RESOURCE_REQUEST = "quality.resource.request"
 
+    # Quality Cleanup
+    QUALITY_CLEANUP_REQUEST = "quality.cleanup.request"
+    QUALITY_CLEANUP_COMPLETE = "quality.cleanup.complete"
+
     #......................................Insight Types.............................................................
     # Core Flow
     INSIGHT_GENERATE_REQUEST = "insight.generate.request"
+    INSIGHT_GENERATE_START = "insight.generate.start"
+    INSIGHT_GENERATE_STATUS = "insight.generate.status"
+    INSIGHT_GENERATE_UPDATE = "insight.generate.update"
     INSIGHT_GENERATE_PROGRESS = "insight.generate.progress"
     INSIGHT_GENERATE_COMPLETE = "insight.generate.complete"
     INSIGHT_GENERATE_FAILED = "insight.generate.failed"
@@ -382,6 +372,7 @@ class MessageType(Enum):
 
     # Validation Flow
     INSIGHT_VALIDATE_REQUEST = "insight.validate.request"
+    INSIGHT_SERVICE_DECISION = "insight.service.decision"
     INSIGHT_VALIDATE_PROGRESS = "insight.validate.progress"
     INSIGHT_VALIDATE_COMPLETE = "insight.validate.complete"
     INSIGHT_VALIDATE_FAILED = "insight.validate.failed"

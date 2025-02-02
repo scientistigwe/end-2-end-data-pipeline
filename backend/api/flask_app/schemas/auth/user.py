@@ -1,15 +1,15 @@
-# schemas/auth/base.py
-from marshmallow import Schema, fields, validate, ValidationError
-from ..staging.base import StagingRequestSchema, StagingResponseSchema
-from datetime import datetime
-
 # schemas/auth/user.py
-class UserProfileSchema(StagingResponseSchema):
+
+from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE
+from .base import name_validator
+
+class UserProfileSchema(Schema):
     """Schema for user profile data"""
+    id = fields.String(required=True)
     email = fields.Email(dump_only=True)
     username = fields.String(dump_only=True)
-    first_name = fields.String()
-    last_name = fields.String()
+    first_name = fields.String(validate=name_validator)
+    last_name = fields.String(validate=name_validator)
     full_name = fields.String(dump_only=True)
     role = fields.String(dump_only=True)
     permissions = fields.List(fields.String(), dump_only=True)
@@ -26,9 +26,13 @@ class UserProfileSchema(StagingResponseSchema):
     metadata = fields.Dict()
     security_level = fields.Integer(validate=validate.Range(min=0, max=10))
 
-class UpdateProfileRequestSchema(StagingResponseSchema):
+    class Meta:
+        ordered = True
+        unknown = EXCLUDE
+
+class UpdateProfileRequestSchema(Schema):
     pass
 
-class UpdateProfileResponseSchema(StagingResponseSchema):
+class UpdateProfileResponseSchema(Schema):
     pass
 

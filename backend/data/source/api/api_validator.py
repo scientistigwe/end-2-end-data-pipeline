@@ -7,47 +7,10 @@ import re
 import ssl
 import socket
 from datetime import datetime
-from dataclasses import dataclass, field
+
+from config.validation_config import APIValidationConfig
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class APIValidationConfig:
-    """Configuration for API validation"""
-
-    # Allowed protocols and methods
-    allowed_schemes: set[str] = field(default_factory=lambda: {'http', 'https'})
-    allowed_methods: set[str] = field(default_factory=lambda: {'GET', 'POST', 'PUT', 'DELETE', 'PATCH'})
-
-    # Connection settings
-    connection_timeout: int = 5  # seconds
-    max_redirects: int = 3
-
-    # Security settings
-    require_ssl: bool = True
-
-    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
-
-    # Header validation
-    required_headers: Dict[str, set[str]] = field(default_factory=lambda: {
-        'GET': {'Accept'},
-        'POST': {'Content-Type', 'Accept'},
-        'PUT': {'Content-Type', 'Accept'},
-        'DELETE': {'Accept'},
-        'PATCH': {'Content-Type', 'Accept'}
-    })
-
-    # Authentication validation
-    supported_auth_types: set[str] = field(default_factory=lambda: {
-        'none', 'basic', 'bearer', 'oauth2', 'api_key'
-    })
-
-    # Blocked patterns in headers/URLs
-    blocked_patterns: list[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'token', r'key', r'credential'
-    ])
-
 
 class APIValidator:
     """Enhanced API validator with integrated config"""

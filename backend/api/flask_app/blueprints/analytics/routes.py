@@ -1,5 +1,3 @@
-# flask_app/blueprints/analytics/routes.py
-
 from flask import Blueprint, request, send_file, g, current_app
 from marshmallow import ValidationError
 from uuid import UUID
@@ -12,7 +10,6 @@ from ...schemas.staging import (
     AnalyticsStagingRequestSchema,
     AnalyticsStagingResponseSchema
 )
-
 from ...schemas.staging.reports import ReportStagingRequestSchema, ReportStagingResponseSchema
 from ...utils.error_handlers import (
     handle_validation_error,
@@ -20,6 +17,9 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
+
+from ...utils.auth_utils import login_required, role_required
 
 from core.messaging.event_types import (
     ComponentType,
@@ -44,10 +44,11 @@ def validate_analysis_id(func):
                 status_code=400
             )
 
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
-def create_analytics_blueprint(quality_service, analytics_service, staging_manager):
+def create_analytics_blueprint(quality_service, analytics_service, staging_manager, jwt_manager):
     """
     Create analytics blueprint with enhanced staging integration.
 
@@ -61,7 +62,8 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
     """
     analytics_bp = Blueprint('analytics', __name__)
 
-    @analytics_bp.route('/quality/analyze', methods=['POST'])
+    @analytics_bp.route('/quality/analyze', methods=['POST'], endpoint='quality_analyze')
+    @jwt_manager.permission_required('analytics:quality:analyze')
     async def start_quality_analysis():
         """Start quality analysis with staging integration."""
         try:
@@ -77,7 +79,8 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
                 pipeline_id=data.get('pipeline_id'),
                 metadata={
                     'analysis_type': 'quality_check',
-                    'user_id': g.current_user.id
+                    'user_id': g.current_user.id,
+                    'source': request.headers.get('X-Request-Source', 'api')
                 }
             )
 
@@ -93,19 +96,22 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
         except ValidationError as ve:
             return handle_validation_error(ve)
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to start quality analysis",
-                logger
-            )
+            return handle_service_error(e, "Failed to start quality analysis", logger)
 
-    @analytics_bp.route('/quality/<analysis_id>/status', methods=['GET'])
+    @analytics_bp.route('/quality/<analysis_id>/status', methods=['GET'], endpoint='quality_status')
     @validate_analysis_id
+    @jwt_manager.permission_required('analytics:quality:read')
     async def get_quality_status(analysis_id):
         """Get quality analysis status with staging information."""
         try:
             # Get analysis status
             analysis_status = await quality_service.get_analysis_status(analysis_id)
+            if not analysis_status:
+                return handle_not_found_error(
+                    Exception("Analysis not found"),
+                    f"No analysis found with ID {analysis_id}",
+                    logger
+                )
 
             # Get staging status if available
             staging_status = None
@@ -122,13 +128,10 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
             return ResponseBuilder.success({'status': response_data})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get quality status",
-                logger
-            )
+            return handle_service_error(e, "Failed to get quality status", logger)
 
-    @analytics_bp.route('/analytics/start', methods=['POST'])
+    @analytics_bp.route('/analytics/start', methods=['POST'], endpoint='analytics_start')
+    @jwt_manager.permission_required('analytics:start')
     async def start_analytics():
         """Start advanced analytics processing."""
         try:
@@ -143,15 +146,13 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
                 pipeline_id=data.get('pipeline_id'),
                 metadata={
                     'model_type': data['model_type'],
-                    'features': data['features']
+                    'features': data['features'],
+                    'source': request.headers.get('X-Request-Source', 'api')
                 }
             )
 
             # Start analytics processing
-            analytics_job = await analytics_service.start_analytics(
-                data,
-                staging_ref
-            )
+            analytics_job = await analytics_service.start_analytics(data, staging_ref)
 
             return ResponseBuilder.success({
                 'job_id': str(analytics_job.id),
@@ -162,19 +163,22 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
         except ValidationError as ve:
             return handle_validation_error(ve)
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to start analytics processing",
-                logger
-            )
+            return handle_service_error(e, "Failed to start analytics processing", logger)
 
-    @analytics_bp.route('/analytics/<job_id>/status', methods=['GET'])
+    @analytics_bp.route('/analytics/<job_id>/status', methods=['GET'], endpoint='analytics_status')
     @validate_analysis_id
+    @jwt_manager.permission_required('analytics:read')
     async def get_analytics_status(job_id):
         """Get analytics job status with comprehensive details."""
         try:
             # Get job status
             job_status = await analytics_service.get_job_status(job_id)
+            if not job_status:
+                return handle_not_found_error(
+                    Exception("Job not found"),
+                    f"No job found with ID {job_id}",
+                    logger
+                )
 
             # Get staging status
             staging_status = await staging_manager.get_status(
@@ -189,19 +193,15 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
             return ResponseBuilder.success({'status': response_data})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get analytics status",
-                logger
-            )
+            return handle_service_error(e, "Failed to get analytics status", logger)
 
-    @analytics_bp.route('/analytics/<job_id>/results', methods=['GET'])
+    @analytics_bp.route('/analytics/<job_id>/results', methods=['GET'], endpoint='analytics_results')
     @validate_analysis_id
+    @jwt_manager.permission_required('analytics:read')
     async def get_analytics_results(job_id):
         """Get analytics processing results."""
         try:
             results = await analytics_service.get_job_results(job_id)
-
             if not results:
                 return handle_not_found_error(
                     Exception("Results not found"),
@@ -213,19 +213,15 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
             return ResponseBuilder.success({'results': response_data})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get analytics results",
-                logger
-            )
+            return handle_service_error(e, "Failed to get analytics results", logger)
 
-    @analytics_bp.route('/analytics/<job_id>/model', methods=['GET'])
+    @analytics_bp.route('/analytics/<job_id>/model', methods=['GET'], endpoint='analytics_model')
     @validate_analysis_id
+    @jwt_manager.permission_required('analytics:read')
     async def get_model_details(job_id):
         """Get trained model details and metrics."""
         try:
             model_info = await analytics_service.get_model_info(job_id)
-
             if not model_info:
                 return handle_not_found_error(
                     Exception("Model not found"),
@@ -236,18 +232,21 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
             return ResponseBuilder.success({'model': model_info})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get model details",
-                logger
-            )
+            return handle_service_error(e, "Failed to get model details", logger)
 
-    @analytics_bp.route('/export/<job_id>', methods=['GET'])
+    @analytics_bp.route('/export/<job_id>', methods=['GET'], endpoint='analytics_export')
     @validate_analysis_id
+    @jwt_manager.permission_required('analytics:export')
     async def export_results(job_id):
         """Export analytics results in requested format."""
         try:
             format_type = request.args.get('format', 'pdf')
+
+            if format_type not in ['pdf', 'csv', 'json', 'xlsx']:
+                return ResponseBuilder.error(
+                    "Invalid export format",
+                    status_code=400
+                )
 
             export_file = await analytics_service.export_results(
                 job_id,
@@ -261,11 +260,7 @@ def create_analytics_blueprint(quality_service, analytics_service, staging_manag
             )
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to export results",
-                logger
-            )
+            return handle_service_error(e, "Failed to export results", logger)
 
     # Error Handlers
     @analytics_bp.errorhandler(404)

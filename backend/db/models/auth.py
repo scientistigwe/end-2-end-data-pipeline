@@ -1,18 +1,14 @@
-# backend\backend\db\types\base.py
+# backend/db/models/auth.py
 
 from sqlalchemy import (
-   Column, String, DateTime, Boolean, Enum, ForeignKey, Text,
-   CheckConstraint, Index, UniqueConstraint, Integer
+    Column, String, DateTime, Boolean, Enum, ForeignKey,
+    CheckConstraint, Index, Integer, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, validates
 from .base import BaseModel
 from datetime import datetime, timedelta
 
-from typing import List, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .events import EventSubscription
 
 class User(BaseModel):
     """User model for authentication and authorization."""
@@ -45,7 +41,7 @@ class User(BaseModel):
     password_reset_expires = Column(DateTime)
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime)
-   
+
     # Profile
     profile_image = Column(String(255))
     phone_number = Column(String(50))
@@ -54,12 +50,21 @@ class User(BaseModel):
     locale = Column(String(10))
     preferences = Column(JSONB)
 
-    # Relationships
+    # Add MFA fields
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(String(255))  # For storing MFA secret key
+    mfa_backup_codes = Column(JSONB)  # For storing backup codes
+    mfa_type = Column(
+        Enum('totp', 'sms', 'email', name='mfa_type'),
+        nullable=True
+    )
+
+    # Relationships from other models
     sessions = relationship(
         "UserSession",
         back_populates="user",
-        foreign_keys="UserSession.user_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        foreign_keys="[UserSession.user_id]"
     )
     data_sources = relationship(
         "DataSource",
@@ -71,56 +76,41 @@ class User(BaseModel):
         back_populates="owner",
         foreign_keys="[Pipeline.owner_id]"
     )
+    event_subscriptions = relationship(
+        "EventSubscription",
+        back_populates="user",
+        foreign_keys="[EventSubscription.user_id]"
+    )
+    pipeline_templates = relationship(
+        "PipelineTemplate",
+        back_populates="creator",
+        foreign_keys="[PipelineTemplate.created_by]"
+    )
+
+    # Team and collaboration
+    team_memberships = relationship(
+        "TeamMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[TeamMember.user_id]"
+    )
+    service_accounts = relationship(
+        "ServiceAccount",
+        back_populates="user",
+        foreign_keys="[ServiceAccount.user_id]"
+    )
+    # Activity logs
     activity_logs = relationship(
         "UserActivityLog",
         back_populates="user",
-        foreign_keys="UserActivityLog.user_id",
+        foreign_keys="[UserActivityLog.user_id]",
         cascade="all, delete-orphan"
-    )
-    decision_history = relationship(
-        "DecisionHistory",
-        back_populates="user",
-        foreign_keys="[DecisionHistory.user_id]",
-        cascade='all, delete-orphan'
-    )
-    recommendation_feedback = relationship(
-        "RecommendationFeedback",
-        back_populates="user",
-        foreign_keys="[RecommendationFeedback.user_id]"
-    )
-    settings = relationship(
-        'UserSettings',
-        back_populates='user',
-        foreign_keys='[UserSettings.user_id]',
-        uselist=False  # One-to-one relationship
-    )
-    modified_system_settings = relationship(
-        'SystemSettings',
-        foreign_keys='[SystemSettings.last_modified_by]',
-        back_populates='modifier'
-    )
-    notifications = relationship(
-        'Notification',
-        back_populates='user',
-        foreign_keys='[Notification.user_id]',
-        cascade='all, delete-orphan'
-    )
-    # Modify the event_subscriptions relationship
-    event_subscriptions = relationship(
-        'EventSubscription',  # Use string reference
-        back_populates='user',
-        foreign_keys='[EventSubscription.user_id]',
-        cascade='all, delete-orphan'
     )
 
     __table_args__ = (
         Index('ix_users_email_status', 'email', 'status'),
         Index('ix_users_role', 'role'),
-        Index('ix_users_active', 'is_active'),  # Added index for is_active
-        CheckConstraint(
-            'password_reset_expires > verification_sent_at',
-            name='ck_valid_reset_expiry'
-        ),
+        Index('ix_users_active', 'is_active'),
         CheckConstraint(
             'failed_login_attempts >= 0',
             name='ck_valid_login_attempts'
@@ -154,9 +144,9 @@ class User(BaseModel):
     def can_login(self) -> bool:
         """Check if user can login."""
         return (
-            self.is_active and
-            self.status == 'active' and
-            (not self.locked_until or self.locked_until < datetime.utcnow())
+                self.is_active and
+                self.status == 'active' and
+                (not self.locked_until or self.locked_until < datetime.utcnow())
         )
 
     def increment_failed_attempts(self) -> None:
@@ -190,7 +180,7 @@ class UserSession(BaseModel):
     revoked = Column(Boolean, default=False)
     revoked_at = Column(DateTime)
     revocation_reason = Column(String(255))
-   
+
     # Device info
     ip_address = Column(String(45))
     user_agent = Column(String(255))
@@ -198,59 +188,49 @@ class UserSession(BaseModel):
     device_type = Column(String(50))
     location = Column(JSONB)
 
-    # Activity tracking 
-    last_activity = Column(DateTime)
-    access_count = Column(Integer, default=0)
-    security_events = Column(JSONB)
-
     # Relationships
     user = relationship(
         "User",
         back_populates="sessions",
         foreign_keys=[user_id]
     )
+    # Activity logs relationship
     activity_logs = relationship(
         "UserActivityLog",
         back_populates="session",
+        foreign_keys="[UserActivityLog.session_id]",
         cascade="all, delete-orphan"
     )
 
     __table_args__ = (
         Index('ix_user_sessions_token', 'token'),
-        Index('ix_user_sessions_expires', 'expires_at'),
-        CheckConstraint(
-            'expires_at > created_at',
-            name='ck_valid_session_expiry'
-        ),
-        CheckConstraint(
-            'revoked_at IS NULL OR revoked_at <= expires_at',
-            name='ck_valid_revocation_time'
-        ),
-        CheckConstraint(
-            'access_count >= 0',
-            name='ck_valid_access_count'
-        )
+        Index('ix_user_sessions_expires', 'expires_at')
     )
-
-    @validates('expires_at')
-    def validate_expiry(self, key, expires_at):
-        """Validate session expiry time."""
-        if expires_at <= datetime.utcnow():
-            raise ValueError("Session expiry must be in the future")
-        return expires_at
 
     def is_active(self):
         """Check if session is currently active."""
         now = datetime.utcnow()
         return (
-            not self.revoked and
-            self.expires_at > now and
-            (not self.last_activity or 
-             self.last_activity > now - timedelta(hours=24))
+                not self.revoked and
+                self.expires_at > now
         )
 
     def __repr__(self):
         return f"<UserSession(user_id={self.user_id}, active={self.is_active()})>"
+
+def add_decision_history_relationship(user_model, decision_history_model):
+    """
+    Dynamically add decision_history relationship to User model
+
+    :param user_model: User model class
+    :param decision_history_model: DecisionHistory model class
+    """
+    user_model.decision_history = relationship(
+        decision_history_model,
+        back_populates="user",
+        foreign_keys=f"[{decision_history_model.__name__}.user_id]",
+        cascade='all, delete-orphan'
+    )
 
 
 class UserActivityLog(BaseModel):
@@ -278,7 +258,7 @@ class UserActivityLog(BaseModel):
 
     # Relationships
     user = relationship(
-        "User", 
+        "User",
         back_populates="activity_logs",
         foreign_keys=[user_id]
     )
@@ -463,11 +443,3 @@ class ServiceAccount(BaseModel):
                 self.is_active() and
                 any(permission_scope in scope for scope in self.scope)
         )
-
-
-# Update User model to include team_memberships relationship
-User.team_memberships = relationship(
-    "TeamMember",
-    back_populates="user",
-    cascade="all, delete-orphan"
-)

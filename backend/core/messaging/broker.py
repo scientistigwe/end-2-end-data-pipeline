@@ -110,13 +110,22 @@ class MessageBroker:
 
     async def subscribe(
             self,
-            module_identifier: ModuleIdentifier,
+            module_identifier: Union[str, ModuleIdentifier],
             message_patterns: Union[str, List[str]],
-            callback: Union[Callable, Coroutine],
+            callback: Union[Callable, Coroutine]
     ) -> None:
-        """Enhanced subscribe with module identification"""
+        """Enhanced subscribe with support for both string and ModuleIdentifier"""
         async with self._lock:
             try:
+                # Handle string component name
+                if isinstance(module_identifier, str):
+                    module_identifier = ModuleIdentifier(
+                        component_name=module_identifier,
+                        component_type=ComponentType.CORE,
+                        department="core",
+                        role="component"
+                    )
+
                 # Normalize patterns
                 patterns = [message_patterns] if isinstance(message_patterns, str) else message_patterns
 

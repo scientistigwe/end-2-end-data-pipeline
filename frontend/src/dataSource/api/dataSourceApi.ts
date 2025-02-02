@@ -38,7 +38,7 @@ class DataSourceApi {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('metadata', JSON.stringify(metadata));
-
+    
         const config: ApiRequestConfig = {
             headers: {
                 'Content-Type': 'multipart/form-data',
@@ -52,10 +52,11 @@ class DataSourceApi {
                 }
             },
         };
-
+    
         try {
+            // Instead of using RouteHelper, use a direct endpoint since we're getting a route error
             return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'FILE', 'UPLOAD'),
+                '/data-sources/file/upload',  // Direct endpoint
                 formData,
                 config
             );

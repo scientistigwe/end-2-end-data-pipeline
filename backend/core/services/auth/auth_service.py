@@ -14,11 +14,6 @@ class AuthService:
         self.db_session = db_session
         self.logger = logging.getLogger(__name__)
 
-class AuthService:
-    def __init__(self, db_session: Session):
-        self.db_session = db_session
-        self.logger = logging.getLogger(__name__)
-
     def register_user(self, data: Dict[str, Any]) -> User:
         """Register a new user."""
         try:
@@ -307,4 +302,42 @@ class AuthService:
             self.logger.error(f"Account verification error: {str(e)}")
             self.db_session.rollback()
             raise
-        
+
+    def get_user_permissions(self, user) -> list:
+        """Get user permissions based on role."""
+        # Define base permissions that all users have
+        base_permissions = ['read:own_profile', 'update:own_profile']
+
+        # Role-based permissions
+        role_permissions = {
+            'admin': [
+                'read:all_users',
+                'create:users',
+                'update:users',
+                'delete:users',
+                'read:system_settings',
+                'update:system_settings',
+                'manage:pipelines',
+                'manage:data_sources'
+            ],
+            'user': [
+                'read:own_data',
+                'create:own_pipelines',
+                'update:own_pipelines'
+            ],
+            'analyst': [
+                'read:analytics',
+                'create:reports',
+                'read:all_pipelines'
+            ],
+            'viewer': [
+                'read:public_data',
+                'read:public_pipelines'
+            ]
+        }
+
+        # Get role-specific permissions
+        user_role = getattr(user, 'role', 'viewer')  # Default to viewer if role not set
+        permissions = base_permissions + role_permissions.get(user_role, [])
+
+        return sorted(list(set(permissions)))  # Remove duplicates and sort

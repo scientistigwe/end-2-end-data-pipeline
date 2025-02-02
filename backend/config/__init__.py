@@ -7,6 +7,15 @@ from .app_config import Config, DevelopmentConfig, ProductionConfig, get_config
 from .celery_config import CeleryConfig, celery_app
 from .config_manager import ConfigurationManager
 from .database import DatabaseConfig
+from .validation_config import (
+    ValidationConfigs,
+    FileValidationConfig,
+    APIValidationConfig,
+    DatabaseValidationConfig,
+    StreamValidationConfig,
+    S3ValidationConfig,
+    StreamType
+)
 
 # Create base configuration instance
 config_manager = ConfigurationManager(
@@ -28,5 +37,12 @@ __all__ = [
     'ConfigurationManager',
     'config_manager',
     'DatabaseConfig',
-    'db_config'
+    'db_config',
+    'ValidationConfigs',
+    'FileValidationConfig',
+    'APIValidationConfig',
+    'DatabaseValidationConfig',
+    'StreamValidationConfig',
+    'S3ValidationConfig',
+    'StreamType'
 ]

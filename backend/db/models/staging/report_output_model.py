@@ -2,6 +2,7 @@
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
+from sqlalchemy.orm import relationship
 from .base_staging_model import BaseStagedOutput
 from core.messaging.event_types import ComponentType
 

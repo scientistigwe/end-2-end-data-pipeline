@@ -2,8 +2,12 @@
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
 from .base_staging_model import BaseStagedOutput
 from core.messaging.event_types import ComponentType
+
+Base = declarative_base()
 
 class StagedQualityOutput(BaseStagedOutput):
     """Quality insight specific output model"""
@@ -25,6 +29,13 @@ class StagedQualityOutput(BaseStagedOutput):
     profile_data = Column(JSON)
     issue_summary = Column(JSON)
     recommendations = Column(JSON)
+
+    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
+    source = relationship(
+        "DataSource",
+        back_populates="quality_outputs",
+        foreign_keys=[source_id]
+    )
 
     __mapper_args__ = {
         "polymorphic_identity": ComponentType.QUALITY_MANAGER,

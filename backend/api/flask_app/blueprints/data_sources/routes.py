@@ -10,9 +10,11 @@ from data.source.database.db_service import DatabaseService
 from data.source.cloud.cloud_service import S3Service
 from data.source.api.api_service import APIService
 from data.source.stream.stream_service import StreamService
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from ...schemas.data_sources import (
     FileUploadRequestSchema,
+    FileUploadResponseSchema,
     FileSourceResponseSchema,
     DatabaseSourceResponseSchema,
     S3SourceResponseSchema,
@@ -24,23 +26,26 @@ from ...middleware.auth_middleware import jwt_required_with_user
 
 logger = logging.getLogger(__name__)
 
+
 def create_data_source_blueprint(
-    file_service: FileService,
-    db_service: DatabaseService,
-    s3_service: S3Service,
-    api_service: APIService,
-    stream_service: StreamService
+        file_service: FileService,
+        db_service: DatabaseService,
+        s3_service: S3Service,
+        api_service: APIService,
+        stream_service: StreamService,
+        jwt_manager: JWTTokenManager  # Add this parameter
 ) -> Blueprint:
     """
     Create comprehensive data source blueprint with routes for all source types
-    
+
     Args:
         file_service (FileService): File service
         db_service (DBService): Database service
         s3_service (S3Service): S3 service
         api_service (APIService): API service
         stream_service (StreamService): Stream service
-    
+        jwt_manager (JWTTokenManager): JWT manager for authentication
+
     Returns:
         Blueprint: Flask blueprint with data source routes
     """
@@ -114,7 +119,7 @@ def create_data_source_blueprint(
         raise ValueError("Source not found")
 
     @data_source_bp.route('/', methods=['GET'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:list')
     def list_sources():
         """
         List all data sources for the current user
@@ -138,7 +143,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to list sources", status_code=500)
 
     @data_source_bp.route('/', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:create')
     def create_source():
         """
         Create a new data source
@@ -186,7 +191,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to create source", status_code=500)
 
     @data_source_bp.route('/<source_id>', methods=['GET'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:read')
     def get_source(source_id):
         """
         Get specific data source details
@@ -215,7 +220,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to get source", status_code=500)
 
     @data_source_bp.route('/<source_id>', methods=['PUT'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:update')
     def update_source(source_id):
         """
         Update a data source
@@ -258,8 +263,9 @@ def create_data_source_blueprint(
             logger.error(f"Source update error: {str(e)}")
             return ResponseBuilder.error("Failed to update source", status_code=500)
 
+
     @data_source_bp.route('/<source_id>', methods=['DELETE'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:delete')
     def delete_source(source_id):
         """
         Delete a data source
@@ -287,7 +293,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to delete source", status_code=500)
 
     @data_source_bp.route('/<source_id>/preview', methods=['GET'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:preview')
     def preview_source(source_id):
         """
         Preview data from a source
@@ -322,8 +328,60 @@ def create_data_source_blueprint(
             logger.error(f"Preview error: {str(e)}")
             return ResponseBuilder.error("Failed to preview source", status_code=500)
 
+    @data_source_bp.route('/file/upload', methods=['POST'])
+    @jwt_manager.permission_required('data_sources:upload_file')
+    def upload_file():
+        """Upload a file as a data source"""
+        try:
+            # Debug logging
+            logger.debug(f'Files in request: {request.files}')
+            logger.debug(f'Form data: {request.form}')
+
+            # 1. Validate file in request
+            if 'file' not in request.files:
+                return ResponseBuilder.error("No file provided", status_code=400)
+
+            file = request.files['file']
+            metadata = request.form.get('metadata')
+
+            if not file or not metadata:
+                return ResponseBuilder.error(
+                    "Missing required file or metadata",
+                    status_code=400
+                )
+
+            # 2. Process file upload
+            result = file_service.process_file_upload(
+                file=file,
+                metadata=metadata,
+                user_id=g.current_user.id
+            )
+
+            # 3. Return response based on result status
+            if result['status'] == 'error':
+                return ResponseBuilder.error(
+                    message=result.get('message', 'Upload failed'),
+                    details=result.get('error'),
+                    status_code=400
+                )
+
+            # Use FileUploadResponseSchema instead of FileSourceResponseSchema
+            return ResponseBuilder.success({
+                'source': FileUploadResponseSchema().dump(result)
+            })
+
+        except ValidationError as e:
+            return ResponseBuilder.error(
+                "Validation error",
+                details=e.messages,
+                status_code=400
+            )
+        except Exception as e:
+            logger.error(f"File upload error: {str(e)}", exc_info=True)
+            return ResponseBuilder.error("Upload failed", status_code=500)
+
     @data_source_bp.route('/db/connect', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:connect_db')
     def connect_database():
         """
         Connect to db source
@@ -354,7 +412,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Connection failed", status_code=500)
 
     @data_source_bp.route('/s3/connect', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:connect_s3')
     def connect_s3():
         """
         Connect to S3 bucket
@@ -385,7 +443,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Connection failed", status_code=500)
 
     @data_source_bp.route('/api/connect', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:connect_api')
     def connect_api():
         """
         Connect to API source
@@ -416,7 +474,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Connection failed", status_code=500)
 
     @data_source_bp.route('/stream/connect', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:connect_stream')
     def connect_stream():
         """
         Connect to stream source
@@ -447,7 +505,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Connection failed", status_code=500)
 
     @data_source_bp.route('/db/<connection_id>/query', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:execute_query')
     def execute_database_query(connection_id):
         """
         Execute db query
@@ -476,7 +534,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Query failed", status_code=500)
 
     @data_source_bp.route('/api/<connection_id>/execute', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:execute_api')
     def execute_api_request(connection_id):
         """
         Execute API request
@@ -504,8 +562,9 @@ def create_data_source_blueprint(
             logger.error(f"API execution error: {str(e)}", exc_info=True)
             return ResponseBuilder.error("Request failed", status_code=500)
 
+
     @data_source_bp.route('/s3/<connection_id>/list', methods=['GET'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:list_s3')
     def list_s3_objects(connection_id):
         """
         List objects in S3 bucket
@@ -539,7 +598,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to list objects", status_code=500)
 
     @data_source_bp.route('/stream/<connection_id>/status', methods=['GET'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:stream_status')
     def get_stream_status(connection_id):
         """
         Get stream connection status
@@ -565,7 +624,7 @@ def create_data_source_blueprint(
             return ResponseBuilder.error("Failed to get status", status_code=500)
 
     @data_source_bp.route('/stream/<connection_id>/consume', methods=['POST'])
-    @jwt_required_with_user()
+    @jwt_manager.permission_required('data_sources:stream_consume')
     def start_stream_consumption(connection_id):
         """
         Start consuming from stream

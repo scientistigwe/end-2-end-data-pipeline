@@ -9,9 +9,7 @@ from datetime import datetime
 
 from ...schemas.staging.decisions import (
     DecisionStagingRequestSchema,
-    DecisionStagingResponseSchema
-)
-from ...schemas.staging.decisions import (
+    DecisionStagingResponseSchema,
     DecisionListResponseSchema,
     DecisionHistoryResponseSchema,
     DecisionImpactResponseSchema,
@@ -23,6 +21,7 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from core.messaging.event_types import (
     ComponentType,
@@ -36,7 +35,6 @@ logger = logging.getLogger(__name__)
 
 def validate_uuid(func):
     """Decorator to validate UUID format parameters."""
-
     def wrapper(*args, **kwargs):
         try:
             # Convert all UUID string parameters to UUID objects
@@ -52,11 +50,11 @@ def validate_uuid(func):
                 "Invalid ID format provided",
                 status_code=400
             )
-
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
-def create_decision_blueprint(decision_service, staging_manager):
+def create_decision_blueprint(decision_service, staging_manager, jwt_manager):
     """
     Create decision blueprint with enhanced staging integration.
 
@@ -69,7 +67,8 @@ def create_decision_blueprint(decision_service, staging_manager):
     """
     decision_bp = Blueprint('decisions', __name__)
 
-    @decision_bp.route('/', methods=['GET'])
+    @decision_bp.route('/', methods=['GET'], endpoint='decision_list')
+    @jwt_manager.permission_required('decisions:list')
     async def list_decisions():
         """List decisions with filtering and pagination."""
         try:
@@ -101,14 +100,11 @@ def create_decision_blueprint(decision_service, staging_manager):
             )
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to list decisions",
-                logger
-            )
+            return handle_service_error(e, "Failed to list decisions", logger)
 
-    @decision_bp.route('/<pipeline_id>/pending', methods=['GET'])
+    @decision_bp.route('/<pipeline_id>/pending', methods=['GET'], endpoint='decision_get_pending')
     @validate_uuid
+    @jwt_manager.permission_required('decisions:read')
     async def get_pending_decisions(pipeline_id: UUID):
         """Get pending decisions for a pipeline with staging details."""
         try:
@@ -127,14 +123,11 @@ def create_decision_blueprint(decision_service, staging_manager):
             )
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get pending decisions",
-                logger
-            )
+            return handle_service_error(e, "Failed to get pending decisions", logger)
 
-    @decision_bp.route('/<decision_id>/make', methods=['POST'])
+    @decision_bp.route('/<decision_id>/make', methods=['POST'], endpoint='decision_make')
     @validate_uuid
+    @jwt_manager.permission_required('decisions:make')
     async def make_decision(decision_id: UUID):
         """Make a decision with staging integration."""
         try:
@@ -168,14 +161,11 @@ def create_decision_blueprint(decision_service, staging_manager):
         except ValidationError as ve:
             return handle_validation_error(ve)
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to process decision",
-                logger
-            )
+            return handle_service_error(e, "Failed to process decision", logger)
 
-    @decision_bp.route('/<decision_id>/feedback', methods=['POST'])
+    @decision_bp.route('/<decision_id>/feedback', methods=['POST'], endpoint='decision_feedback')
     @validate_uuid
+    @jwt_manager.permission_required('decisions:feedback')
     async def provide_feedback(decision_id: UUID):
         """Provide decision feedback with impact tracking."""
         try:
@@ -210,14 +200,11 @@ def create_decision_blueprint(decision_service, staging_manager):
         except ValidationError as ve:
             return handle_validation_error(ve)
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to process feedback",
-                logger
-            )
+            return handle_service_error(e, "Failed to process feedback", logger)
 
-    @decision_bp.route('/<pipeline_id>/history', methods=['GET'])
+    @decision_bp.route('/<pipeline_id>/history', methods=['GET'], endpoint='decision_history')
     @validate_uuid
+    @jwt_manager.permission_required('decisions:history:read')
     async def get_decision_history(pipeline_id: UUID):
         """Get comprehensive decision history."""
         try:
@@ -240,14 +227,11 @@ def create_decision_blueprint(decision_service, staging_manager):
             )
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to retrieve decision history",
-                logger
-            )
+            return handle_service_error(e, "Failed to retrieve decision history", logger)
 
-    @decision_bp.route('/<decision_id>/impact', methods=['GET'])
+    @decision_bp.route('/<decision_id>/impact', methods=['GET'], endpoint='decision_impact')
     @validate_uuid
+    @jwt_manager.permission_required('decisions:impact:read')
     async def analyze_impact(decision_id: UUID):
         """Analyze decision impact with comprehensive metrics."""
         try:
@@ -268,27 +252,17 @@ def create_decision_blueprint(decision_service, staging_manager):
             )
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to analyze decision impact",
-                logger
-            )
+            return handle_service_error(e, "Failed to analyze decision impact", logger)
 
     @decision_bp.errorhandler(404)
     def not_found_error(error):
         """Handle resource not found errors."""
-        return ResponseBuilder.error(
-            "Resource not found",
-            status_code=404
-        )
+        return ResponseBuilder.error("Resource not found", status_code=404)
 
     @decision_bp.errorhandler(500)
     def internal_error(error):
         """Handle internal server errors."""
         logger.error(f"Internal server error: {error}", exc_info=True)
-        return ResponseBuilder.error(
-            "Internal server error",
-            status_code=500
-        )
+        return ResponseBuilder.error("Internal server error", status_code=500)
 
     return decision_bp

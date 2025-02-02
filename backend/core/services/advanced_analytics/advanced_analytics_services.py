@@ -42,21 +42,21 @@ class AnalyticsService:
     def _setup_message_handlers(self) -> None:
         """Initialize message handlers"""
         handlers = {
-            # Service Management
-            MessageType.ANALYTICS_SERVICE_START: self._handle_service_start,
-            MessageType.ANALYTICS_SERVICE_STOP: self._handle_service_stop,
+            # Core Process Flow
+            MessageType.ANALYTICS_PROCESS_START: self._handle_service_start,
+            MessageType.ANALYTICS_PROCESS_PROGRESS: self._handle_handler_update,
+            MessageType.ANALYTICS_PROCESS_COMPLETE: self._handle_handler_complete,
+            MessageType.ANALYTICS_PROCESS_ERROR: self._handle_handler_error,
 
-            # Process Control
-            MessageType.ANALYTICS_SERVICE_CONTROL: self._handle_service_control,
-            MessageType.ANALYTICS_SERVICE_CONFIG: self._handle_service_config,
+            # Service Control
+            MessageType.ANALYTICS_PIPELINE_PAUSE: self._handle_service_control,
+            MessageType.ANALYTICS_PIPELINE_RESUME: self._handle_service_control,
+            MessageType.ANALYTICS_PIPELINE_CANCEL: self._handle_service_control,
 
-            # Status Management
-            MessageType.ANALYTICS_SERVICE_STATUS: self._handle_service_status,
-            MessageType.ANALYTICS_HANDLER_UPDATE: self._handle_handler_update,
-
-            # Results and Completion
-            MessageType.ANALYTICS_HANDLER_COMPLETE: self._handle_handler_complete,
-            MessageType.ANALYTICS_HANDLER_ERROR: self._handle_handler_error
+            # Configuration and Status
+            MessageType.ANALYTICS_CONFIG_UPDATE: self._handle_service_config,
+            MessageType.ANALYTICS_STATUS_REQUEST: self._handle_service_status,
+            MessageType.ANALYTICS_PIPELINE_ROLLBACK: self._handle_service_stop
         }
 
         for message_type, handler in handlers.items():
@@ -65,6 +65,192 @@ class AnalyticsService:
                 message_type.value,
                 handler
             )
+
+    async def _handle_service_stop(self, message: ProcessingMessage) -> None:
+        """Handle service stop request from manager"""
+        try:
+            pipeline_id = message.content.get("pipeline_id")
+            if not pipeline_id:
+                return
+
+            # Notify handler to stop processing
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_HANDLER_STOP,
+                    content={
+                        "pipeline_id": pipeline_id,
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=message.metadata.correlation_id,
+                        source_component=self.module_identifier.component_name,
+                        target_component="analytics_handler",
+                        domain_type="analytics",
+                        processing_stage=ProcessingStage.ADVANCED_ANALYTICS
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Clean up request
+            await self._cleanup_request(pipeline_id)
+
+        except Exception as e:
+            await self._handle_service_error(message, str(e))
+
+    async def _handle_service_config(self, message: ProcessingMessage) -> None:
+        """Handle configuration updates for the service"""
+        try:
+            pipeline_id = message.content.get("pipeline_id")
+            config_updates = message.content.get("config", {})
+
+            context = self.active_requests.get(pipeline_id)
+            if not context:
+                return
+
+            # Update context configuration
+            if hasattr(context, 'config'):
+                context.config.update(config_updates)
+
+            # Forward configuration update to handler
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_CONFIG_UPDATE,
+                    content={
+                        "pipeline_id": pipeline_id,
+                        "config": config_updates,
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=message.metadata.correlation_id,
+                        source_component=self.module_identifier.component_name,
+                        target_component="analytics_handler",
+                        domain_type="analytics"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            await self._handle_service_error(message, str(e))
+
+    async def _handle_service_status(self, message: ProcessingMessage) -> None:
+        """Handle service status requests"""
+        try:
+            pipeline_id = message.content.get("pipeline_id")
+            context = self.active_requests.get(pipeline_id)
+
+            status_response = {
+                "pipeline_id": pipeline_id,
+                "active": bool(context),
+                "timestamp": datetime.now().isoformat()
+            }
+
+            if context:
+                status_response.update({
+                    "status": context.status,
+                    "current_stage": context.stage,
+                    "metrics": context.metrics
+                })
+
+            # Send status response to requesting component
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_STATUS_UPDATE,
+                    content=status_response,
+                    metadata=MessageMetadata(
+                        correlation_id=message.metadata.correlation_id,
+                        source_component=self.module_identifier.component_name,
+                        target_component=message.source_identifier.component_name,
+                        domain_type="analytics"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            await self._handle_service_error(message, str(e))
+
+    async def _cancel_processing(self, pipeline_id: str) -> None:
+        """Cancel processing for pipeline"""
+        try:
+            # Notify handler to cancel processing
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_HANDLER_CANCEL,
+                    content={
+                        "pipeline_id": pipeline_id,
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="analytics_handler",
+                        domain_type="analytics"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Update context status
+            context = self.active_requests.get(pipeline_id)
+            if context:
+                context.status = ProcessingStatus.CANCELLED
+
+            # Notify manager of cancellation
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_PROCESS_ERROR,
+                    content={
+                        "pipeline_id": pipeline_id,
+                        "error": "Processing cancelled",
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="analytics_manager",
+                        domain_type="analytics"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Clean up request
+            await self._cleanup_request(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Cancel processing failed: {str(e)}")
+
+    async def _update_service_metrics(self, pipeline_id: str, metrics: Dict[str, Any]) -> None:
+        """Update service metrics"""
+        try:
+            context = self.active_requests.get(pipeline_id)
+            if not context:
+                return
+
+            # Update context metrics
+            if hasattr(context, 'metrics'):
+                context.metrics.update(metrics)
+
+            # Publish metrics update
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ANALYTICS_METRICS_UPDATE,
+                    content={
+                        "pipeline_id": pipeline_id,
+                        "metrics": metrics,
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="analytics_manager",
+                        domain_type="analytics"
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Metrics update failed: {str(e)}")
 
     async def _handle_service_start(self, message: ProcessingMessage) -> None:
         """Handle service start request from manager"""

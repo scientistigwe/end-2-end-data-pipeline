@@ -1,7 +1,8 @@
-// common/types/auth.ts
+// src/common/types/auth.ts
+
 import type { RoleType } from './user';
 
-// Base Auth User Type (core user properties)
+// Base Auth User Type
 export interface BaseAuthUser {
   id: string;
   email: string;
@@ -18,44 +19,36 @@ export interface BaseAuthUser {
   preferences?: Record<string, unknown>;
 }
 
-// Base Permission and Role Types
-export type BasePermission = {
-  id: string;
-  name: string;
-  description?: string;
-};
-
-export type BaseRole = {
-  id: string;
-  name: RoleType;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-// Permission Check Interface
-export interface BasePermissionCheck {
-  hasPermission: (permission: string) => boolean;
-  hasAnyPermission: (permissions: string[]) => boolean;
-  hasAllPermissions: (permissions: string[]) => boolean;
-}
-
 // Base Request Types
 export interface BaseLoginCredentials {
   email: string;
   password: string;
 }
 
-export interface BaseRegisterData extends BaseLoginCredentials {
+// Make BaseRegisterData include all possible fields
+export interface BaseRegisterData {
+  email: string;
+  password: string;
+  confirm_password: string;  // Added here
   username: string;
-  firstName: string;
-  lastName: string;
+  first_name: string;
+  last_name: string;
+  terms_accepted: boolean;   // Added here
+  phone_number?: string;
+  department?: string;
+  timezone?: string;
+  locale?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface BaseProfileUpdate {
-  firstName?: string;
-  lastName?: string;
-  profileImage?: string;
+  first_name?: string;
+  last_name?: string;
+  profile_image?: string;
+  phone_number?: string;
+  department?: string;
+  timezone?: string;
+  locale?: string;
   preferences?: Record<string, unknown>;
 }
 
@@ -88,15 +81,20 @@ export interface BaseSessionInfo {
   expiresAt?: string;
 }
 
-// Context Types
-export interface BaseAuthContext {
-  user: BaseAuthUser | null;
+// Context Types - Make methods generic
+export interface BaseAuthContext<
+  TLoginCreds = BaseLoginCredentials,
+  TRegisterData = BaseRegisterData,
+  TProfileUpdate = BaseProfileUpdate,
+  TUser = BaseAuthUser
+> {
+  user: TUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
   
-  login: (credentials: BaseLoginCredentials) => Promise<boolean>;
-  register: (data: BaseRegisterData) => Promise<boolean>;
+  login: (credentials: TLoginCreds) => Promise<boolean>;
+  register: (data: TRegisterData) => Promise<boolean>;
   logout: () => Promise<void>;
-  updateProfile: (data: BaseProfileUpdate) => Promise<BaseAuthUser>;
+  updateProfile: (data: TProfileUpdate) => Promise<TUser>;
 }

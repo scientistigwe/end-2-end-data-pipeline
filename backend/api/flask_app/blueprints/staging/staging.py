@@ -18,6 +18,7 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from core.messaging.event_types import (
     ComponentType,
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 def validate_output_id(func):
     """Decorator to validate staged output ID format."""
-
     def wrapper(output_id, *args, **kwargs):
         try:
             validated_id = UUID(output_id)
@@ -40,23 +40,16 @@ def validate_output_id(func):
                 "Invalid output ID format",
                 status_code=400
             )
-
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
-def create_staging_blueprint(staging_service):
-    """
-    Create staging blueprint with comprehensive schema integration.
-
-    Args:
-        staging_service: Service for staging operations
-
-    Returns:
-        Blueprint: Configured staging blueprint
-    """
+def create_staging_blueprint(staging_service, jwt_manager):
+    """Create staging blueprint with comprehensive schema integration."""
     staging_bp = Blueprint('staging', __name__)
 
-    @staging_bp.route('/outputs', methods=['GET'])
+    @staging_bp.route('/outputs', methods=['GET'], endpoint='staging_list_outputs')
+    @jwt_manager.permission_required('staging:outputs:list')
     async def list_outputs():
         """List staged outputs with comprehensive filtering."""
         try:
@@ -64,15 +57,11 @@ def create_staging_blueprint(staging_service):
             page = int(filters.pop('page', 1))
             per_page = int(filters.pop('per_page', 10))
 
-            # Add component type filtering
             if 'component_type' in filters:
                 try:
                     filters['component_type'] = ComponentType(filters['component_type'])
                 except ValueError:
-                    return ResponseBuilder.error(
-                        "Invalid component type",
-                        status_code=400
-                    )
+                    return ResponseBuilder.error("Invalid component type", status_code=400)
 
             outputs = await staging_service.list_outputs(
                 filters=filters,
@@ -80,13 +69,9 @@ def create_staging_blueprint(staging_service):
                 per_page=per_page
             )
 
-            # Get appropriate schema for each output
             response_data = []
             for output in outputs['items']:
-                schema = StagedOutputSchemas.get_schema(
-                    output.component_type,
-                    'response'
-                )
+                schema = StagedOutputSchemas.get_schema(output.component_type, 'response')
                 response_data.append(schema().dump(output))
 
             return ResponseBuilder.success({
@@ -97,46 +82,31 @@ def create_staging_blueprint(staging_service):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to list staged outputs",
-                logger
-            )
+            return handle_service_error(e, "Failed to list staged outputs", logger)
 
-    @staging_bp.route('/outputs/<output_id>', methods=['GET'])
+    @staging_bp.route('/outputs/<output_id>', methods=['GET'], endpoint='staging_get_output')
     @validate_output_id
+    @jwt_manager.permission_required('staging:outputs:read')
     async def get_output(output_id):
         """Get staged output with component-specific details."""
         try:
             output = await staging_service.get_output(output_id)
-
-            # Use component-specific schema
-            schema = StagedOutputSchemas.get_schema(
-                output.component_type,
-                'response'
-            )
+            schema = StagedOutputSchemas.get_schema(output.component_type, 'response')
             return ResponseBuilder.success(schema().dump(output))
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get staged output",
-                logger
-            )
+            return handle_service_error(e, "Failed to get staged output", logger)
 
-    @staging_bp.route('/outputs/<output_id>/history', methods=['GET'])
+    @staging_bp.route('/outputs/<output_id>/history', methods=['GET'], endpoint='staging_output_history')
     @validate_output_id
+    @jwt_manager.permission_required('staging:outputs:history:read')
     async def get_output_history(output_id):
         """Get comprehensive output processing history."""
         try:
             history = await staging_service.get_output_history(output_id)
 
-            # Enrich with component-specific details
             for entry in history['entries']:
-                schema = StagedOutputSchemas.get_schema(
-                    entry['component_type'],
-                    'response'
-                )
+                schema = StagedOutputSchemas.get_schema(entry['component_type'], 'response')
                 entry['details'] = schema().dump(entry.get('details', {}))
 
             return ResponseBuilder.success({
@@ -145,14 +115,11 @@ def create_staging_blueprint(staging_service):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get output history",
-                logger
-            )
+            return handle_service_error(e, "Failed to get output history", logger)
 
-    @staging_bp.route('/outputs/<output_id>/archive', methods=['POST'])
+    @staging_bp.route('/outputs/<output_id>/archive', methods=['POST'], endpoint='staging_archive_output')
     @validate_output_id
+    @jwt_manager.permission_required('staging:outputs:archive')
     async def archive_output(output_id):
         """Archive staged output with retention policy."""
         try:
@@ -163,10 +130,7 @@ def create_staging_blueprint(staging_service):
                 'reason': request.get_json().get('reason')
             }
 
-            result = await staging_service.archive_output(
-                output_id,
-                archive_data
-            )
+            result = await staging_service.archive_output(output_id, archive_data)
 
             return ResponseBuilder.success({
                 'status': 'archived',
@@ -176,13 +140,10 @@ def create_staging_blueprint(staging_service):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to archive output",
-                logger
-            )
+            return handle_service_error(e, "Failed to archive output", logger)
 
-    @staging_bp.route('/metrics', methods=['GET'])
+    @staging_bp.route('/metrics', methods=['GET'], endpoint='staging_get_metrics')
+    @jwt_manager.permission_required('staging:metrics:read')
     async def get_metrics():
         """Get comprehensive staging system metrics."""
         try:
@@ -199,13 +160,10 @@ def create_staging_blueprint(staging_service):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get staging metrics",
-                logger
-            )
+            return handle_service_error(e, "Failed to get staging metrics", logger)
 
-    @staging_bp.route('/cleanup', methods=['POST'])
+    @staging_bp.route('/cleanup', methods=['POST'], endpoint='staging_trigger_cleanup')
+    @jwt_manager.permission_required('staging:cleanup')
     async def trigger_cleanup():
         """Trigger staged data cleanup with policy enforcement."""
         try:
@@ -225,27 +183,17 @@ def create_staging_blueprint(staging_service):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to trigger cleanup",
-                logger
-            )
+            return handle_service_error(e, "Failed to trigger cleanup", logger)
 
     @staging_bp.errorhandler(404)
     def not_found_error(error):
         """Handle resource not found errors."""
-        return ResponseBuilder.error(
-            "Resource not found",
-            status_code=404
-        )
+        return ResponseBuilder.error("Resource not found", status_code=404)
 
     @staging_bp.errorhandler(500)
     def internal_error(error):
         """Handle internal server errors."""
         logger.error(f"Internal server error: {error}", exc_info=True)
-        return ResponseBuilder.error(
-            "Internal server error",
-            status_code=500
-        )
+        return ResponseBuilder.error("Internal server error", status_code=500)
 
     return staging_bp

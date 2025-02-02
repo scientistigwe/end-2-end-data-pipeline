@@ -1,52 +1,71 @@
 # backend/source_handlers/database/db_service.py
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
-from uuid import uuid4
 
-from core.messaging.broker import MessageBroker
 from core.managers.staging_manager import StagingManager
 from core.control.cpm import ControlPointManager
-from core.messaging.event_types import (
-    MessageType, ProcessingStage, ModuleIdentifier, ComponentType
-)
+from core.messaging.broker import MessageBroker
+from core.messaging.event_types import ProcessingStage, MessageType, ProcessingMessage
 from .db_handler import DatabaseHandler
-from .db_validator import DatabaseSourceValidator, DatabaseValidationConfig
+from .db_validator import DatabaseSourceValidator
+from config.validation_config import DatabaseValidationConfig
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    """Service for handling database data operations at API layer"""
+    """Service for handling database data operations"""
 
     def __init__(
             self,
-            message_broker: MessageBroker,
             staging_manager: StagingManager,
             cpm: ControlPointManager,
             config: Optional[DatabaseValidationConfig] = None
     ):
-        self.message_broker = message_broker
+        """
+        Initialize database service with required dependencies
+
+        Args:
+            staging_manager: Manager for staging operations
+            cpm: Control point manager for workflow control
+            message_broker: Message broker for async communication
+            config: Optional validation configuration
+        """
         self.staging_manager = staging_manager
         self.cpm = cpm
         self.config = config or DatabaseValidationConfig()
 
         # Initialize components
         self.handler = DatabaseHandler(
-            staging_manager,
-            message_broker,
-            timeout=self.config.REQUEST_TIMEOUT
+            staging_manager=staging_manager
         )
         self.validator = DatabaseSourceValidator(config=self.config)
 
-        # Module identification
-        self.module_identifier = ModuleIdentifier(
-            component_name="database_service",
-            component_type=ComponentType.SERVICE,
-            department="source",
-            role="service"
-        )
+        # Track active operations
+        self.active_operations: Dict[str, Dict[str, Any]] = {}
+
+    async def _notify_operation_status(
+            self,
+            operation_id: str,
+            status: str,
+            details: Dict[str, Any]
+    ):
+        """Send operation status notification"""
+        try:
+            message = ProcessingMessage(
+                message_type=MessageType.DATABASE_OPERATION_STATUS,
+                content={
+                    'operation_id': operation_id,
+                    'status': status,
+                    'details': details,
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            )
+            await self.message_broker.publish(message)
+        except Exception as e:
+            logger.error(f"Failed to send status notification: {str(e)}")
 
     async def source_data(
             self,
@@ -60,15 +79,27 @@ class DatabaseService:
             user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Source data from database"""
+        operation_id = None
         try:
+            # Generate unique operation ID
+            operation_id = f"db_op_{datetime.utcnow().timestamp()}"
+
             # Create metadata for tracking
             metadata = {
+                'operation_id': operation_id,
                 'user_id': user_id,
                 'source_type': 'database',
                 'db_type': source_type,
                 'host': host,
                 'database': database,
                 'operation': operation
+            }
+
+            # Track operation
+            self.active_operations[operation_id] = {
+                'start_time': datetime.utcnow(),
+                'status': 'initializing',
+                'metadata': metadata
             }
 
             # Initial validation
@@ -81,8 +112,14 @@ class DatabaseService:
             })
 
             if not validation_result['passed']:
+                await self._notify_operation_status(
+                    operation_id,
+                    'validation_failed',
+                    {'errors': validation_result['issues']}
+                )
                 return {
                     'status': 'error',
+                    'operation_id': operation_id,
                     'errors': validation_result['issues']
                 }
 
@@ -99,7 +136,15 @@ class DatabaseService:
             )
 
             if result['status'] != 'success':
-                return result
+                await self._notify_operation_status(
+                    operation_id,
+                    'handler_failed',
+                    result
+                )
+                return {
+                    **result,
+                    'operation_id': operation_id
+                }
 
             # Create control point
             control_point = await self.cpm.create_control_point(
@@ -107,24 +152,56 @@ class DatabaseService:
                 metadata={
                     'source_type': 'database',
                     'staged_id': result['staged_id'],
+                    'operation_id': operation_id,
                     'user_id': user_id,
                     'db_info': result['db_info']
                 }
             )
 
+            # Update operation status
+            self.active_operations[operation_id]['status'] = 'success'
+            self.active_operations[operation_id]['complete_time'] = datetime.utcnow()
+
+            await self._notify_operation_status(
+                operation_id,
+                'success',
+                {
+                    'staged_id': result['staged_id'],
+                    'control_point_id': control_point.id
+                }
+            )
+
             return {
                 'status': 'success',
+                'operation_id': operation_id,
                 'staged_id': result['staged_id'],
                 'control_point_id': control_point.id,
                 'tracking_url': f'/api/sources/database/{result["staged_id"]}/status'
             }
 
         except Exception as e:
-            logger.error(f"Database data sourcing error: {str(e)}")
+            error_details = {
+                'error': str(e),
+                'operation_id': operation_id
+            }
+            logger.error(f"Database data sourcing error: {str(e)}", exc_info=True)
+
+            if operation_id:
+                await self._notify_operation_status(
+                    operation_id,
+                    'error',
+                    error_details
+                )
+
             return {
                 'status': 'error',
-                'error': str(e)
+                **error_details
             }
+        finally:
+            if operation_id in self.active_operations:
+                if self.active_operations[operation_id]['status'] == 'initializing':
+                    self.active_operations[operation_id]['status'] = 'error'
+                self.active_operations[operation_id]['end_time'] = datetime.utcnow()
 
     async def get_source_status(
             self,
@@ -133,16 +210,13 @@ class DatabaseService:
     ) -> Dict[str, Any]:
         """Get database data processing status"""
         try:
-            # Get staging status
             staged_data = await self.staging_manager.get_data(staged_id)
             if not staged_data:
                 return {'status': 'not_found'}
 
-            # Check authorization
             if staged_data['metadata'].get('user_id') != user_id:
                 return {'status': 'unauthorized'}
 
-            # Get control point status
             control_status = await self.cpm.get_status(
                 staged_data['metadata'].get('control_point_id')
             )
@@ -168,7 +242,6 @@ class DatabaseService:
     ) -> Dict[str, Any]:
         """List database sources for a user"""
         try:
-            # Get staged sources for user
             user_sources = await self.staging_manager.list_data(
                 filters={'metadata.user_id': user_id, 'metadata.source_type': 'database'}
             )
@@ -196,65 +269,3 @@ class DatabaseService:
                 'status': 'error',
                 'error': str(e)
             }
-
-    async def validate_credentials(
-            self,
-            credentials: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Validate database credentials"""
-        try:
-            # Validate credentials
-            validation_result = await self.validator.validate_source({
-                'source_type': credentials.get('source_type'),
-                'host': credentials.get('host'),
-                'database': credentials.get('database'),
-                'auth': credentials
-            })
-
-            return {
-                'status': 'success' if validation_result['passed'] else 'error',
-                'validation_details': validation_result
-            }
-
-        except Exception as e:
-            logger.error(f"Credential validation error: {str(e)}")
-            return {
-                'status': 'error',
-                'error': str(e)
-            }
-
-    async def cancel_operation(self, staged_id: str) -> Dict[str, Any]:
-        """Cancel an active database operation"""
-        try:
-            # Retrieve staged data
-            staged_data = await self.staging_manager.get_data(staged_id)
-            if not staged_data:
-                return {
-                    'status': 'error',
-                    'message': f'Operation {staged_id} not found'
-                }
-
-            # Update status to cancelled
-            await self.staging_manager.update_data_status(
-                staged_id,
-                status='cancelled'
-            )
-
-            return {
-                'status': 'success',
-                'message': f'Operation {staged_id} cancelled'
-            }
-
-        except Exception as e:
-            logger.error(f"Operation cancellation error: {str(e)}")
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
-
-    async def cleanup(self) -> None:
-        """Clean up service resources"""
-        try:
-            logger.info("DatabaseService resources cleaned up")
-        except Exception as e:
-            logger.error(f"Cleanup error: {str(e)}", exc_info=True)

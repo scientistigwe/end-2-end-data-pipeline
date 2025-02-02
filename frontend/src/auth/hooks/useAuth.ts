@@ -47,40 +47,47 @@ export function useAuth() {
   );
 
   // Login mutation
+// auth/hooks/useAuth.ts
   const { mutateAsync: loginMutation, isLoading: isLoggingIn } = useMutation(
     async (credentials: LoginCredentials) => {
-      try {
-        dispatch(setLoading(true));
-        const response = await authApi.login(credentials);
-        
-        // Get user profile after successful login
-        const userProfile = await authApi.getProfile();
-        dispatch(setUser(userProfile));
-        
-        navigate('/dashboard');
-        return true;
-      } catch (error) {
-        handleAuthError(error);
-        return false;
-      } finally {
-        dispatch(setLoading(false));
-      }
+        try {
+            dispatch(setLoading(true));
+          const responseData = await authApi.login(credentials);
+          console.log('Raw login response:', JSON.stringify(responseData, null, 2));
+            
+            if (responseData?.user) {
+                dispatch(setUser(responseData.user));
+                // Handle tokens if needed
+                if (responseData.tokens) {
+                    // Store tokens if needed
+                }
+                navigate('/dashboard');
+                return true;
+            }
+            throw new Error('Invalid login response');
+        } catch (error) {
+            handleAuthError(error);
+            return false;
+        } finally {
+            dispatch(setLoading(false));
+        }
     }
-  );
+    );
+  
 
-  // Register mutation
+  // Register mutation - similar fix
   const { mutateAsync: registerMutation, isLoading: isRegistering } = useMutation(
     async (data: RegisterData) => {
       try {
         dispatch(setLoading(true));
         const response = await authApi.register(data);
         
-        // Get user profile after successful registration
-        const userProfile = await authApi.getProfile();
-        dispatch(setUser(userProfile));
-        
-        navigate('/dashboard');
-        return true;
+        if (response?.data?.user) {
+          dispatch(setUser(response.data.user));
+          navigate('/dashboard'); // Navigate after successful registration
+          return true;
+        }
+        throw new Error('Invalid registration response');
       } catch (error) {
         handleAuthError(error);
         return false;

@@ -19,6 +19,7 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from core.messaging.event_types import (
     ComponentType,
@@ -31,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 def validate_uuid(identifier_type: str = 'id'):
     """Decorator to validate UUID format for different identifier types."""
-
     def decorator(func):
         def wrapper(*args, **kwargs):
             try:
@@ -44,13 +44,12 @@ def validate_uuid(identifier_type: str = 'id'):
                     f"Invalid {identifier_type} format",
                     status_code=400
                 )
-
+        wrapper.__name__ = func.__name__
         return wrapper
-
     return decorator
 
 
-def create_quality_blueprint(quality_service, staging_manager):
+def create_quality_blueprint(quality_service, staging_manager, jwt_manager):
     """
     Create quality blueprint with comprehensive functionality.
 
@@ -63,7 +62,8 @@ def create_quality_blueprint(quality_service, staging_manager):
     """
     quality_bp = Blueprint('quality', __name__)
 
-    @quality_bp.route('/analyze', methods=['POST'])
+    @quality_bp.route('/analyze', methods=['POST'], endpoint='quality_analyze_start')
+    @jwt_manager.permission_required('quality:analyze')
     async def start_quality_analysis():
         """Initiate quality analysis with comprehensive validation."""
         try:
@@ -118,8 +118,9 @@ def create_quality_blueprint(quality_service, staging_manager):
                 logger
             )
 
-    @quality_bp.route('/<analysis_id>/status', methods=['GET'])
+    @quality_bp.route('/<analysis_id>/status', methods=['GET'], endpoint='quality_analysis_status')
     @validate_uuid('analysis_id')
+    @jwt_manager.permission_required('quality:read')
     async def get_analysis_status(analysis_id):
         """Get detailed quality analysis status with progress tracking."""
         try:
@@ -157,8 +158,9 @@ def create_quality_blueprint(quality_service, staging_manager):
                 logger
             )
 
-    @quality_bp.route('/<analysis_id>/results', methods=['GET'])
+    @quality_bp.route('/<analysis_id>/results', methods=['GET'], endpoint='quality_analysis_results')
     @validate_uuid('analysis_id')
+    @jwt_manager.permission_required('quality:read')
     async def get_analysis_results(analysis_id):
         """Get comprehensive quality analysis results."""
         try:
@@ -198,8 +200,9 @@ def create_quality_blueprint(quality_service, staging_manager):
                 logger
             )
 
-    @quality_bp.route('/<analysis_id>/issues', methods=['GET'])
+    @quality_bp.route('/<analysis_id>/issues', methods=['GET'], endpoint='quality_analysis_issues')
     @validate_uuid('analysis_id')
+    @jwt_manager.permission_required('quality:issues:read')
     async def get_quality_issues(analysis_id):
         """Get detailed quality issues with full context."""
         try:
@@ -229,8 +232,9 @@ def create_quality_blueprint(quality_service, staging_manager):
                 logger
             )
 
-    @quality_bp.route('/<analysis_id>/remediation', methods=['GET'])
+    @quality_bp.route('/<analysis_id>/remediation', methods=['GET'], endpoint='quality_remediation_plan')
     @validate_uuid('analysis_id')
+    @jwt_manager.permission_required('quality:remediation:read')
     async def get_remediation_plan(analysis_id):
         """Get detailed remediation plan with impact analysis."""
         try:
@@ -259,7 +263,8 @@ def create_quality_blueprint(quality_service, staging_manager):
                 logger
             )
 
-    @quality_bp.route('/config/rules', methods=['POST'])
+    @quality_bp.route('/config/rules', methods=['POST'], endpoint='quality_update_rules')
+    @jwt_manager.permission_required('quality:rules:update')
     async def update_validation_rules():
         """Update quality validation rules with tracking."""
         try:

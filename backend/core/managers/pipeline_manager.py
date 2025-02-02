@@ -1,8 +1,7 @@
-# backend/core/managers/pipeline_manager.py
-
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+import asyncio
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 import uuid
 
 from ..messaging.broker import MessageBroker
@@ -11,87 +10,407 @@ from ..messaging.event_types import (
     ProcessingMessage,
     ProcessingStage,
     ProcessingStatus,
-    MessageMetadata,
     PipelineContext,
     PipelineState,
-    ComponentType,
-    ModuleIdentifier
+    MessageMetadata,
+    ManagerState
 )
 from .base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
+
 class PipelineManager(BaseManager):
-    """
-    Pipeline Manager that coordinates all system components.
-    Central orchestrator for the entire data processing workflow.
-    """
+    """Pipeline Manager coordinates pipeline workflow through message-based communication.
+    Responsible for orchestrating the pipeline process while maintaining workflow state."""
 
     def __init__(
-        self,
-        message_broker: MessageBroker,
-        component_name: str,
-        domain_type: str
+            self,
+            message_broker: MessageBroker,
+            component_name: str = "pipeline_manager",
+            domain_type: str = "pipeline"
     ):
-        # Initialize base manager
+        # Call base class initialization first
         super().__init__(
             message_broker=message_broker,
             component_name=component_name,
             domain_type=domain_type
         )
 
-        # Pipeline-specific state
-        self.active_pipelines: Dict[str, PipelineContext] = {}
+        # Active processes and contexts
+        self.active_processes: Dict[str, PipelineContext] = {}
+
+        # Pipeline thresholds and configuration
+        self.pipeline_thresholds = {
+            "quality_threshold": 0.8,
+            "performance_threshold": 0.7,
+            "max_processing_time": 3600  # 1 hour
+        }
+
+    async def _initialize_manager(self) -> None:
+        """Initialize pipeline manager components"""
+        try:
+            # Initialize base components - this will also start background tasks
+            await super()._initialize_manager()
+
+            # Setup pipeline-specific message handlers
+            await self._setup_domain_handlers()
+
+            # Update state
+            self.state = ManagerState.ACTIVE
+            logger.info(f"Pipeline manager initialized successfully: {self.context.component_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline manager: {str(e)}")
+            self.state = ManagerState.ERROR
+            raise
 
     async def _setup_domain_handlers(self) -> None:
         """Setup pipeline-specific message handlers"""
         handlers = {
-            # Control Point Messages
-            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
-            MessageType.CONTROL_POINT_UPDATED: self._handle_control_point_updated,
-            MessageType.CONTROL_POINT_DECISION: self._handle_control_point_decision,
+            # Core Process Flow
+            MessageType.PIPELINE_PROCESS_START: self._handle_process_start,
+            MessageType.PIPELINE_PROCESS_PROGRESS: self._handle_process_progress,
+            MessageType.PIPELINE_PROCESS_COMPLETE: self._handle_process_complete,
+            MessageType.PIPELINE_PROCESS_FAILED: self._handle_process_failed,
 
-            # Initial Data Reception
-            MessageType.DATA_RECEIVE_REQUEST: self._handle_data_receive,
-            MessageType.DATA_VALIDATE_COMPLETE: self._handle_data_validation,
-            MessageType.DATA_VALIDATE_REJECT: self._handle_data_rejection,
+            # Stage Management
+            MessageType.PIPELINE_STAGE_START: self._handle_stage_start,
+            MessageType.PIPELINE_STAGE_PROGRESS: self._handle_stage_progress,
+            MessageType.PIPELINE_STAGE_COMPLETE: self._handle_stage_complete,
+            MessageType.PIPELINE_STAGE_FAILED: self._handle_stage_failed,
+            MessageType.PIPELINE_STAGE_ROLLBACK: self._handle_stage_rollback,
 
-            # Quality Flow
-            MessageType.QUALITY_CHECK_COMPLETE: self._handle_quality_complete,
-            MessageType.QUALITY_ISSUE_DETECTED: self._handle_quality_issue,
-            MessageType.QUALITY_VALIDATE_COMPLETE: self._handle_quality_validation,
-            MessageType.QUALITY_ERROR: self._handle_component_error,
+            # Data Flow Management
+            MessageType.PIPELINE_DATA_VALIDATE: self._handle_data_validate,
+            MessageType.PIPELINE_DATA_TRANSFORM: self._handle_data_transform,
+            MessageType.PIPELINE_DATA_LOAD: self._handle_data_load,
+            MessageType.PIPELINE_DATA_ERROR: self._handle_data_error,
 
-            # Insight Flow
-            MessageType.INSIGHT_GENERATE_COMPLETE: self._handle_insight_complete,
-            MessageType.INSIGHT_REVIEW_REQUIRED: self._handle_insight_review,
-            MessageType.INSIGHT_VALIDATE_COMPLETE: self._handle_insight_validation,
-            MessageType.INSIGHT_ERROR: self._handle_component_error,
+            # Performance & Resource Management
+            MessageType.PIPELINE_PERFORMANCE_CHECK: self._handle_performance_check,
+            MessageType.PIPELINE_RESOURCE_REQUEST: self._handle_resource_request,
+            MessageType.PIPELINE_RESOURCE_RELEASE: self._handle_resource_release,
+            MessageType.PIPELINE_RESOURCE_ERROR: self._handle_resource_error,
 
-            # Analytics Flow
-            MessageType.ANALYTICS_PROCESS_COMPLETE: self._handle_analytics_complete,
-            MessageType.ANALYTICS_MODEL_EVALUATE_COMPLETE: self._handle_model_evaluation,
-            MessageType.ANALYTICS_PERFORMANCE_EVALUATE: self._handle_performance_evaluation,
-            MessageType.ANALYTICS_ERROR: self._handle_component_error,
+            # Error & Recovery
+            MessageType.PIPELINE_ERROR_DETECTED: self._handle_error_detected,
+            MessageType.PIPELINE_ERROR_RESOLVED: self._handle_error_resolved,
+            MessageType.PIPELINE_RECOVERY_START: self._handle_recovery_start,
+            MessageType.PIPELINE_RECOVERY_COMPLETE: self._handle_recovery_complete,
 
-            # Pipeline Control
-            MessageType.PIPELINE_PAUSE_REQUEST: self._handle_pause_request,
-            MessageType.PIPELINE_RESUME_REQUEST: self._handle_resume_request,
-            MessageType.PIPELINE_CANCEL_REQUEST: self._handle_cancel_request,
-            MessageType.PIPELINE_STATUS_REQUEST: self._handle_status_request,
+            # Monitoring & Status
+            MessageType.PIPELINE_STATUS_CHECK: self._handle_status_check,
+            MessageType.PIPELINE_STATUS_UPDATE: self._handle_status_update,
+            MessageType.PIPELINE_METRICS_UPDATE: self._handle_metrics_update,
 
-            # Resource Management
-            MessageType.RESOURCE_ACCESS_REQUEST: self._handle_resource_request,
-            MessageType.RESOURCE_RELEASE_COMPLETE: self._handle_resource_release,
-
-            # Monitoring
-            MessageType.MONITORING_METRICS_UPDATE: self._handle_metrics_update,
-            MessageType.MONITORING_ALERT_NOTIFY: self._handle_monitoring_alert,
-            MessageType.MONITORING_HEALTH_STATUS: self._handle_health_status
+            # Configuration & Maintenance
+            MessageType.PIPELINE_CONFIG_UPDATE: self._handle_config_update,
+            MessageType.PIPELINE_MAINTENANCE_START: self._handle_maintenance_start,
+            MessageType.PIPELINE_MAINTENANCE_COMPLETE: self._handle_maintenance_complete
         }
 
         for message_type, handler in handlers.items():
             await self.register_message_handler(message_type, handler)
+
+    async def _handle_process_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline process start request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            config = message.content.get('config', {})
+
+            # Validate configuration
+            if not self._validate_pipeline_config(config):
+                raise ValueError("Invalid pipeline configuration")
+
+            context = self.active_processes.get(pipeline_id)
+            if not context:
+                return
+
+            # Initialize pipeline stages
+            await self._initialize_pipeline_stages(pipeline_id, config)
+
+            # Start first stage
+            await self._start_next_stage(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process start failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_process_progress(self, message: ProcessingMessage) -> None:
+        """Handle pipeline progress updates"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            progress = message.content.get('progress', 0)
+            stage = message.content.get('stage')
+
+            # Update progress for specific stage
+            if stage:
+                context.stage_progress[stage] = progress
+
+            # Calculate overall progress
+            total_progress = sum(context.stage_progress.values()) / len(context.stage_progress)
+
+            # Update context
+            context.current_progress = total_progress
+            context.updated_at = datetime.now()
+
+            # Notify progress
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_PROCESS_PROGRESS,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'total_progress': total_progress,
+                        'stage_progress': context.stage_progress,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Progress update failed: {str(e)}")
+
+    async def _handle_process_complete(self, message: ProcessingMessage) -> None:
+        """Handle pipeline process completion"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context state
+            context.state = PipelineState.COMPLETED
+            context.completed_at = datetime.now()
+
+            # Generate completion report
+            completion_report = self._generate_completion_report(context)
+
+            # Notify completion
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_PROCESS_COMPLETE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'completion_report': completion_report,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+
+            # Cleanup resources
+            await self._cleanup_pipeline(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process completion failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_process_failed(self, message: ProcessingMessage) -> None:
+        """Handle pipeline process failure"""
+        pipeline_id = message.content.get('pipeline_id')
+        error = message.content.get('error', 'Unknown error')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context state
+            context.state = PipelineState.FAILED
+            context.error = error
+            context.failure_timestamp = datetime.now()
+
+            # Generate failure report
+            failure_report = self._generate_failure_report(context)
+
+            # Notify failure
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_PROCESS_FAILED,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error': error,
+                        'failure_report': failure_report,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+
+            # Attempt recovery if possible
+            if self._can_recover(context):
+                await self._handle_recovery_start(message)
+            else:
+                await self._cleanup_pipeline(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process failure handling failed: {str(e)}")
+
+    async def _handle_stage_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline stage start"""
+        pipeline_id = message.content.get('pipeline_id')
+        stage = message.content.get('stage')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Validate stage transition
+            if not self._validate_stage_transition(context, stage):
+                raise ValueError(f"Invalid stage transition to {stage}")
+
+            # Update context
+            context.current_stage = stage
+            context.stage_start_time = datetime.now()
+            context.stage_progress = {stage: 0}
+
+            # Initialize stage resources
+            await self._initialize_stage_resources(pipeline_id, stage)
+
+            # Notify stage start
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_STAGE_START,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'stage': stage,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Stage start failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_stage_progress(self, message: ProcessingMessage) -> None:
+        """Handle pipeline stage progress"""
+        pipeline_id = message.content.get('pipeline_id')
+        stage = message.content.get('stage')
+        progress = message.content.get('progress', 0)
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update stage progress
+            context.stage_progress[stage] = progress
+            context.updated_at = datetime.now()
+
+            # Check for stage timeout
+            if self._check_stage_timeout(context):
+                await self._handle_stage_timeout(pipeline_id, stage)
+                return
+
+            # Notify progress
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_STAGE_PROGRESS,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'stage': stage,
+                        'progress': progress,
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.component_name,
+                        target_component="control_point_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Stage progress update failed: {str(e)}")
+
+    async def _handle_stage_complete(self, message: ProcessingMessage) -> None:
+        """Handle pipeline stage completion"""
+        pipeline_id = message.content.get('pipeline_id')
+        stage = message.content.get('stage')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Validate stage completion
+            stage_results = message.content.get('results', {})
+            if not self._validate_stage_results(stage_results):
+                raise ValueError(f"Invalid results for stage {stage}")
+
+            # Update context
+            context.stage_results[stage] = stage_results
+            context.completed_stages.append(stage)
+            context.stage_completion_time = datetime.now()
+
+            # Check if all stages are complete
+            if self._all_stages_complete(context):
+                await self._handle_process_complete(message)
+            else:
+                # Start next stage
+                await self._start_next_stage(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Stage completion failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_stage_failed(self, message: ProcessingMessage) -> None:
+        """Handle pipeline stage failure"""
+        pipeline_id = message.content.get('pipeline_id')
+        stage = message.content.get('stage')
+        error = message.content.get('error', 'Unknown error')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            # Update context
+            context.stage_errors[stage] = error
+            context.failed_stages.append(stage)
+
+            # Check if stage can be retried
+            if self._can_retry_stage(context, stage):
+                await self._retry_stage(pipeline_id, stage)
+            else:
+                # Attempt stage rollback
+                await self._handle_stage_rollback(message)
+
+        except Exception as e:
+            logger.error(f"Stage failure handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
 
     async def _handle_data_receive(self, message: ProcessingMessage) -> None:
         """Handle initial data reception"""
@@ -151,20 +470,6 @@ class PipelineManager(BaseManager):
             await self._handle_error(message, e)
 
     # Override base manager cleanup to handle pipeline resources
-    async def cleanup(self) -> None:
-        """Cleanup pipeline manager resources"""
-        try:
-            # Do base cleanup first
-            await super().cleanup()
-
-            # Cleanup active pipelines
-            for pipeline_id in list(self.active_pipelines.keys()):
-                await self._cleanup_pipeline(pipeline_id)
-
-        except Exception as e:
-            self.logger.error(f"Pipeline cleanup failed: {e}")
-            raise
-
     def _check_critical_metrics(self, metrics: Dict[str, Any]) -> bool:
         """Check metrics for critical conditions"""
         thresholds = {
@@ -495,97 +800,6 @@ class PipelineManager(BaseManager):
         except Exception as e:
             logger.error(f"Quality issue handling failed: {str(e)}")
             await self._handle_error(pipeline_id, f"Quality issue error: {str(e)}")
-
-    async def _handle_component_error(self, message: ProcessingMessage) -> None:
-        """
-        Handle generic component errors
-
-        Args:
-            message (ProcessingMessage): Component error message
-        """
-        try:
-            pipeline_id = message.content['pipeline_id']
-            error_details = message.content.get('error', 'Unknown error')
-            component = message.content.get('component', 'Unknown component')
-            context = self.active_pipelines.get(pipeline_id)
-
-            if not context:
-                logger.warning(f"No context found for pipeline {pipeline_id}")
-                return
-
-            # Update pipeline context
-            context.update_stage(context.current_stage, ProcessingStatus.FAILED)
-            context.error = {
-                'component': component,
-                'details': error_details
-            }
-
-            # Publish error notification
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.PIPELINE_ERROR,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'component': component,
-                        'error': error_details,
-                        'stage': context.current_stage.value
-                    },
-                    metadata=MessageMetadata(
-                        correlation_id=context.correlation_id,
-                        source_component=self.module_identifier.component_name,
-                        target_component="pipeline_service"
-                    ),
-                    source_identifier=self.module_identifier
-                )
-            )
-
-            # Cleanup pipeline
-            await self._cleanup_pipeline(pipeline_id)
-
-        except Exception as e:
-            logger.error(f"Component error handling failed: {str(e)}")
-
-    async def _handle_error(self, pipeline_id: str, error: str) -> None:
-        """
-        Generic error handling method
-
-        Args:
-            pipeline_id (str): Pipeline identifier
-            error (str): Error message
-        """
-        try:
-            context = self.active_pipelines.get(pipeline_id)
-            if not context:
-                logger.warning(f"No context found for pipeline {pipeline_id}")
-                return
-
-            # Update pipeline context
-            context.update_stage(context.current_stage, ProcessingStatus.FAILED)
-            context.error = error
-
-            # Publish error notification
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.PIPELINE_ERROR,
-                    content={
-                        'pipeline_id': pipeline_id,
-                        'error': error,
-                        'stage': context.current_stage.value
-                    },
-                    metadata=MessageMetadata(
-                        correlation_id=context.correlation_id,
-                        source_component=self.module_identifier.component_name,
-                        target_component="pipeline_service"
-                    ),
-                    source_identifier=self.module_identifier
-                )
-            )
-
-            # Cleanup pipeline
-            await self._cleanup_pipeline(pipeline_id)
-
-        except Exception as e:
-            logger.error(f"Error handling failed: {str(e)}")
 
     async def _handle_pause_request(self, message: ProcessingMessage) -> None:
         """

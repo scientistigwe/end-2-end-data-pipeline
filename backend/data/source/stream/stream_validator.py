@@ -1,14 +1,15 @@
 # backend/source_handlers/stream/stream_validator.py
-
+import re
 import logging
 import socket
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-
 import pika
 from confluent_kafka import Consumer, Producer
+
+from config.validation_config import StreamValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -17,40 +18,6 @@ class StreamType(Enum):
     """Enumeration of supported stream types"""
     KAFKA = auto()
     RABBITMQ = auto()
-
-
-@dataclass
-class StreamValidationConfig:
-    """Configuration for stream source validation"""
-
-    # Stream type configurations
-    supported_stream_types: set[StreamType] = field(default_factory=lambda: {
-        StreamType.KAFKA, StreamType.RABBITMQ
-    })
-
-    # Connection settings
-    connection_timeout: int = 5  # seconds
-    default_ports: Dict[StreamType, int] = field(default_factory=lambda: {
-        StreamType.KAFKA: 9092,
-        StreamType.RABBITMQ: 5672
-    })
-
-    # Validation constraints
-    min_host_length: int = 1
-    max_host_length: int = 255
-
-    # Security and sensitive information
-    blocked_patterns: list[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'key', r'token', r'credential'
-    ])
-
-    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
-
-    # Required fields per stream type
-    required_fields: Dict[StreamType, list[str]] = field(default_factory=lambda: {
-        StreamType.KAFKA: ['bootstrap_servers', 'group_id'],
-        StreamType.RABBITMQ: ['host']
-    })
 
 
 class StreamSourceValidator:

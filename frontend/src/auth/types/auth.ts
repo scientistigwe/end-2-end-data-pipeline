@@ -1,15 +1,17 @@
-// auth/types/auth.ts
-import type { ApiResponse, ApiError } from '@/common/types/api';
-import type { User } from '@/common/types/user';
+// src/auth/types/auth.ts
+
 import type { 
   BaseAuthError, 
   BaseSessionInfo, 
   BaseAuthContext,
   BaseLoginCredentials,
   BaseRegisterData,
-  BaseAuthResponse
+  BaseLoginResponse,
+  BaseRegisterResponse,
+  BaseProfileUpdate
 } from '@/common/types/auth';
-import type { AxiosError } from 'axios';
+import type { ApiResponse } from '@/common/types/api';
+import type { User } from '@/common/types/user';
 
 // Auth Status
 export type AuthStatus = 'authenticated' | 'unauthenticated' | 'loading';
@@ -25,39 +27,29 @@ export interface AuthState {
 
 // Request Types
 export interface LoginCredentials extends BaseLoginCredentials {
-  rememberMe?: boolean;
+  remember_me?: boolean;
+  device_info?: Record<string, any>;
+  mfa_code?: string;
 }
 
+// RegisterData now just adds optional fields to BaseRegisterData
 export interface RegisterData extends BaseRegisterData {
-  username: string;
-  firstName: string;
-  lastName: string;
-  phoneNumber?: string;
-  department?: string;
-  timezone?: string;
-  locale?: string;
-  preferences?: Record<string, any>;
+  metadata?: Record<string, any>;
 }
 
-export interface ProfileUpdateData {
-  firstName?: string;
-  lastName?: string;
-  phoneNumber?: string;
-  department?: string;
-  timezone?: string;
-  locale?: string;
-  profileImage?: string;
-  preferences?: Record<string, any>;
-}
+// ProfileUpdateData uses the same structure as BaseProfileUpdate
+export type ProfileUpdateData = BaseProfileUpdate;
 
 export interface ChangePasswordData {
-  currentPassword: string;
-  newPassword: string;
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
 }
 
 export interface ResetPasswordData {
   token: string;
-  newPassword: string;
+  new_password: string;
+  confirm_password: string;
 }
 
 export interface VerifyEmailData {
@@ -65,69 +57,58 @@ export interface VerifyEmailData {
 }
 
 // Response Types
-export interface LoginResponseData extends BaseAuthResponse {
-  user: User;
-  logged_in_at: string;
+export interface LoginResponseData extends BaseLoginResponse {
+  tokens: {
+    access_token: string;
+    refresh_token: string;
+  };
+  mfa_required?: boolean;
+  session_expires?: string;
+  permitted_actions?: string[];
 }
 
-export interface RegisterResponseData extends BaseAuthResponse {
-  user: User;
-  registered_at: string;
+export interface RegisterResponseData extends BaseRegisterResponse {
+  tokens: {
+    access_token: string;
+    refresh_token: string;
+  };
+  verification_email_sent: boolean;
+  next_steps?: string[];
 }
 
 // API Response Types
-export interface ApiBaseResponse<T = unknown> {
-  success: boolean;
-  message: string;
-  data: T;
-  error?: ApiErrorData;
-  meta?: {
-    timestamp: string;
-    requestId?: string;
-  };
-}
+export interface AuthBaseResponse<T = any> extends ApiResponse<T> {}
 
-export type LoginResponse = ApiResponse<LoginResponseData>;
-export type RegisterResponse = ApiResponse<RegisterResponseData>;
+export type LoginApiResponse = AuthBaseResponse<LoginResponseData>;
+export type RegisterApiResponse = AuthBaseResponse<RegisterResponseData>;
 
 // Error Types
 export interface ValidationErrors {
   [field: string]: string[];
 }
 
-export interface ApiErrorData {
-  success: false;
-  message: string;
-  error?: {
-    details?: ValidationErrors;
-    code?: string;
-  };
-}
-
-export interface AuthApiError extends ApiError {
+export interface AuthApiError extends BaseAuthError {
   details?: ValidationErrors;
 }
 
 // Session Types
 export interface AuthSessionInfo extends BaseSessionInfo {
-  deviceInfo?: string;
-  ipAddress?: string;
+  device_info?: string;
+  ip_address?: string;
 }
 
-// Context Types
-export interface AuthContextValue extends BaseAuthContext {
-  // State
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
+// Context Types - Now uses generics properly
+export interface AuthContextValue extends BaseAuthContext<
+  LoginCredentials,
+  RegisterData,
+  ProfileUpdateData,
+  User
+> {
+  // Additional state
+  status: AuthStatus;
   isInitialized: boolean;
 
-  // Auth operations
-  login: (credentials: LoginCredentials) => Promise<boolean>;
-  register: (data: RegisterData) => Promise<boolean>;
-  logout: () => Promise<void>;
-  updateProfile: (data: ProfileUpdateData) => Promise<User>;
+  // Extended auth operations
   changePassword: (data: ChangePasswordData) => Promise<boolean>;
   resetPassword: (data: ResetPasswordData) => Promise<boolean>;
   verifyEmail: (data: VerifyEmailData) => Promise<boolean>;
@@ -139,4 +120,15 @@ export interface AuthContextValue extends BaseAuthContext {
   isChangingPassword: boolean;
   isResettingPassword: boolean;
   isVerifyingEmail: boolean;
+}
+
+// Type Guards
+export function isAuthError(error: unknown): error is AuthApiError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error &&
+    'status' in error
+  );
 }

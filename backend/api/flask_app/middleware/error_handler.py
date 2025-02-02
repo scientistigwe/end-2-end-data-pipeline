@@ -138,4 +138,18 @@ def register_error_handlers(app):
         }
         return jsonify(response), 503
 
+    @app.errorhandler(405)
+    def handle_method_not_allowed(error):
+        """Handle method not allowed errors."""
+        logger.error(f"Method not allowed error: {error}")
+        response = {
+            'error': {
+                'code': 405,
+                'name': 'Method Not Allowed',
+                'description': 'The method is not allowed for the requested URL.',
+                'allowed_methods': error.valid_methods
+            }
+        }
+        return jsonify(response), 405
+
     logger.info("Error handlers registered successfully")

@@ -37,41 +37,15 @@ class QualityManager(BaseManager):
             component_name: str = "quality_manager",
             domain_type: str = "quality"
     ):
-        super().__init__(
-            message_broker=message_broker,
-            component_name=component_name,
-            domain_type=domain_type
-        )
-
-        # Module identification
-        self.module_identifier = ModuleIdentifier(
-            component_name=component_name,
-            component_type=ComponentType.QUALITY_MANAGER,
-            department=domain_type,
-            role="manager"
-        )
-
-        # Active processes tracking
-        self.active_processes: Dict[str, QualityContext] = {}
-        self.process_timeouts: Dict[str, datetime] = {}
+        super().__init__(message_broker, component_name, domain_type)
 
         # Quality configuration
-        self.quality_thresholds: Dict[str, float] = {
+        self.quality_thresholds = {
             "missing_data": 0.1,
             "invalid_format": 0.05,
             "duplicate_entries": 0.01,
             "anomaly_score": 0.8
         }
-
-        # Initialize state
-        self.state = ManagerState.INITIALIZING
-        self._initialize_manager()
-
-    def _initialize_manager(self) -> None:
-        """Initialize manager components"""
-        self._setup_message_handlers()
-        self._start_background_tasks()
-        self.state = ManagerState.ACTIVE
 
     async def _setup_domain_handlers(self) -> None:
         """Setup quality-specific message handlers"""
@@ -107,13 +81,60 @@ class QualityManager(BaseManager):
         for message_type, handler in handlers.items():
             await self.register_message_handler(message_type, handler)
 
+    async def start(self) -> None:
+        """Initialize and start quality manager"""
+        try:
+            await super().start()  # Call base start first
+
+            # Start quality-specific monitoring
+            self._start_background_task(
+                self._monitor_quality_metrics(),
+                "quality_metrics_monitor"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Quality manager start failed: {str(e)}")
+            raise
+
+    async def _monitor_quality_metrics(self) -> None:
+        """Monitor quality metrics trends"""
+        while not self._shutting_down:
+            try:
+                for pipeline_id, context in list(self.active_processes.items()):
+                    quality_trends = self._calculate_quality_trends(context)
+                    if self._has_concerning_trends(quality_trends):
+                        await self._handle_quality_trends(pipeline_id, quality_trends)
+
+                await asyncio.sleep(300)  # Check every 5 minutes
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Quality monitoring failed: {str(e)}")
+                if not self._shutting_down:
+                    await asyncio.sleep(60)
+
+    async def _manager_specific_cleanup(self) -> None:
+        """Quality-specific cleanup"""
+        try:
+            # Clean up any active quality processes
+            for pipeline_id in list(self.active_processes.keys()):
+                context = self.active_processes[pipeline_id]
+                if context.state not in [QualityState.COMPLETED, QualityState.FAILED]:
+                    await self._handle_process_failed(ProcessingMessage(
+                        message_type=MessageType.QUALITY_PROCESS_FAILED,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'error': 'Cleanup initiated'
+                        }
+                    ))
+        except Exception as e:
+            self.logger.error(f"Quality specific cleanup failed: {str(e)}")
+
     async def _handle_process_start(self, message: ProcessingMessage) -> None:
         """Handle quality process start request"""
         try:
             pipeline_id = message.content.get('pipeline_id')
-            config = message.content.get('config', {})
-
-            # Create quality context
             context = QualityContext(
                 pipeline_id=pipeline_id,
                 correlation_id=str(uuid.uuid4()),
@@ -124,26 +145,23 @@ class QualityManager(BaseManager):
 
             self.active_processes[pipeline_id] = context
 
-            # Start context analysis
             await self.message_broker.publish(
                 ProcessingMessage(
                     message_type=MessageType.QUALITY_CONTEXT_ANALYZE_REQUEST,
                     content={
                         'pipeline_id': pipeline_id,
-                        'config': config
+                        'config': message.content.get('config', {})
                     },
                     metadata=MessageMetadata(
-                        correlation_id=context.correlation_id,
-                        source_component=self.module_identifier.component_name,
-                        target_component='quality_service'
-                    ),
-                    source_identifier=self.module_identifier
+                        source_component=self.context.component_name,
+                        target_component='quality_service',
+                        domain_type=self.context.domain_type
+                    )
                 )
             )
 
         except Exception as e:
-            logger.error(f"Process start failed: {str(e)}")
-            await self._handle_error(pipeline_id, str(e))
+            await self._handle_error(message, str(e))
 
     async def _handle_process_progress(self, message: ProcessingMessage) -> None:
         """Handle quality process progress updates"""
@@ -495,66 +513,6 @@ class QualityManager(BaseManager):
         except Exception as e:
             logger.error(f"Status request failed: {str(e)}")
 
-    def _start_background_tasks(self) -> None:
-        """Start background monitoring tasks"""
-        # Create tasks for monitoring processes
-        asyncio.create_task(self._monitor_process_timeouts())
-        asyncio.create_task(self._monitor_resource_usage())
-        asyncio.create_task(self._monitor_quality_metrics())
-
-    async def _monitor_process_timeouts(self) -> None:
-        """Monitor and handle process timeouts"""
-        while self.state == ManagerState.ACTIVE:
-            try:
-                current_time = datetime.now()
-
-                # Check for timed out processes
-                for pipeline_id, context in list(self.active_processes.items()):
-                    if (current_time - context.updated_at).seconds > 3600:  # 1 hour timeout
-                        await self._handle_error(
-                            pipeline_id,
-                            "Quality process exceeded maximum time limit"
-                        )
-
-                await asyncio.sleep(300)  # Check every 5 minutes
-
-            except Exception as e:
-                logger.error(f"Process timeout monitoring failed: {str(e)}")
-                await asyncio.sleep(60)  # Retry after 1 minute
-
-    async def _monitor_resource_usage(self) -> None:
-        """Monitor resource usage of quality processes"""
-        while self.state == ManagerState.ACTIVE:
-            try:
-                # Check resource usage for each process
-                for pipeline_id, context in self.active_processes.items():
-                    resource_metrics = await self._collect_resource_metrics(context)
-
-                    if self._exceeds_resource_limits(resource_metrics):
-                        await self._handle_resource_violation(pipeline_id, resource_metrics)
-
-                await asyncio.sleep(60)  # Check every minute
-
-            except Exception as e:
-                logger.error(f"Resource monitoring failed: {str(e)}")
-                await asyncio.sleep(30)
-
-    async def _collect_resource_metrics(self, context: QualityContext) -> Dict[str, float]:
-        """Collect resource metrics for a quality process"""
-        try:
-            import psutil
-
-            process = psutil.Process()
-            return {
-                'cpu_percent': process.cpu_percent(),
-                'memory_percent': process.memory_percent(),
-                'num_threads': process.num_threads(),
-                'open_files': len(process.open_files())
-            }
-        except Exception as e:
-            logger.error(f"Resource metrics collection failed: {str(e)}")
-            return {}
-
     def _exceeds_resource_limits(self, metrics: Dict[str, float]) -> bool:
         """Check if resource metrics exceed limits"""
         return any([
@@ -573,29 +531,11 @@ class QualityManager(BaseManager):
                         'metrics': metrics,
                         'timestamp': datetime.now().isoformat()
                     },
-                    source_identifier=self.module_identifier
+                    source_component=self.component_name
                 )
             )
         except Exception as e:
             logger.error(f"Resource violation handling failed: {str(e)}")
-
-    async def _monitor_quality_metrics(self) -> None:
-        """Monitor quality metrics trends"""
-        while self.state == ManagerState.ACTIVE:
-            try:
-                for pipeline_id, context in self.active_processes.items():
-                    # Calculate quality trends
-                    quality_trends = self._calculate_quality_trends(context)
-
-                    # Check for concerning trends
-                    if self._has_concerning_trends(quality_trends):
-                        await self._handle_quality_trends(pipeline_id, quality_trends)
-
-                await asyncio.sleep(300)  # Check every 5 minutes
-
-            except Exception as e:
-                logger.error(f"Quality metrics monitoring failed: {str(e)}")
-                await asyncio.sleep(60)
 
     def _calculate_quality_trends(self, context: QualityContext) -> Dict[str, Any]:
         """Calculate trends in quality metrics"""
@@ -625,29 +565,210 @@ class QualityManager(BaseManager):
                         'trends': trends,
                         'timestamp': datetime.now().isoformat()
                     },
-                    source_identifier=self.module_identifier
+                    source_component=self.component_name
                 )
             )
         except Exception as e:
             logger.error(f"Quality trends handling failed: {str(e)}")
 
-    async def cleanup(self) -> None:
-        """Cleanup quality manager resources"""
+    async def _handle_validation_request(self, message: ProcessingMessage) -> None:
+        """Handle validation request for quality checks"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
         try:
-            # Update state
-            self.state = ManagerState.SHUTDOWN
+            # Update context state
+            context.state = QualityState.VALIDATION
+            context.updated_at = datetime.now()
 
-            # Clean up all active processes
-            for pipeline_id in list(self.active_processes.keys()):
-                await self._cleanup_process(pipeline_id)
-
-            # Clear all data
-            self.active_processes.clear()
-            self.process_timeouts.clear()
-
-            # Cleanup base manager resources
-            await super().cleanup()
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.QUALITY_VALIDATE_START,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'context': context.to_dict()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='quality_service'
+                    )
+                )
+            )
 
         except Exception as e:
-            logger.error(f"Quality manager cleanup failed: {str(e)}")
-            raise
+            logger.error(f"Validation request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_validation_complete(self, message: ProcessingMessage) -> None:
+        """Handle completion of validation process"""
+        pipeline_id = message.content.get('pipeline_id')
+        validation_results = message.content.get('results', {})
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            if validation_results.get('passed', False):
+                await self._complete_quality_check(pipeline_id)
+            else:
+                await self._request_resolution(pipeline_id, validation_results)
+
+        except Exception as e:
+            logger.error(f"Validation completion handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_validation_reject(self, message: ProcessingMessage) -> None:
+        """Handle validation rejection"""
+        pipeline_id = message.content.get('pipeline_id')
+        rejection_reason = message.content.get('reason', '')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            context.updated_at = datetime.now()
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.QUALITY_PROCESS_FAILED,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error': f"Validation rejected: {rejection_reason}"
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='quality_service'
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Validation rejection handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_analysis_request(self, message: ProcessingMessage) -> None:
+        """Handle quality analysis request"""
+        pipeline_id = message.content.get('pipeline_id')
+        analysis_config = message.content.get('config', {})
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            context.state = QualityState.ANALYSIS
+            context.updated_at = datetime.now()
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.QUALITY_ANALYSE_START,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'config': analysis_config
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='quality_service'
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Analysis request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_resolution_request(self, message: ProcessingMessage) -> None:
+        """Handle resolution request for quality issues"""
+        pipeline_id = message.content.get('pipeline_id')
+        resolution_data = message.content.get('resolution', {})
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.QUALITY_RESOLUTION_START,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'resolution': resolution_data
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='quality_service'
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Resolution request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_process_complete(self, message: ProcessingMessage) -> None:
+        """Handle completion of quality process"""
+        pipeline_id = message.content.get('pipeline_id')
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if context:
+                context.state = QualityState.COMPLETED
+                context.completed_at = datetime.now()
+
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.QUALITY_PROCESS_COMPLETE,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'status': 'success',
+                            'completion_time': context.completed_at.isoformat()
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component='pipeline_manager'
+                        )
+                    )
+                )
+
+                await self._cleanup_process(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process completion handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_process_failed(self, message: ProcessingMessage) -> None:
+        """Handle quality process failure"""
+        pipeline_id = message.content.get('pipeline_id')
+        error_details = message.content.get('error', 'Unknown error')
+
+        try:
+            context = self.active_processes.get(pipeline_id)
+            if context:
+                context.state = QualityState.FAILED
+                context.error = error_details
+
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.QUALITY_PROCESS_FAILED,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'error': error_details,
+                            'timestamp': datetime.now().isoformat()
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component='pipeline_manager'
+                        )
+                    )
+                )
+
+                await self._cleanup_process(pipeline_id)
+
+        except Exception as e:
+            logger.error(f"Process failure handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+

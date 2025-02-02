@@ -1,6 +1,8 @@
+# backend/api/flask_app/auth/jwt_manager.py
+
 from flask_jwt_extended import (
-    JWTManager, 
-    create_access_token, 
+    JWTManager,
+    create_access_token,
     create_refresh_token,
     get_jwt,
     verify_jwt_in_request
@@ -10,15 +12,16 @@ from datetime import timedelta, datetime
 from typing import Dict, Any, Optional, Callable
 from functools import wraps
 import logging
-from ..utils.route_registry import APIRoutes 
+from ..utils.route_registry import APIRoutes
 
 logger = logging.getLogger(__name__)
 
 refresh_path = APIRoutes.AUTH_REFRESH.value.path
 
+
 class JWTTokenManager:
     """JWT Token management and authentication."""
-    
+
     def __init__(self, app=None):
         self.jwt = JWTManager()
         self.blacklisted_tokens = set()  # Simple in-memory blacklist
@@ -49,9 +52,22 @@ class JWTTokenManager:
 
     def _register_callbacks(self):
         """Register all JWT callbacks."""
-        
-        @self.jwt.user_claims_loader
-        def add_claims_to_access_token(user: Dict[str, Any]) -> Dict[str, Any]:
+
+        @self.jwt.additional_claims_loader
+        def add_claims_to_access_token(user):
+            """
+            Handle both dictionary and string inputs for backwards compatibility
+            """
+            if isinstance(user, str):
+                # If user is a string (just the ID), return minimal claims
+                return {
+                    'roles': [],
+                    'permissions': [],
+                    'iat': datetime.utcnow(),
+                    'type': 'access'
+                }
+
+            # If user is a dictionary, return full claims
             return {
                 'roles': user.get('roles', []),
                 'permissions': user.get('permissions', []),
@@ -61,70 +77,65 @@ class JWTTokenManager:
             }
 
         @self.jwt.user_identity_loader
-        def user_identity_lookup(user: Dict[str, Any]) -> str:
+        def user_identity_lookup(user):
+            """Handle both dictionary and string inputs"""
+            if isinstance(user, str):
+                return user
             return str(user['id'])
-
-        @self.jwt.token_verification_loader
-        def verify_token(_jwt_header, jwt_data):
-            try:
-                token_type = jwt_data["type"]
-                return token_type in ["access", "refresh"]
-            except KeyError:
-                return False
-
-        @self.jwt.token_in_blocklist_loader
-        def check_if_token_revoked(_jwt_header, jwt_data):
-            jti = jwt_data["jti"]
-            return jti in self.blacklisted_tokens
-
-        @self.jwt.expired_token_loader
-        def expired_token_callback(_jwt_header, _jwt_data):
-            return jsonify({
-                'message': 'Token has expired',
-                'error': 'token_expired'
-            }), 401
-
-        @self.jwt.invalid_token_loader
-        def invalid_token_callback(error):
-            return jsonify({
-                'message': 'Invalid token',
-                'error': 'invalid_token',
-                'details': str(error)
-            }), 401
-
-        @self.jwt.unauthorized_loader
-        def missing_token_callback(error):
-            return jsonify({
-                'message': 'Authorization token is missing',
-                'error': 'authorization_required',
-                'details': str(error)
-            }), 401
-
-        @self.jwt.needs_fresh_token_loader
-        def token_not_fresh_callback(_jwt_header, _jwt_data):
-            return jsonify({
-                'message': 'Fresh token required',
-                'error': 'fresh_token_required'
-            }), 401
 
     def create_tokens(self, user: Dict[str, Any], fresh: bool = False) -> Dict[str, str]:
         """Create access and refresh tokens for user."""
         try:
+            # Ensure default permissions are included
+            default_permissions = [
+                'profile:read',
+                'profile:update',
+                'auth:logout',
+                'auth:refresh',
+                'pipeline:list',
+                'pipeline:read',
+                'pipeline:create',
+                'data_sources:upload_file',  # Add this permission
+                'data_sources:list',  # You might want these too
+                'data_sources:read'  # for full functionality
+            ]
+
+            # Combine user permissions with defaults
+            user_permissions = set(user.get('permissions', []) + default_permissions)
+
+            # Create access token claims
+            access_claims = {
+                'roles': user.get('roles', []),
+                'permissions': list(user_permissions),  # Convert set back to list
+                'email': user.get('email'),
+                'type': 'access',
+                'iat': datetime.utcnow()
+            }
+
             access_token = create_access_token(
-                identity=str(user['id']),  # Ensure we're using string ID
+                identity=str(user['id']),
+                additional_claims=access_claims,
                 fresh=fresh,
-                expires_delta=current_app.config['JWT_ACCESS_TOKEN_EXPIRES']
+                expires_delta=timedelta(seconds=current_app.config['JWT_ACCESS_TOKEN_EXPIRES'])
             )
-            
+
+            # Create refresh token with minimal claims
+            refresh_claims = {
+                'type': 'refresh',
+                'iat': datetime.utcnow()
+            }
+
             refresh_token = create_refresh_token(
-                identity=str(user['id']),  # Ensure we're using string ID
-                expires_delta=current_app.config['JWT_REFRESH_TOKEN_EXPIRES']
+                identity=str(user['id']),
+                additional_claims=refresh_claims,
+                expires_delta=timedelta(seconds=current_app.config['JWT_REFRESH_TOKEN_EXPIRES'])
             )
 
             return {
                 'access_token': access_token,
                 'refresh_token': refresh_token
             }
+
         except Exception as e:
             logger.error(f"Error creating tokens: {str(e)}")
             raise
@@ -146,22 +157,32 @@ class JWTTokenManager:
     @staticmethod
     def permission_required(permission: str) -> Callable:
         """Decorator for permission-based authorization."""
+
         def decorator(fn: Callable) -> Callable:
             @wraps(fn)
             def wrapper(*args, **kwargs):
-                verify_jwt_in_request()
-                claims = get_jwt()
-                user_permissions = claims.get('permissions', [])
-                
-                if permission not in user_permissions:
+                try:
+                    verify_jwt_in_request()
+                    claims = get_jwt()
+                    user_permissions = claims.get('permissions', [])
+
+                    if permission not in user_permissions:
+                        return jsonify({
+                            'message': 'Insufficient permissions',
+                            'error': 'permission_denied',
+                            'required_permission': permission
+                        }), 403
+
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"Permission verification error: {str(e)}")
                     return jsonify({
-                        'message': 'Insufficient permissions',
-                        'error': 'permission_denied',
-                        'required_permission': permission
-                    }), 403
-                    
-                return fn(*args, **kwargs)
+                        'message': 'Authorization failed',
+                        'error': 'authorization_error'
+                    }), 401
+
             return wrapper
+
         return decorator
 
     def get_token(self) -> Optional[str]:
@@ -179,3 +200,34 @@ class JWTTokenManager:
         except Exception as e:
             logger.error(f"Token validation error: {str(e)}")
             raise
+
+    @staticmethod
+    def role_required(roles: list) -> Callable:
+        """Decorator for role-based authorization."""
+
+        def decorator(fn: Callable) -> Callable:
+            @wraps(fn)
+            def wrapper(*args, **kwargs):
+                try:
+                    verify_jwt_in_request()
+                    claims = get_jwt()
+                    user_roles = claims.get('roles', [])
+
+                    if not set(roles).intersection(set(user_roles)):
+                        return jsonify({
+                            'message': 'Insufficient roles',
+                            'error': 'role_denied',
+                            'required_roles': roles
+                        }), 403
+
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"Role verification error: {str(e)}")
+                    return jsonify({
+                        'message': 'Authorization failed',
+                        'error': 'authorization_error'
+                    }), 401
+
+            return wrapper
+
+        return decorator

@@ -47,17 +47,17 @@ class InsightService:
         """Setup handlers for service messages"""
         handlers = {
             # Manager Messages
-            MessageType.INSIGHT_SERVICE_START: self._handle_service_start,
-            MessageType.INSIGHT_SERVICE_UPDATE: self._handle_service_update,
+            MessageType.INSIGHT_GENERATE_START: self._handle_service_start,
+            MessageType.INSIGHT_GENERATE_UPDATE: self._handle_service_update,
             MessageType.INSIGHT_SERVICE_DECISION: self._handle_service_decision,
 
             # Handler Responses
-            MessageType.INSIGHT_HANDLER_COMPLETE: self._handle_handler_complete,
-            MessageType.INSIGHT_HANDLER_ERROR: self._handle_handler_error,
-            MessageType.INSIGHT_HANDLER_STATUS: self._handle_handler_status,
+            MessageType.INSIGHT_GENERATE_COMPLETE: self._handle_handler_complete,
+            MessageType.INSIGHT_GENERATE_FAILED: self._handle_handler_error,
+            MessageType.INSIGHT_GENERATE_PROGRESS: self._handle_handler_status,
 
             # Status Messages
-            MessageType.INSIGHT_VALIDATION_RESULT: self._handle_validation_result,
+            MessageType.INSIGHT_VALIDATE_COMPLETE: self._handle_validate_complete,
             MessageType.INSIGHT_REVIEW_COMPLETE: self._handle_review_complete
         }
 
@@ -67,6 +67,228 @@ class InsightService:
                 f"insight.{message_type.value}.#",
                 handler
             )
+
+    async def _handle_service_decision(self, message: ProcessingMessage) -> None:
+        """Handle decision points from manager"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            decision = message.content.get('decision', {})
+            context = self.active_requests.get(pipeline_id)
+
+            if not context:
+                raise ValueError(f"No active request for pipeline: {pipeline_id}")
+
+            # Forward decision to handler
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_HANDLER_DECISION,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'decision': decision,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="insight_handler",
+                        domain_type="insight",
+                        processing_stage=ProcessingStage.INSIGHT_GENERATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Service decision handling failed: {str(e)}")
+            await self._handle_error(message, str(e))
+
+    async def _handle_validate_complete(self, message: ProcessingMessage) -> None:
+        """Handle validation results from handler"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            validation_results = message.content.get('validation_results', {})
+            context = self.active_requests.get(pipeline_id)
+
+            if not context:
+                return
+
+            # Forward validation results to manager
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_VALIDATE_COMPLETE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'validation_results': validation_results,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="insight_manager",
+                        domain_type="insight",
+                        processing_stage=ProcessingStage.INSIGHT_GENERATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Validation result handling failed: {str(e)}")
+            await self._handle_error(message, str(e))
+
+    async def _handle_review_complete(self, message: ProcessingMessage) -> None:
+        """Handle completion of insight review"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            review_results = message.content.get('review_results', {})
+            context = self.active_requests.get(pipeline_id)
+
+            if not context:
+                return
+
+            if review_results.get('approved', False):
+                # Forward completion to handler
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.INSIGHT_GENERATE_COMPLETE,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'review_results': review_results,
+                            'timestamp': datetime.utcnow().isoformat()
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.module_identifier.component_name,
+                            target_component="insight_handler",
+                            domain_type="insight",
+                            processing_stage=ProcessingStage.INSIGHT_GENERATION
+                        ),
+                        source_identifier=self.module_identifier
+                    )
+                )
+            else:
+                # Handle rejection
+                await self._handle_review_rejection(pipeline_id, review_results)
+
+        except Exception as e:
+            logger.error(f"Review completion handling failed: {str(e)}")
+            await self._handle_error(message, str(e))
+
+    async def _handle_review_rejection(self, pipeline_id: str, review_results: Dict[str, Any]) -> None:
+        """Handle rejection of insights during review"""
+        try:
+            context = self.active_requests.get(pipeline_id)
+            if not context:
+                return
+
+            # Update context state
+            context.state = InsightState.DETECTION_PREPARATION
+
+            # Notify handler of rejection
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_VALIDATE_REJECT,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'rejection_reason': review_results.get('reason', ''),
+                        'feedback': review_results.get('feedback', {}),
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="insight_handler",
+                        domain_type="insight",
+                        processing_stage=ProcessingStage.INSIGHT_GENERATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Review rejection handling failed: {str(e)}")
+            await self._handle_error(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_SERVICE_ERROR,
+                    content={'pipeline_id': pipeline_id}
+                ),
+                str(e)
+            )
+
+    async def _handle_handler_error(self, message: ProcessingMessage) -> None:
+        """Handle errors reported by the handler"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            error = message.content.get('error', 'Unknown handler error')
+
+            # Forward error to manager with additional context
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_GENERATE_FAILED,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'error': error,
+                        'source': 'handler',
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="insight_manager",
+                        domain_type="insight",
+                        processing_stage=ProcessingStage.INSIGHT_GENERATION
+                    ),
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Clean up request
+            if pipeline_id in self.active_requests:
+                del self.active_requests[pipeline_id]
+
+        except Exception as e:
+            logger.error(f"Handler error processing failed: {str(e)}")
+
+    async def _publish_handler_update(
+            self,
+            pipeline_id: str,
+            update_type: str,
+            update_data: Dict[str, Any]
+    ) -> None:
+        """Publish update request to handler"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.INSIGHT_HANDLER_UPDATE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'update_type': update_type,
+                    'update_data': update_data,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="insight_handler",
+                    domain_type="insight",
+                    processing_stage=ProcessingStage.INSIGHT_GENERATION
+                ),
+                source_identifier=self.module_identifier
+            )
+        )
+
+    async def _publish_service_complete(self, pipeline_id: str, results: Dict[str, Any]) -> None:
+        """Publish completion notification to manager"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=MessageType.INSIGHT_GENERATE_COMPLETE,
+                content={
+                    'pipeline_id': pipeline_id,
+                    'results': results,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                metadata=MessageMetadata(
+                    source_component=self.module_identifier.component_name,
+                    target_component="insight_manager",
+                    domain_type="insight",
+                    processing_stage=ProcessingStage.INSIGHT_GENERATION
+                ),
+                source_identifier=self.module_identifier
+            )
+        )
 
     async def _handle_service_start(self, message: ProcessingMessage) -> None:
         """Handle service start request from manager"""

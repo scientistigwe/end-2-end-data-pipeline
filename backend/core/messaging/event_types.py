@@ -317,6 +317,8 @@ class MessageType(Enum):
 
     # Quality Validation
     QUALITY_VALIDATE_REQUEST = "quality.validate.request"
+    QUALITY_VALIDATE_START = "quality.validate.start"
+    QUALITY_ALERT_NOTIFY = "quality.alert.notify"
     QUALITY_VALIDATE_COMPLETE = "quality.validate.complete"
     QUALITY_VALIDATE_APPROVE = "quality.validate.approve"
     QUALITY_VALIDATE_REJECT = "quality.validate.reject"
@@ -376,6 +378,7 @@ class MessageType(Enum):
     INSIGHT_VALIDATE_PROGRESS = "insight.validate.progress"
     INSIGHT_VALIDATE_COMPLETE = "insight.validate.complete"
     INSIGHT_VALIDATE_FAILED = "insight.validate.failed"
+    INSIGHT_REVIEW_COMPLETE = "insight.review.complete"
 
     # Resource Management
     INSIGHT_RESOURCE_REQUEST = "insight.resource.request"
@@ -544,19 +547,17 @@ class MessageType(Enum):
     DECISION_STATUS_REQUEST = "decision.status.request"
     DECISION_STATUS_UPDATE = "decision.status.update"
     DECISION_CANCEL_REQUEST = "decision.cancel.request"
-
+    DECISION_FEEDBACK_PROCESS = "decision.feedback.process"
+    
     #..............................Recommendation Types.......................................................
     # Recommendation Engine
     RECOMMENDATION_GENERATE_REQUEST = "recommendation.generate.request"
     RECOMMENDATION_GENERATE_COMPLETE = "recommendation.generate.complete"
+    RECOMMENDATION_GENERATE_PROGRESS = "recommendation.generate.progress"
 
     # Recommendation Context Analysis
     RECOMMENDATION_CONTEXT_ANALYZE_REQUEST = "recommendation.context.analyze.request"
     RECOMMENDATION_CONTEXT_ANALYZE_COMPLETE = "recommendation.context.analyze.complete"
-
-    # Recommendation Candidates Management
-    RECOMMENDATION_CANDIDATES_GENERATE_REQUEST = "recommendation.candidates.generate.request"
-    RECOMMENDATION_CANDIDATES_GENERATE_COMPLETE = "recommendation.candidates.generate.complete"
 
     # Recommendation Filtering
     RECOMMENDATION_FILTER_REQUEST = "recommendation.candidates.filter.request"
@@ -594,9 +595,13 @@ class MessageType(Enum):
     RECOMMENDATION_PROCESS_FAILED = "recommendation.process.failed"
 
     # Candidate Generation
-    RECOMMENDATION_CANDIDATES_GENERATE = "recommendation.candidates.generate"
-    RECOMMENDATION_CANDIDATES_PROGRESS = "recommendation.candidates.progress"
-    RECOMMENDATION_CANDIDATES_COMPLETE = "recommendation.candidates.complete"
+    RECOMMENDATION_CANDIDATES_GENERATE_REQUEST = "recommendation.candidates.generate.request"
+    RECOMMENDATION_CANDIDATES_GENERATE_PROGRESS = "recommendation.candidates.generate.progress"
+    RECOMMENDATION_CANDIDATES_GENERATE_COMPLETE = "recommendation.candidates.generate.complete"
+    RECOMMENDATION_CANDIDATES_FILTER = "recommendation.candidates.filter"
+    RECOMMENDATION_CANDIDATES_RANK = "recommendation.candidates.rank"
+    RECOMMENDATION_CANDIDATES_RANK_REQUEST = "recommendation.candidate.rank.request"
+    RECOMMENDATION_CANDIDATES_MERGE = "recommendation.candidates.merge"
 
     # Engine-Specific Processing
     RECOMMENDATION_ENGINE_CONTENT = "recommendation.engine.content"
@@ -689,6 +694,7 @@ class MessageType(Enum):
     REPORT_PROCESS_PROGRESS = "report.process.progress"
     REPORT_PROCESS_COMPLETE = "report.process.complete"
     REPORT_PROCESS_FAILED = "report.process.failed"
+    REPORT_COMPONENT_ERROR = "report.component.error"
 
     # Data Preparation
     REPORT_DATA_PREPARE_PROGRESS = "report.data.prepare.progress"
@@ -747,8 +753,8 @@ class MessageType(Enum):
 
     # Staging Access Control
     STAGING_ACCESS_REQUEST = "staging.access.request"
-    STAGING_ACCESS_GRANT = "staging.access.grant"
-    STAGING_ACCESS_DENY = "staging.access.deny"
+    STAGING_ACCESS_GRANTED = "staging.access.granted"
+    STAGING_ACCESS_DENIED = "staging.access.denied"
 
     # Staging Versioning
     STAGING_VERSION_CREATE_REQUEST = "staging.version.create.request"
@@ -895,6 +901,8 @@ class MessageType(Enum):
     MONITORING_ALERT_PROCESS = "monitoring.alert.process"
     MONITORING_ALERT_RESOLVE = "monitoring.alert.resolve"
     MONITORING_ALERT_ESCALATE = "monitoring.alert.escalate"
+    MONITORING_SECURITY_EVENT = "monitoring.security.event"
+    MONITORING_COMPONENT_ERROR = "monitoring.component.error"
 
     # Data Export
     MONITORING_EXPORT_PROMETHEUS = "monitoring.export.prometheus"
@@ -1555,6 +1563,7 @@ class RecommendationState(Enum):
     VALIDATION = "validation"
     COMPLETION = "completion"
     FAILED = "failed"
+    AWAITING_DECISION = "awaiting_decision"
 
 
 class RecommendationType(Enum):

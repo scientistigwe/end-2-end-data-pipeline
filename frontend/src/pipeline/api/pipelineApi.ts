@@ -26,7 +26,8 @@ export const PIPELINE_EVENTS = {
 } as const;
 
 class PipelineApi {
-  private client = baseAxiosClient;
+  // Pipeline CRUD Operations
+  private readonly client = baseAxiosClient;
 
   constructor() {
     this.client.setServiceConfig({
@@ -38,23 +39,47 @@ class PipelineApi {
     });
   }
 
-  // Pipeline CRUD Operations
+  // Update listPipelines to use the correct client method
   async listPipelines(params?: {
     page?: number;
     limit?: number;
     status?: PipelineStatus[];
     mode?: string[];
   }): Promise<ApiResponse<Pipeline[]>> {
-    return this.client.executeGet(
-      this.client.createRoute('PIPELINES', 'LIST'),
-      { params }
-    );
+    try {
+      const response = await this.client.get(
+        'PIPELINE',
+        'LIST',
+        undefined,
+        {
+          params,
+          withCredentials: true
+        }
+      );
+
+      // Handle error responses
+      if (!response.success) {
+        throw new Error(response.data?.error?.message || 'Failed to fetch pipelines');
+      }
+
+      return response;
+    } catch (error) {
+      if (error.response?.status === 403) {
+        // Handle permission error
+        throw new Error('You do not have permission to view pipelines');
+      }
+      throw error;
+    }
   }
 
+  // Update other methods similarly
   async createPipeline(config: PipelineConfig): Promise<ApiResponse<Pipeline>> {
-    return this.client.executePost(
-      this.client.createRoute('PIPELINES', 'CREATE'),
-      config
+    return this.client.post(
+      'PIPELINE',
+      'CREATE',
+      config,
+      undefined,
+      { withCredentials: true }
     );
   }
 

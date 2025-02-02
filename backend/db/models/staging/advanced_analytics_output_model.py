@@ -2,6 +2,7 @@
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
+from sqlalchemy.orm import relationship
 from core.messaging.event_types import ComponentType
 from .base_staging_model import BaseStagedOutput
 
@@ -22,6 +23,14 @@ class StagedAnalyticsOutput(BaseStagedOutput):
     predictions = Column(JSON)
     evaluation_results = Column(JSON)
     model_artifacts = Column(JSON)
+
+    # Add source relationship explicitly
+    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
+    source = relationship(
+        "DataSource",
+        back_populates="analytics_outputs",
+        foreign_keys=[source_id]
+    )
 
     __mapper_args__ = {
         "polymorphic_identity": ComponentType.ANALYTICS_MANAGER,

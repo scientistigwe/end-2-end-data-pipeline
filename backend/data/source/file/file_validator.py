@@ -5,55 +5,11 @@ import mimetypes
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
 from datetime import datetime
 
+from config.validation_config import FileValidationConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class FileValidationConfig:
-    """Configuration for file validation"""
-
-    # Size limits
-    max_file_size_mb: int = 100
-    min_file_size_bytes: int = 1  # Non-empty files
-
-    # Format settings
-    allowed_formats: List[str] = field(default_factory=lambda: [
-        'csv', 'xlsx', 'xls', 'json', 'parquet', 'txt'
-    ])
-
-    # MIME type mappings
-    mime_types: Dict[str, List[str]] = field(default_factory=lambda: {
-        'csv': ['text/csv', 'text/plain'],
-        'xlsx': [
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-excel'
-        ],
-        'xls': ['application/vnd.ms-excel'],
-        'json': ['application/json', 'text/plain'],
-        'parquet': ['application/octet-stream'],
-        'txt': ['text/plain']
-    })
-
-    # Security settings
-    blocked_patterns: List[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'key', r'token', r'credential'
-    ])
-
-    scan_encoding: bool = True
-
-    # File signature headers for common formats
-    file_signatures: Dict[str, List[bytes]] = field(default_factory=lambda: {
-        'xlsx': [b'PK\x03\x04'],  # XLSX files are ZIP archives
-        'xls': [b'\xD0\xCF\x11\xE0'],  # OLE compound document
-        'csv': [b',', b';'],  # Common CSV delimiters
-        'json': [b'{', b'['],  # JSON start characters
-        'parquet': [b'PAR1'],  # Parquet magic number
-        'txt': []  # No specific signature for text files
-    })
-
 
 class FileValidator:
     """Enhanced file validator without magic dependency"""
@@ -65,13 +21,16 @@ class FileValidator:
 
     async def validate_file_source(
             self,
-            file_path: Path,
+            file_path: str,  # Changed from Path to str
             metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Validate file source with comprehensive checks"""
         try:
             issues = []
             warnings = []
+
+            # Create Path object from string
+            file_path = Path(file_path) if isinstance(file_path, str) else file_path
 
             # Basic checks
             if not file_path.exists():

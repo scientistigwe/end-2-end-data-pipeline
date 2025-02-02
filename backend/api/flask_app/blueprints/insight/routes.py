@@ -17,6 +17,7 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from core.messaging.event_types import (
     ComponentType,
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 def validate_insight_id(func):
     """Decorator to validate insight ID format."""
-
     def wrapper(insight_id, *args, **kwargs):
         try:
             validated_id = UUID(insight_id)
@@ -40,11 +40,11 @@ def validate_insight_id(func):
                 "Invalid insight ID format",
                 status_code=400
             )
-
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
-def create_insight_blueprint(insight_service, staging_manager):
+def create_insight_blueprint(insight_service, staging_manager, jwt_manager):
     """
     Create insight blueprint with comprehensive staging integration.
 
@@ -57,7 +57,8 @@ def create_insight_blueprint(insight_service, staging_manager):
     """
     insight_bp = Blueprint('insights', __name__)
 
-    @insight_bp.route('/generate', methods=['POST'])
+    @insight_bp.route('/generate', methods=['POST'], endpoint='insights_generate')
+    @jwt_manager.permission_required('insights:generate')
     async def generate_insights():
         """Generate insights with staging integration."""
         try:
@@ -99,17 +100,14 @@ def create_insight_blueprint(insight_service, staging_manager):
                 logger
             )
 
-    @insight_bp.route('/<generation_id>/status', methods=['GET'])
+    @insight_bp.route('/<generation_id>/status', methods=['GET'], endpoint='insights_generation_status')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:read')
     async def get_generation_status(generation_id):
         """Get insight generation status with staging details."""
         try:
-            # Get generation status
-            generation_status = await insight_service.get_generation_status(
-                generation_id
-            )
+            generation_status = await insight_service.get_generation_status(generation_id)
 
-            # Get staging status
             if generation_status.staging_reference:
                 staging_status = await staging_manager.get_status(
                     generation_status.staging_reference
@@ -123,14 +121,11 @@ def create_insight_blueprint(insight_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get generation status",
-                logger
-            )
+            return handle_service_error(e, "Failed to get generation status", logger)
 
-    @insight_bp.route('/<generation_id>/results', methods=['GET'])
+    @insight_bp.route('/<generation_id>/results', methods=['GET'], endpoint='insights_get_results')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:read')
     async def get_insights(generation_id):
         """Get generated insights with comprehensive details."""
         try:
@@ -145,9 +140,7 @@ def create_insight_blueprint(insight_service, staging_manager):
                     insights_by_type[insight_type] = insights
 
             # Get supporting data from staging
-            generation_info = await insight_service.get_generation_info(
-                generation_id
-            )
+            generation_info = await insight_service.get_generation_info(generation_id)
             if generation_info.staging_reference:
                 supporting_data = await staging_manager.get_data(
                     generation_info.staging_reference
@@ -163,26 +156,18 @@ def create_insight_blueprint(insight_service, staging_manager):
             return ResponseBuilder.success(response_data)
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get insights",
-                logger
-            )
+            return handle_service_error(e, "Failed to get insights", logger)
 
-    @insight_bp.route('/<generation_id>/trends', methods=['GET'])
+    @insight_bp.route('/<generation_id>/trends', methods=['GET'], endpoint='insights_get_trends')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:trends:read')
     async def get_trend_insights(generation_id):
         """Get trend-specific insights with details."""
         try:
-            trends = await insight_service.get_insights_by_type(
-                generation_id,
-                'trend'
-            )
+            trends = await insight_service.get_insights_by_type(generation_id, 'trend')
 
             # Enrich with time series data from staging
-            generation_info = await insight_service.get_generation_info(
-                generation_id
-            )
+            generation_info = await insight_service.get_generation_info(generation_id)
             if generation_info.staging_reference:
                 time_series_data = await staging_manager.get_time_series_data(
                     generation_info.staging_reference
@@ -196,26 +181,18 @@ def create_insight_blueprint(insight_service, staging_manager):
             return ResponseBuilder.success({'trends': trends})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get trend insights",
-                logger
-            )
+            return handle_service_error(e, "Failed to get trend insights", logger)
 
-    @insight_bp.route('/<generation_id>/anomalies', methods=['GET'])
+    @insight_bp.route('/<generation_id>/anomalies', methods=['GET'], endpoint='insights_get_anomalies')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:anomalies:read')
     async def get_anomaly_insights(generation_id):
         """Get anomaly-specific insights with context."""
         try:
-            anomalies = await insight_service.get_insights_by_type(
-                generation_id,
-                'anomaly'
-            )
+            anomalies = await insight_service.get_insights_by_type(generation_id, 'anomaly')
 
             # Add historical context from staging
-            generation_info = await insight_service.get_generation_info(
-                generation_id
-            )
+            generation_info = await insight_service.get_generation_info(generation_id)
             if generation_info.staging_reference:
                 historical_data = await staging_manager.get_historical_data(
                     generation_info.staging_reference
@@ -229,14 +206,11 @@ def create_insight_blueprint(insight_service, staging_manager):
             return ResponseBuilder.success({'anomalies': anomalies})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get anomaly insights",
-                logger
-            )
+            return handle_service_error(e, "Failed to get anomaly insights", logger)
 
-    @insight_bp.route('/<generation_id>/correlations', methods=['GET'])
+    @insight_bp.route('/<generation_id>/correlations', methods=['GET'], endpoint='insights_get_correlations')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:correlations:read')
     async def get_correlation_insights(generation_id):
         """Get correlation insights with supporting data."""
         try:
@@ -246,9 +220,7 @@ def create_insight_blueprint(insight_service, staging_manager):
             )
 
             # Add statistical support from staging
-            generation_info = await insight_service.get_generation_info(
-                generation_id
-            )
+            generation_info = await insight_service.get_generation_info(generation_id)
             if generation_info.staging_reference:
                 statistical_data = await staging_manager.get_statistical_data(
                     generation_info.staging_reference
@@ -262,14 +234,11 @@ def create_insight_blueprint(insight_service, staging_manager):
             return ResponseBuilder.success({'correlations': correlations})
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to get correlation insights",
-                logger
-            )
+            return handle_service_error(e, "Failed to get correlation insights", logger)
 
-    @insight_bp.route('/<generation_id>/validate', methods=['POST'])
+    @insight_bp.route('/<generation_id>/validate', methods=['POST'], endpoint='insights_validate')
     @validate_insight_id
+    @jwt_manager.permission_required('insights:validate')
     async def validate_insights(generation_id):
         """Validate generated insights with business rules."""
         try:
@@ -298,27 +267,17 @@ def create_insight_blueprint(insight_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to validate insights",
-                logger
-            )
+            return handle_service_error(e, "Failed to validate insights", logger)
 
     @insight_bp.errorhandler(404)
     def not_found_error(error):
         """Handle resource not found errors."""
-        return ResponseBuilder.error(
-            "Resource not found",
-            status_code=404
-        )
+        return ResponseBuilder.error("Resource not found", status_code=404)
 
     @insight_bp.errorhandler(500)
     def internal_error(error):
         """Handle internal server errors."""
         logger.error(f"Internal server error: {error}", exc_info=True)
-        return ResponseBuilder.error(
-            "Internal server error",
-            status_code=500
-        )
+        return ResponseBuilder.error("Internal server error", status_code=500)
 
     return insight_bp

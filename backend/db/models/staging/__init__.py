@@ -10,7 +10,6 @@ from .report_output_model import StagedReportOutput
 from .staging_control_model import StagingControlPoint
 from .staging_history_model import StagingProcessingHistory
 from .monitoring_output_model import StagedMonitoringOutput
-from .settings_output_model import StagedSettingsOutput
 
 __all__ = [
     'BaseStagedOutput',

@@ -1,4 +1,3 @@
-// src/auth/components/RegisterForm.tsx
 import React, { useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,23 +19,23 @@ interface RegisterFormProps {
   isLoading?: boolean;
 }
 
-interface FormState extends RegisterData {
-  confirmPassword: string;
-}
-
 export const RegisterForm: React.FC<RegisterFormProps> = ({
   onSubmit,
   isLoading = false,
 }) => {
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<FormState>({
-    username: "",
+  const [formData, setFormData] = useState<RegisterData>({
     email: "",
     password: "",
-    firstName: "",
-    lastName: "",
-    confirmPassword: "",
+    confirm_password: "",
+    username: "",
+    first_name: "",
+    last_name: "",
+    terms_accepted: false,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: navigator.language
   });
+
   const [touched, setTouched] = useState<{
     [key: string]: boolean;
   }>({});
@@ -44,37 +43,32 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   // Validation rules
   const validationRules = useMemo(() => ({
-    firstName: (value: string) => value.trim().length >= 2,
-    lastName: (value: string) => value.trim().length >= 2,
+    first_name: (value: string) => value.trim().length >= 2,
+    last_name: (value: string) => value.trim().length >= 2,
     username: (value: string) => /^[a-zA-Z0-9_]{3,16}$/.test(value),
     email: (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
     password: (value: string) => {
       const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
       return passwordRegex.test(value);
     },
-    confirmPassword: (value: string) => value === formData.password
+    confirm_password: (value: string) => value === formData.password,
+    terms_accepted: (value: boolean) => value === true
   }), [formData.password]);
-
-  // Validate individual field
-  const isFieldValid = (name: string, value: string) => {
-    return validationRules[name] ? validationRules[name](value) : true;
-  };
 
   // Handle input changes
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
     
-    // Track touched state
     setTouched(prev => ({ ...prev, [name]: true }));
-
-    // Clear any previous errors
     if (error) setError(null);
   }, [error]);
 
   // Validate entire form
   const validateForm = useCallback((): boolean => {
-    // Check all fields
     const isValid = Object.keys(validationRules).every(key => 
       isFieldValid(key, formData[key])
     );
@@ -86,6 +80,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
     return true;
   }, [formData, validationRules]);
+
+  // Validate individual field
+  const isFieldValid = (name: string, value: any) => {
+    return validationRules[name] ? validationRules[name](value) : true;
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,11 +100,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
-    setError(null);
-
     try {
-      const { confirmPassword, ...registrationData } = formData;
-      await onSubmit(registrationData);
+      await onSubmit(formData);
     } catch (err) {
       if (isAuthError(err)) {
         setError(getErrorMessage(err));
@@ -115,8 +111,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
   };
 
-  // Render validation icon
-  const renderValidationIcon = (fieldName: string, value: string) => {
+  const renderValidationIcon = (fieldName: string, value: any) => {
     if (!touched[fieldName]) return null;
 
     const isValid = isFieldValid(fieldName, value);
@@ -127,7 +122,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     );
   };
 
-  // Password strength indicator
   const getPasswordStrength = (password: string) => {
     if (password.length === 0) return null;
     if (password.length < 8) return "Weak";
@@ -155,112 +149,54 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           )}
         </AnimatePresence>
 
-        {/* Name Inputs */}
+        {/* Name Fields */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label 
-              htmlFor="firstName" 
-              className="text-sm font-medium text-foreground flex justify-between items-center"
-            >
+            <label htmlFor="first_name" className="text-sm font-medium text-foreground flex justify-between items-center">
               First Name
-              {renderValidationIcon("firstName", formData.firstName)}
+              {renderValidationIcon("first_name", formData.first_name)}
             </label>
             <Input
-              id="firstName"
-              name="firstName"
+              id="first_name"
+              name="first_name"
               type="text"
               required
-              value={formData.firstName}
+              value={formData.first_name}
               onChange={handleChange}
-              placeholder="John"
-              autoComplete="given-name"
               className={cn(
                 "w-full",
-                touched.firstName && !isFieldValid("firstName", formData.firstName) 
+                touched.first_name && !isFieldValid("first_name", formData.first_name) 
                   ? "border-red-500 focus:ring-red-500"
                   : "focus:border-blue-500 focus:ring-blue-500"
               )}
-              aria-invalid={touched.firstName && !isFieldValid("firstName", formData.firstName)}
             />
-            {touched.firstName && !isFieldValid("firstName", formData.firstName) && (
-              <p className="text-xs text-red-600 mt-1">
-                First name must be at least 2 characters
-              </p>
-            )}
           </div>
 
           <div className="space-y-2">
-            <label 
-              htmlFor="lastName" 
-              className="text-sm font-medium text-foreground flex justify-between items-center"
-            >
+            <label htmlFor="last_name" className="text-sm font-medium text-foreground flex justify-between items-center">
               Last Name
-              {renderValidationIcon("lastName", formData.lastName)}
+              {renderValidationIcon("last_name", formData.last_name)}
             </label>
             <Input
-              id="lastName"
-              name="lastName"
+              id="last_name"
+              name="last_name"
               type="text"
               required
-              value={formData.lastName}
+              value={formData.last_name}
               onChange={handleChange}
-              placeholder="Doe"
-              autoComplete="family-name"
               className={cn(
                 "w-full",
-                touched.lastName && !isFieldValid("lastName", formData.lastName) 
+                touched.last_name && !isFieldValid("last_name", formData.last_name) 
                   ? "border-red-500 focus:ring-red-500"
                   : "focus:border-blue-500 focus:ring-blue-500"
               )}
-              aria-invalid={touched.lastName && !isFieldValid("lastName", formData.lastName)}
             />
-            {touched.lastName && !isFieldValid("lastName", formData.lastName) && (
-              <p className="text-xs text-red-600 mt-1">
-                Last name must be at least 2 characters
-              </p>
-            )}
           </div>
         </div>
 
-        {/* Username Input */}
+        {/* Email Field */}
         <div className="space-y-2">
-          <label 
-            htmlFor="username" 
-            className="text-sm font-medium text-foreground flex justify-between items-center"
-          >
-            Username
-            {renderValidationIcon("username", formData.username)}
-          </label>
-          <Input
-            id="username"
-            name="username"
-            type="text"
-            required
-            value={formData.username}
-            onChange={handleChange}
-            placeholder="johndoe"
-            autoComplete="username"
-            className={cn(
-              "w-full",
-              touched.username && !isFieldValid("username", formData.username) 
-                ? "border-red-500 focus:ring-red-500"
-                : "focus:border-blue-500 focus:ring-blue-500"
-            )}
-            aria-invalid={touched.username && !isFieldValid("username", formData.username)}
-          />
-          {touched.username && !isFieldValid("username", formData.username) && (
-            <p className="text-xs text-red-600 mt-1">
-              Username must be 3-16 characters, alphanumeric or underscore
-            </p>
-          )}
-        </div>
-
-        {/* Email Input */}
-        <div className="space-y-2">
-          <label 
-            htmlFor="email" 
-            className="text-sm font-medium text-foreground flex justify-between items-center"
-          >
+          <label htmlFor="email" className="text-sm font-medium text-foreground flex justify-between items-center">
             Email
             {renderValidationIcon("email", formData.email)}
           </label>
@@ -271,174 +207,133 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             required
             value={formData.email}
             onChange={handleChange}
-            placeholder="john.doe@example.com"
-            autoComplete="email"
             className={cn(
               "w-full",
               touched.email && !isFieldValid("email", formData.email) 
                 ? "border-red-500 focus:ring-red-500"
                 : "focus:border-blue-500 focus:ring-blue-500"
             )}
-            aria-invalid={touched.email && !isFieldValid("email", formData.email)}
           />
-          {touched.email && !isFieldValid("email", formData.email) && (
-            <p className="text-xs text-red-600 mt-1">
-              Please enter a valid email address
-            </p>
-          )}
         </div>
 
-        {/* Password Input */}
+        {/* Username Field */}
         <div className="space-y-2">
-          <label 
-            htmlFor="password" 
-            className="text-sm font-medium text-foreground flex justify-between items-center"
-          >
-            Password
-            {renderValidationIcon("password", formData.password)}
-          </label>
-          <div className="relative">
-            <Input
-              id="password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              required
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-              autoComplete="new-password"
-              className={cn(
-                "w-full pr-10",
-                touched.password && !isFieldValid("password", formData.password) 
-                  ? "border-red-500 focus:ring-red-500"
-                  : "focus:border-blue-500 focus:ring-blue-500"
-              )}
-              aria-invalid={touched.password && !isFieldValid("password", formData.password)}
-            />
-            <button
-              type="button"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? (
-                <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-              ) : (
-                <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-              )}
-            </button>
-          </div>
-          {touched.password && (
-            <>
-              {!isFieldValid("password", formData.password) && (
-                <p className="text-xs text-red-600 mt-1">
-                  Password must be 8+ characters, include uppercase, lowercase, number, and special character
-                </p>
-              )}
-              {passwordStrength && (
-                <div className="mt-1 flex items-center space-x-2">
-                  <div 
-                    className={cn(
-                      "h-1.5 w-1/3 rounded-full",
-                      passwordStrength === "Weak" && "bg-red-500",
-                      passwordStrength === "Moderate" && "bg-yellow-500",
-                      passwordStrength === "Strong" && "bg-green-500"
-                    )}
-                  />
-                  <p className="text-xs text-gray-500">
-                    {passwordStrength} password
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Confirm Password Input */}
-        <div className="space-y-2">
-          <label 
-            htmlFor="confirmPassword" 
-            className="text-sm font-medium text-foreground flex justify-between items-center"
-          >
-            Confirm Password
-            {renderValidationIcon("confirmPassword", formData.confirmPassword)}
+          <label htmlFor="username" className="text-sm font-medium text-foreground flex justify-between items-center">
+            Username
+            {renderValidationIcon("username", formData.username)}
           </label>
           <Input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
+            id="username"
+            name="username"
+            type="text"
             required
-            value={formData.confirmPassword}
+            value={formData.username}
             onChange={handleChange}
-            placeholder="••••••••"
-            autoComplete="new-password"
             className={cn(
               "w-full",
-              touched.confirmPassword && !isFieldValid("confirmPassword", formData.confirmPassword) 
+              touched.username && !isFieldValid("username", formData.username) 
                 ? "border-red-500 focus:ring-red-500"
                 : "focus:border-blue-500 focus:ring-blue-500"
             )}
-            aria-invalid={touched.confirmPassword && !isFieldValid("confirmPassword", formData.confirmPassword)}
           />
-          {touched.confirmPassword && !isFieldValid("confirmPassword", formData.confirmPassword) && (
-            <p className="text-xs text-red-600 mt-1">
-              Passwords do not match
-            </p>
-          )}
+        </div>
+
+        {/* Password Fields */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="password" className="text-sm font-medium text-foreground flex justify-between items-center">
+              Password
+              {renderValidationIcon("password", formData.password)}
+            </label>
+            <div className="relative">
+              <Input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                value={formData.password}
+                onChange={handleChange}
+                className={cn(
+                  "w-full pr-10",
+                  touched.password && !isFieldValid("password", formData.password) 
+                    ? "border-red-500 focus:ring-red-500"
+                    : "focus:border-blue-500 focus:ring-blue-500"
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
+            {passwordStrength && (
+              <div className="flex items-center mt-2 space-x-2">
+                <div className={cn(
+                  "h-2 flex-1 rounded",
+                  passwordStrength === "Weak" ? "bg-red-500" :
+                  passwordStrength === "Moderate" ? "bg-yellow-500" :
+                  "bg-green-500"
+                )} />
+                <span className="text-sm text-gray-600">{passwordStrength}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="confirm_password" className="text-sm font-medium text-foreground flex justify-between items-center">
+              Confirm Password
+              {renderValidationIcon("confirm_password", formData.confirm_password)}
+            </label>
+            <Input
+              id="confirm_password"
+              name="confirm_password"
+              type="password"
+              required
+              value={formData.confirm_password}
+              onChange={handleChange}
+              className={cn(
+                "w-full",
+                touched.confirm_password && !isFieldValid("confirm_password", formData.confirm_password) 
+                  ? "border-red-500 focus:ring-red-500"
+                  : "focus:border-blue-500 focus:ring-blue-500"
+              )}
+            />
+          </div>
+        </div>
+
+        {/* Terms Acceptance */}
+        <div className="flex items-center space-x-2">
+          <input
+            id="terms_accepted"
+            name="terms_accepted"
+            type="checkbox"
+            checked={formData.terms_accepted}
+            onChange={handleChange}
+            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          />
+          <label htmlFor="terms_accepted" className="text-sm text-gray-600">
+            I accept the terms and conditions
+          </label>
         </div>
 
         {/* Submit Button */}
         <Button 
-          type="submit" 
-          disabled={isLoading} 
-          className="w-full group"
+          type="submit"
+          disabled={isLoading}
+          className="w-full"
         >
-          <motion.span
-            initial={{ scale: 1 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 300 }}
-            className="flex items-center justify-center"
-          >
-            {isLoading ? (
-              <>
-                <svg 
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  fill="none" 
-                  viewBox="0 0 24 24"
-                >
-                  <circle 
-                    className="opacity-25" 
-                    cx="12" 
-                    cy="12" 
-                    r="10" 
-                    stroke="currentColor" 
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Creating account...
-              </>
-            ) : (
-              "Sign up"
-            )}
-          </motion.span>
+          {isLoading ? "Creating account..." : "Register"}
         </Button>
 
         {/* Login Link */}
-        <div className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-sm text-gray-600">
           Already have an account?{" "}
-          <Link
-            to="/login"
-            className="font-medium text-primary hover:text-primary/90 transition-colors duration-300"
-          >
-            Log in
+          <Link to="/login" className="text-blue-600 hover:text-blue-800">
+            Sign in
           </Link>
-        </div>
+        </p>
       </form>
     </div>
   );

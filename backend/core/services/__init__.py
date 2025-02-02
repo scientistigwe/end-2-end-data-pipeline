@@ -22,7 +22,6 @@ from .reports.report_service import ReportService
 from .pipeline.pipeline_service import PipelineService
 from .monitoring.monitoring_service import MonitoringService
 from .auth.auth_service import AuthService
-from .settings.settings_service import SettingsService
 from .advanced_analytics.advanced_analytics_services import AnalyticsService
 
 logger = logging.getLogger(__name__)
@@ -45,7 +44,6 @@ SERVICE_REGISTRY: Dict[str, Type[BaseService]] = {
     'pipeline': PipelineService,
     'monitoring': MonitoringService,
     'auth': AuthService,
-    'settings': SettingsService,
     'analytics': AnalyticsService
 }
 
@@ -122,7 +120,6 @@ __all__ = [
     'PipelineService',
     'MonitoringService',
     'AuthService',
-    'SettingsService',
     'AnalyticsService',
     'get_service_class',
     'initialize_services',

@@ -14,9 +14,7 @@ import {
   RouteParams,
   RouteKey,
   SubRouteKey,
-  NestedRouteKey,
-  RouteConfig,
-  getRoutePath
+  NestedRouteKey
 } from '../routes';
 
 import { 
@@ -39,15 +37,16 @@ import {
 import { logger } from '@/common/utils/logger';
 
 export enum ServiceType {
-  AUTH = 'auth',
-  DECISIONS = 'decisions',
-  REPORTS = 'reports',
-  DATA_SOURCES = 'data-sources',
-  PIPELINE = 'pipeline',
-  MONITORING = 'monitoring',
-  ANALYSIS = 'analysis',
-  SETTINGS = 'settings',
-  RECOMMENDATIONS = 'recommendations'
+  AUTH = 'AUTH',
+  DECISIONS = 'DECISIONS',
+  REPORTS = 'REPORTS',
+  DATA_SOURCES = 'DATA_SOURCES',
+  PIPELINES = 'PIPELINES',
+  MONITORING = 'MONITORING',
+  ANALYTICS = 'ANALYTICS',
+  SETTINGS = 'SETTINGS',
+  RECOMMENDATIONS = 'RECOMMENDATIONS',
+  STAGING = 'STAGING'
 }
 
 interface ServiceConfig {
@@ -65,7 +64,7 @@ export class BaseClient {
   private isRefreshing: boolean = false;
   private refreshQueue: RefreshQueueItem[] = [];
   protected client: AxiosInstance;
-  private serviceConfigs: Map<string, ServiceConfig> = new Map();
+  private serviceConfigs: Map<ServiceType, ServiceConfig> = new Map();
   private cache: Map<string, CacheEntry<any>>;
   private retryConfig = RETRY_CONFIG;
 
@@ -77,7 +76,7 @@ export class BaseClient {
 
   public getAxiosInstance(): AxiosInstance {
     return this.client;
-}
+  }
 
   public static getInstance(config?: CreateAxiosDefaults): BaseClient {
     if (!BaseClient.instance) {
@@ -86,13 +85,92 @@ export class BaseClient {
     return BaseClient.instance;
   }
 
-  // Request Methods
-  public async executeGet<T>(
+  // Type-safe request methods that integrate with APIRoutes
+  public async get<T>(
+    module: RouteKey,
+    route: SubRouteKey<typeof module>,
+    params?: RouteParams,
+    config?: ApiRequestConfig & { cacheDuration?: number }
+  ): Promise<ApiResponse<T>> {
+    const endpoint = RouteHelper.getRoute(module, route, params);
+    return this.executeGet<T>(endpoint, config);
+  }
+
+  public async post<T>(
+    module: RouteKey,
+    route: SubRouteKey<typeof module>,
+    data?: unknown,
+    params?: RouteParams,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    const endpoint = RouteHelper.getRoute(module, route, params);
+    return this.executePost<T>(endpoint, data, config);
+  }
+
+  public async put<T>(
+    module: RouteKey,
+    route: SubRouteKey<typeof module>,
+    data?: unknown,
+    params?: RouteParams,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    const endpoint = RouteHelper.getRoute(module, route, params);
+    return this.executePut<T>(endpoint, data, config);
+  }
+
+  public async delete<T>(
+    module: RouteKey,
+    route: SubRouteKey<typeof module>,
+    params?: RouteParams,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    const endpoint = RouteHelper.getRoute(module, route, params);
+    return this.executeDelete<T>(endpoint, config);
+  }
+
+  // Type-safe nested route request methods
+  public async getFromNested<T, M extends RouteKey, S extends SubRouteKey<M>, R extends NestedRouteKey<M, S>>(
+    module: M,
+    section: S,
+    route: R,
+    params?: RouteParams,
+    config?: ApiRequestConfig & { cacheDuration?: number }
+  ): Promise<ApiResponse<T>> {
+    const endpoint = RouteHelper.getNestedRoute(module, section, route, params);
+    return this.executeGet<T>(endpoint, config);
+  }
+
+  public async postToNested<T, M extends RouteKey, S extends SubRouteKey<M>, R extends NestedRouteKey<M, S>>(
+    module: M,
+    section: S,
+    route: R,
+    data?: unknown,
+    params?: RouteParams,
+    config?: ApiRequestConfig
+  ): Promise<T> {
+    const endpoint = RouteHelper.getNestedRoute(module, section, route, params);
+    return this.executePost<T>(endpoint, data, config);
+  }
+
+  // Base request execution methods
+  private async executeGet<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
   ): Promise<ApiResponse<T>> {
     try {
-      const response = await this.get<T>(endpoint, config);
+      const { cacheDuration = 0, ...restConfig } = config ?? {};
+      
+      if (cacheDuration > 0) {
+        const cached = this.getFromCache<T>(endpoint, restConfig);
+        if (cached) return { success: true, data: cached };
+      }
+
+      const response = await this.request<T>('GET', endpoint, restConfig);
+      
+      if (cacheDuration > 0) {
+        this.setCache(endpoint, response, cacheDuration);
+      }
+
       return { success: true, data: response };
     } catch (error) {
       if (error instanceof Error) {
@@ -107,71 +185,55 @@ export class BaseClient {
     }
   }
 
-  public async executePost<T>(
+  private async executePost<T>(
     endpoint: string,
     data?: unknown,
     config?: ApiRequestConfig
   ): Promise<T> {
-    return this.post<T>(endpoint, data, config);
+    return this.request<T>('POST', endpoint, config, data);
   }
 
-  public async executePut<T>(
+  private async executePut<T>(
     endpoint: string,
     data?: unknown,
     config?: ApiRequestConfig
   ): Promise<T> {
-    return this.put<T>(endpoint, data, config);
+    return this.request<T>('PUT', endpoint, config, data);
   }
 
-  public async executePatch<T>(
-    endpoint: string,
-    data?: unknown,
-    config?: ApiRequestConfig
-  ): Promise<T> {
-    return this.patch<T>(endpoint, data, config);
-  }
-
-  public async executeDelete<T>(
+  private async executeDelete<T>(
     endpoint: string,
     config?: ApiRequestConfig
   ): Promise<T> {
-    return this.delete<T>(endpoint, config);
+    return this.request<T>('DELETE', endpoint, config);
   }
 
-  // Route Methods
-  public createRoute<T extends RouteKey>(
-    module: T,
-    route: SubRouteKey<T>,
-    params?: RouteParams
-  ): string {
-    return this.getRoute(module, route, params);
-  }
-
-  protected getRoute<T extends RouteKey>(
-    module: T,
-    route: SubRouteKey<T>,
-    params?: RouteParams
-  ): string {
-    return RouteHelper.getRoute(module, route, params);
-  }
-
-  // Configuration Methods
-  public setServiceConfig(config: ServiceConfig): void {
-    if (!config.service) {
-      logger.warn('Attempting to set service config without service type');
-      return;
+  // Cache management
+  private getFromCache<T>(endpoint: string, config?: ApiRequestConfig): T | null {
+    const cacheKey = this.getCacheKey(endpoint, config);
+    const cached = this.cache.get(cacheKey);
+    
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
     }
     
-    this.serviceConfigs.set(config.service, {
-      service: config.service,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        ...(config.headers || {})
-      }
+    this.cache.delete(cacheKey);
+    return null;
+  }
+
+  private setCache<T>(endpoint: string, data: T, duration: number): void {
+    const cacheKey = this.getCacheKey(endpoint);
+    this.cache.set(cacheKey, {
+      data,
+      expiresAt: Date.now() + duration * 1000
     });
   }
 
+  private getCacheKey(endpoint: string, config?: ApiRequestConfig): string {
+    return `${endpoint}${config ? JSON.stringify(config) : ''}`;
+  }
+
+  // Configuration and initialization
   private initializeClient(config?: CreateAxiosDefaults): AxiosInstance {
     const defaultHeaders: HeadersType = {
       'Accept': 'application/json',
@@ -192,7 +254,23 @@ export class BaseClient {
     return axios.create(clientConfig);
   }
 
-  // Interceptor Setup
+  public setServiceConfig(config: ServiceConfig): void {
+    if (!config.service) {
+      logger.warn('Attempting to set service config without service type');
+      return;
+    }
+    
+    this.serviceConfigs.set(config.service, {
+      service: config.service,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...(config.headers || {})
+      }
+    });
+  }
+
+  // Interceptors setup
   private setupInterceptors(): void {
     this.setupRequestInterceptor();
     this.setupResponseInterceptor();
@@ -201,14 +279,15 @@ export class BaseClient {
   private setupRequestInterceptor(): void {
     this.client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
       const headers = new AxiosHeaders(config.headers);
-      const url = config.url || '';
-      const serviceType = this.getServiceForRequest(url);
-      
-      headers.set('Accept', 'application/json');
-      headers.set('Content-Type', 'application/json');
+      const serviceType = this.getServiceTypeFromUrl(config.url || '');
       
       if (serviceType) {
-        headers.set('X-Service', serviceType);
+        const serviceConfig = this.serviceConfigs.get(serviceType);
+        if (serviceConfig?.headers) {
+          Object.entries(serviceConfig.headers).forEach(([key, value]) => {
+            headers.set(key, value);
+          });
+        }
       }
 
       config.withCredentials = true;
@@ -228,7 +307,6 @@ export class BaseClient {
 
         const config = error.config as RetryableRequestConfig;
         
-        // Don't retry if it's a refresh request or already retried
         if (this.isRefreshRequest(config.url) || config._retry) {
           if (error.response?.status === HTTP_STATUS.UNAUTHORIZED) {
             this.handleAuthenticationFailure();
@@ -237,7 +315,7 @@ export class BaseClient {
         }
 
         if (error.response?.status === HTTP_STATUS.UNAUTHORIZED) {
-          return this.handleUnauthorizedError(config, error);
+          return this.handleUnauthorizedError(config);
         }
 
         return Promise.reject(error);
@@ -245,10 +323,8 @@ export class BaseClient {
     );
   }
 
-  // Auth Handling
-  private async handleUnauthorizedError(config: RetryableRequestConfig, error: any) {
-    config._retry = true;
-
+  // Auth handling
+  private async handleUnauthorizedError(config: RetryableRequestConfig) {
     if (this.isRefreshing) {
       try {
         await this.enqueueRefreshRequest();
@@ -274,8 +350,10 @@ export class BaseClient {
 
   private async refreshAuthentication(): Promise<void> {
     try {
-      await this.executePost(
-        RouteHelper.getRoute('AUTH', 'REFRESH'),
+      await this.post(
+        'AUTH',
+        'REFRESH',
+        undefined,
         undefined,
         {
           withCredentials: true,
@@ -291,24 +369,39 @@ export class BaseClient {
     }
   }
 
-  private enqueueRefreshRequest(): Promise<unknown> {
+  // Helper methods
+  private getServiceTypeFromUrl(url: string): ServiceType | undefined {
+    for (const serviceType of Object.values(ServiceType)) {
+      if (url.toLowerCase().includes(serviceType.toLowerCase())) {
+        return serviceType;
+      }
+    }
+    return undefined;
+  }
+
+  private isRefreshRequest(url?: string): boolean {
+    return url?.includes('/auth/refresh') || false;
+  }
+
+  private async enqueueRefreshRequest(): Promise<unknown> {
     return new Promise((resolve, reject) => {
       this.refreshQueue.push({ resolve, reject });
     });
   }
 
   private processRefreshQueue(error: any): void {
-    if (error) {
-      this.refreshQueue.forEach(promise => promise.reject(error));
-    } else {
-      this.refreshQueue.forEach(promise => promise.resolve(null));
-    }
+    this.refreshQueue.forEach(promise => {
+      if (error) {
+        promise.reject(error);
+      } else {
+        promise.resolve(null);
+      }
+    });
     this.refreshQueue = [];
   }
 
   private handleAuthenticationFailure(): void {
     this.clearAuthenticationState();
-    this.processRefreshQueue(new Error('Authentication failed'));
     window.dispatchEvent(new Event('auth:sessionExpired'));
   }
 
@@ -316,127 +409,212 @@ export class BaseClient {
     this.cache.clear();
     window.dispatchEvent(new Event('auth:logout'));
   }
+  
 
-  // Helper Methods
-  private isRefreshRequest(url?: string): boolean {
-    return url?.includes('/auth/refresh') || false;
-  }
-
-  private getServiceForRequest(url: string): ServiceType | undefined {
-    if (url.startsWith('auth/')) return ServiceType.AUTH;
-    if (url.startsWith('pipelines')) return ServiceType.PIPELINE;
-    // ... other service types
-    return undefined;
-  }
-
-  // HTTP Methods Implementation
+  // Base request method
   private async request<T>(
     method: HttpMethod,
     endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
-  ): Promise<T> {
+): Promise<T> {
     try {
-      const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
-      
-      const cleanEndpoint = endpoint.replace(/^\/+/, '');
-      const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
+        const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
+        
+        // Log the complete request configuration
+        console.log('Request Configuration:', {
+            method,
+            endpoint,
+            data,
+            config: axiosConfig
+        });
 
-      const requestConfig: AxiosRequestConfig = {
-        method: method.toLowerCase(),
-        url: normalizedEndpoint,
-        data,
-        withCredentials: true,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          ...(axiosConfig?.headers || {})
-        },
-        ...axiosConfig,
-        onUploadProgress
-      };
+        const cleanEndpoint = endpoint.replace(/^\/+/, '');
+        const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
 
-      const response = await this.client.request(requestConfig);
-      return response.data?.data ?? response.data;
+        const requestConfig: AxiosRequestConfig = {
+            method: method.toLowerCase(),
+            url: normalizedEndpoint,
+            data,
+            withCredentials: true,
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                ...(axiosConfig?.headers || {})
+            },
+            validateStatus: (status) => true, // Accept all status codes to handle them manually
+            ...axiosConfig,
+            onUploadProgress
+        };
+
+        const response = await this.client.request(requestConfig);
+        
+        // Log the complete response
+        console.log('Response:', {
+            status: response.status,
+            statusText: response.statusText,
+            data: response.data,
+            headers: response.headers
+        });
+
+        // Handle non-2xx status codes
+        if (response.status >= 400) {
+            throw {
+                response: response,
+                isAxiosError: true,
+                message: response.data?.message || 'Request failed'
+            };
+        }
+
+        return response.data?.data ?? response.data;
     } catch (error) {
-      throw this.handleApiError(error);
+        console.error('Request failed:', {
+            method,
+            endpoint,
+            error: error instanceof Error ? {
+                message: error.message,
+                stack: error.stack
+            } : error
+        });
+
+        if (axios.isAxiosError(error) && error.response) {
+            console.error('Detailed error response:', {
+                status: error.response.status,
+                statusText: error.response.statusText,
+                data: error.response.data,
+                headers: error.response.headers,
+                config: error.config
+            });
+        }
+
+        throw this.handleApiError(error);
     }
-  }
+}
 
-  private async get<T>(
-    endpoint: string,
-    config?: ApiRequestConfig & { cacheDuration?: number }
-  ): Promise<T> {
-    const { cacheDuration = 0, ...restConfig } = config ?? {};
-    
-    if (cacheDuration > 0) {
-      const cached = this.getFromCache<T>(endpoint, restConfig, cacheDuration);
-      if (cached) return cached;
-    }
-
-    const response = await this.request<T>('GET', endpoint, restConfig);
-    
-    if (cacheDuration > 0) {
-      this.setCache(endpoint, restConfig, response);
-    }
-
-    return response;
-  }
-
-  private post<T>(endpoint: string, data?: unknown, config?: ApiRequestConfig): Promise<T> {
-    return this.request<T>('POST', endpoint, config, data);
-  }
-
-  private put<T>(endpoint: string, data?: unknown, config?: ApiRequestConfig): Promise<T> {
-    return this.request<T>('PUT', endpoint, config, data);
-  }
-
-  private patch<T>(endpoint: string, data?: unknown, config?: ApiRequestConfig): Promise<T> {
-    return this.request<T>('PATCH', endpoint, config, data);
-  }
-
-  private delete<T>(endpoint: string, config?: ApiRequestConfig): Promise<T> {
-    return this.request<T>('DELETE', endpoint, config);
-  }
-
-  // Error Handling
+  // Error handling
   private handleApiError(error: unknown): Error {
     if (axios.isAxiosError(error)) {
       if (!error.response) {
-        return new Error(
-          error.message.includes('Network Error')
-            ? 'Unable to connect to the server. Please check your connection.'
-            : 'Network error: Please check your connection'
-        );
+        logger.error('Network Error:', {
+          message: 'No response received from server',
+          error: error
+        });
+        return new Error('Network error: Unable to connect to the server. Please check your internet connection.');
       }
-
+  
       const errorResponse = error.response.data as ApiErrorResponse;
+      const status = error.response.status;
+      const headers = error.response.headers;
+  
+      // Log detailed error information
       logger.error('API Error:', {
-        status: error.response.status,
+        status,
+        endpoint: error.config?.url,
+        method: error.config?.method?.toUpperCase(),
         data: errorResponse,
-        headers: error.response.headers
+        headers,
+        fullError: error
       });
-
-      switch (error.response.status) {
-        case HTTP_STATUS.UNAUTHORIZED:
-          return new Error('Authentication failed. Please log in again.');
-        case HTTP_STATUS.FORBIDDEN:
-          return new Error('You do not have permission to perform this action.');
-        case HTTP_STATUS.NOT_FOUND:
-          return new Error('The requested resource was not found.');
+  
+      switch (status) {
         case HTTP_STATUS.BAD_REQUEST:
-          return new Error(errorResponse?.message || 'Invalid request');
+          return new Error(
+            errorResponse?.error?.message || 
+            errorResponse?.message || 
+            'The request was invalid. Please check your input and try again.'
+          );
+  
+        case HTTP_STATUS.UNAUTHORIZED:
+          if (errorResponse?.error?.code === 'token_expired') {
+            window.dispatchEvent(new Event('auth:token_expired'));
+            return new Error('Your session has expired. Please log in again.');
+          }
+          window.dispatchEvent(new Event('auth:logout'));
+          return new Error(
+            errorResponse?.message || 
+            'Authentication failed. Please log in again.'
+          );
+  
+        case HTTP_STATUS.FORBIDDEN:
+          return new Error(
+            errorResponse?.message || 
+            'You do not have permission to perform this action. Please contact support if you believe this is an error.'
+          );
+  
+        case HTTP_STATUS.NOT_FOUND:
+          return new Error(
+            errorResponse?.message || 
+            'The requested resource was not found. Please check the URL and try again.'
+          );
+  
+        case HTTP_STATUS.CONFLICT:
+          return new Error(
+            errorResponse?.message || 
+            'This operation could not be completed due to a conflict with existing data.'
+          );
+  
+        case HTTP_STATUS.TOO_MANY_REQUESTS:
+          return new Error(
+            errorResponse?.message || 
+            'Too many requests. Please wait a moment before trying again.'
+          );
+  
+        case HTTP_STATUS.INTERNAL_SERVER_ERROR:
+          logger.error('Server Error:', errorResponse);
+          return new Error(
+            errorResponse?.message || 
+            'An unexpected server error occurred. Our team has been notified.'
+          );
+  
+        case HTTP_STATUS.SERVICE_UNAVAILABLE:
+          return new Error(
+            errorResponse?.message || 
+            'The service is temporarily unavailable. Please try again later.'
+          );
+  
         default:
+          // Handle other status codes
+          if (status >= 500) {
+            logger.error('Unhandled Server Error:', {
+              status,
+              response: errorResponse
+            });
+            return new Error(
+              errorResponse?.message || 
+              'A server error occurred. Our team has been notified.'
+            );
+          }
+  
+          if (status >= 400) {
+            return new Error(
+              errorResponse?.error?.message || 
+              errorResponse?.message || 
+              'The request could not be completed. Please try again.'
+            );
+          }
+  
           return new Error(
             errorResponse?.error?.message || 
             errorResponse?.message || 
             error.message || 
-            'An unexpected error occurred'
+            'An unexpected error occurred. Please try again.'
           );
       }
     }
-
-    return error instanceof Error ? error : new Error('An unexpected error occurred');
+  
+    // Handle non-Axios errors
+    if (error instanceof Error) {
+      logger.error('Non-Axios Error:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      return error;
+    }
+  
+    // Handle unknown errors
+    logger.error('Unknown Error:', error);
+    return new Error('An unexpected error occurred. Please try again later.');
   }
 }
 

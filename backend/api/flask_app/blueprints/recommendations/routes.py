@@ -17,6 +17,7 @@ from ...utils.error_handlers import (
     handle_not_found_error
 )
 from ...utils.response_builder import ResponseBuilder
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 from core.messaging.event_types import (
     ComponentType,
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 def validate_recommendation_id(func):
     """Decorator to validate recommendation ID format."""
-
     def wrapper(recommendation_id, *args, **kwargs):
         try:
             validated_id = UUID(recommendation_id)
@@ -40,11 +40,11 @@ def validate_recommendation_id(func):
                 "Invalid recommendation ID format",
                 status_code=400
             )
-
+    wrapper.__name__ = func.__name__
     return wrapper
 
 
-def create_recommendation_blueprint(recommendation_service, staging_manager):
+def create_recommendation_blueprint(recommendation_service, staging_manager, jwt_manager):
     """
     Create recommendation blueprint with comprehensive staging integration.
 
@@ -57,7 +57,8 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
     """
     recommendation_bp = Blueprint('recommendations', __name__)
 
-    @recommendation_bp.route('/generate', methods=['POST'])
+    @recommendation_bp.route('/generate', methods=['POST'], endpoint='recommendation_generate')
+    @jwt_manager.permission_required('recommendations:generate')
     async def generate_recommendations():
         """Generate recommendations with staging integration."""
         try:
@@ -92,13 +93,10 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
         except ValidationError as ve:
             return handle_validation_error(ve)
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to generate recommendations",
-                logger
-            )
+            return handle_service_error(e, "Failed to generate recommendations", logger)
 
-    @recommendation_bp.route('/list', methods=['GET'])
+    @recommendation_bp.route('/list', methods=['GET'], endpoint='recommendation_list')
+    @jwt_manager.permission_required('recommendations:list')
     async def list_recommendations():
         """List recommendations with filtering and priority sorting."""
         try:
@@ -128,14 +126,11 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to list recommendations",
-                logger
-            )
+            return handle_service_error(e, "Failed to list recommendations", logger)
 
-    @recommendation_bp.route('/<recommendation_id>/apply', methods=['POST'])
+    @recommendation_bp.route('/<recommendation_id>/apply', methods=['POST'], endpoint='recommendation_apply')
     @validate_recommendation_id
+    @jwt_manager.permission_required('recommendations:apply')
     async def apply_recommendation(recommendation_id):
         """Apply a recommendation with proper tracking."""
         try:
@@ -171,14 +166,11 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to apply recommendation",
-                logger
-            )
+            return handle_service_error(e, "Failed to apply recommendation", logger)
 
-    @recommendation_bp.route('/<recommendation_id>/dismiss', methods=['POST'])
+    @recommendation_bp.route('/<recommendation_id>/dismiss', methods=['POST'], endpoint='recommendation_dismiss')
     @validate_recommendation_id
+    @jwt_manager.permission_required('recommendations:dismiss')
     async def dismiss_recommendation(recommendation_id):
         """Dismiss a recommendation with reason tracking."""
         try:
@@ -215,20 +207,15 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to dismiss recommendation",
-                logger
-            )
+            return handle_service_error(e, "Failed to dismiss recommendation", logger)
 
-    @recommendation_bp.route('/<recommendation_id>/impact', methods=['GET'])
+    @recommendation_bp.route('/<recommendation_id>/impact', methods=['GET'], endpoint='recommendation_impact')
     @validate_recommendation_id
+    @jwt_manager.permission_required('recommendations:impacts:read')
     async def analyze_impact(recommendation_id):
         """Analyze recommendation impact with comprehensive metrics."""
         try:
-            impact_analysis = await recommendation_service.analyze_impact(
-                recommendation_id
-            )
+            impact_analysis = await recommendation_service.analyze_impact(recommendation_id)
 
             # Get historical impact data
             if impact_analysis.staging_reference:
@@ -244,27 +231,17 @@ def create_recommendation_blueprint(recommendation_service, staging_manager):
             })
 
         except Exception as e:
-            return handle_service_error(
-                e,
-                "Failed to analyze impact",
-                logger
-            )
+            return handle_service_error(e, "Failed to analyze impact", logger)
 
     @recommendation_bp.errorhandler(404)
     def not_found_error(error):
         """Handle resource not found errors."""
-        return ResponseBuilder.error(
-            "Resource not found",
-            status_code=404
-        )
+        return ResponseBuilder.error("Resource not found", status_code=404)
 
     @recommendation_bp.errorhandler(500)
     def internal_error(error):
         """Handle internal server errors."""
         logger.error(f"Internal server error: {error}", exc_info=True)
-        return ResponseBuilder.error(
-            "Internal server error",
-            status_code=500
-        )
+        return ResponseBuilder.error("Internal server error", status_code=500)
 
     return recommendation_bp

@@ -2,6 +2,7 @@
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from sqlalchemy import Column, String, JSON, DateTime, Integer, Float, ForeignKey, Enum, Boolean
+from sqlalchemy.orm import relationship
 from .base_staging_model import BaseStagedOutput
 
 from core.messaging.event_types import ComponentType
@@ -23,6 +24,13 @@ class StagedInsightOutput(BaseStagedOutput):
     patterns_discovered = Column(JSON)
     correlations = Column(JSON)
     recommendations = Column(JSON)
+
+    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
+    source = relationship(
+        "DataSource",
+        back_populates="insight_outputs",
+        foreign_keys=[source_id]
+    )
 
     __mapper_args__ = {
         "polymorphic_identity": ComponentType.INSIGHT_MANAGER,

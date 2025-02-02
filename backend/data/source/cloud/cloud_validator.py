@@ -3,50 +3,13 @@
 import logging
 import re
 from typing import Dict, Any, Optional
-from dataclasses import dataclass, field
 from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 
+from config.validation_config import S3ValidationConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class S3ValidationConfig:
-    """Configuration for S3 validation"""
-
-    # Bucket name constraints
-    max_bucket_name_length: int = 63
-    min_bucket_name_length: int = 3
-
-    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
-
-    # Key constraints
-    max_key_length: int = 1024
-
-    # Size limits
-    max_file_size_mb: int = 5 * 1024  # 5 GB
-    min_file_size_bytes: int = 1
-
-    # Allowed characters and patterns
-    allowed_bucket_chars: str = r'^[a-z0-9.-]+$'
-    allowed_key_chars: str = r'^[a-zA-Z0-9_\-./]+$'
-
-    # Supported AWS regions
-    allowed_regions: set[str] = field(default_factory=lambda: {
-        'us-east-1', 'us-west-2', 'eu-west-1',
-        'ap-southeast-1', 'ap-northeast-1'
-    })
-
-    # Supported operations
-    allowed_operations: set[str] = field(default_factory=lambda: {
-        'get', 'put', 'delete', 'list', 'head'
-    })
-
-    # Sensitive information patterns
-    blocked_patterns: list[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'key', r'token', r'credential'
-    ])
 
 
 class S3Validator:

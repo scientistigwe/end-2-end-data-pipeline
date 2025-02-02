@@ -23,6 +23,7 @@ from .base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
+
 class ReportManager(BaseManager):
     """
     Report Manager: Coordinates high-level report workflow.
@@ -30,18 +31,47 @@ class ReportManager(BaseManager):
     - Tracks data dependencies
     - Coordinates through messages
     """
+
     def __init__(
-        self,
-        message_broker: MessageBroker,
-        component_name: str,
-        domain_type: str
+            self,
+            message_broker: MessageBroker,
+            component_name: str = "report_manager",
+            domain_type: str = "report"
     ):
+        # Call base class initialization first
         super().__init__(
             message_broker=message_broker,
             component_name=component_name,
             domain_type=domain_type
         )
-        self.report_contexts: Dict[str, Dict[str, Any]] = {}
+
+        # Active processes and contexts
+        self.active_processes: Dict[str, ReportContext] = {}
+
+        # Report configuration
+        self.report_thresholds = {
+            "max_section_size": 1024 * 1024,  # 1MB
+            "max_processing_time": 1800,  # 30 minutes
+            "validation_threshold": 0.8
+        }
+
+    async def _initialize_manager(self) -> None:
+        """Initialize report manager components"""
+        try:
+            # Initialize base components - this will also start background tasks
+            await super()._initialize_manager()
+
+            # Setup report-specific message handlers
+            await self._setup_domain_handlers()
+
+            # Update state
+            self.state = ManagerState.ACTIVE
+            logger.info(f"Report manager initialized successfully: {self.context.component_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize report manager: {str(e)}")
+            self.state = ManagerState.ERROR
+            raise
 
     async def _setup_domain_handlers(self) -> None:
         """Setup report-specific message handlers"""
@@ -69,6 +99,305 @@ class ReportManager(BaseManager):
         for message_type, handler in handlers.items():
             await self.register_message_handler(message_type, handler)
 
+    async def _handle_section_generate(self, message: ProcessingMessage) -> None:
+        """Handle request to generate a specific report section"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            section_type = message.content.get('section_type')
+            section_config = message.content.get('config', {})
+
+            # Update context state
+            context.current_section = section_type
+            context.updated_at = datetime.now()
+
+            # Request section generation from service
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_SECTION_GENERATE_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'section_type': section_type,
+                        'config': section_config,
+                        'template_name': context.template_name
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Section generation request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_visualization_generate(self, message: ProcessingMessage) -> None:
+        """Handle request to generate report visualization"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            visualization_type = message.content.get('visualization_type')
+            data = message.content.get('data', {})
+            viz_config = message.content.get('config', {})
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_VISUALIZATION_GENERATE_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'visualization_type': visualization_type,
+                        'data': data,
+                        'config': viz_config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Visualization generation request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_validate_request(self, message: ProcessingMessage) -> None:
+        """Handle request to validate report"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            validation_config = message.content.get('validation_config', {})
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_VALIDATE_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'sections': context.sections,
+                        'config': validation_config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Report validation request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_validate_complete(self, message: ProcessingMessage) -> None:
+        """Handle completion of report validation"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            validation_results = message.content.get('validation_results', {})
+
+            if validation_results.get('is_valid', False):
+                # Proceed with export
+                await self._handle_export_request(
+                    ProcessingMessage(
+                        message_type=MessageType.REPORT_EXPORT_REQUEST,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'format': context.format
+                        }
+                    )
+                )
+            else:
+                await self._handle_validate_reject(
+                    ProcessingMessage(
+                        message_type=MessageType.REPORT_VALIDATE_REJECT,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'validation_results': validation_results
+                        }
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Validation completion handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_validate_reject(self, message: ProcessingMessage) -> None:
+        """Handle report validation rejection"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            validation_results = message.content.get('validation_results', {})
+            context.validation_issues = validation_results.get('issues', [])
+
+            # Notify about validation failure
+            await self._publish_error(
+                pipeline_id,
+                f"Report validation failed: {validation_results.get('reason', 'Unknown reason')}"
+            )
+
+        except Exception as e:
+            logger.error(f"Validation rejection handling failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_export_request(self, message: ProcessingMessage) -> None:
+        """Handle request to export report"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            export_format = message.content.get('format', context.format)
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_EXPORT_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'format': export_format,
+                        'sections': context.sections,
+                        'metadata': context.metadata
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Export request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_delivery_request(self, message: ProcessingMessage) -> None:
+        """Handle request to deliver report"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            delivery_config = message.content.get('delivery_config', {})
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_DELIVERY_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'report_location': context.report_location,
+                        'config': delivery_config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Delivery request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_format_request(self, message: ProcessingMessage) -> None:
+        """Handle request to format report"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            format_config = message.content.get('format_config', {})
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.REPORT_FORMAT_REQUEST,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'sections': context.sections,
+                        'config': format_config
+                    },
+                    metadata=MessageMetadata(
+                        correlation_id=context.correlation_id,
+                        source_component=self.context.component_name,
+                        target_component="report_service",
+                        domain_type="report"
+                    )
+                )
+            )
+
+        except Exception as e:
+            logger.error(f"Format request failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_style_update(self, message: ProcessingMessage) -> None:
+        """Handle report style updates"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            style_updates = message.content.get('style_updates', {})
+            context.style_config.update(style_updates)
+
+            # Apply style updates to report
+            await self._apply_style_updates(pipeline_id, style_updates)
+
+        except Exception as e:
+            logger.error(f"Style update failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
+    async def _handle_template_update(self, message: ProcessingMessage) -> None:
+        """Handle report template updates"""
+        pipeline_id = message.content.get('pipeline_id')
+        context = self.active_processes.get(pipeline_id)
+
+        if not context:
+            return
+
+        try:
+            new_template = message.content.get('template_name')
+            if new_template:
+                context.template_name = new_template
+                await self._apply_template_update(pipeline_id, new_template)
+
+        except Exception as e:
+            logger.error(f"Template update failed: {str(e)}")
+            await self._handle_error(pipeline_id, str(e))
+
     async def _handle_generate_request(self, message: ProcessingMessage) -> None:
         """Handle report generation request"""
         try:
@@ -93,31 +422,6 @@ class ReportManager(BaseManager):
     async def _generate_report_sections(self, pipeline_id: str, config: Dict[str, Any]) -> None:
         """Generate report sections based on config"""
         raise NotImplementedError
-
-    def _setup_message_handlers(self) -> None:
-        """Setup message handlers"""
-        handlers = {
-            # CPM Messages
-            MessageType.CONTROL_POINT_CREATED: self._handle_control_point_created,
-            MessageType.CONTROL_POINT_UPDATE: self._handle_control_point_update,
-
-            # Data Source Messages
-            MessageType.QUALITY_COMPLETE: self._handle_quality_complete,
-            MessageType.INSIGHT_COMPLETE: self._handle_insight_complete,
-            MessageType.ANALYTICS_COMPLETE: self._handle_analytics_complete,
-
-            # Service Messages
-            MessageType.REPORT_SERVICE_STATUS: self._handle_service_status,
-            MessageType.REPORT_SERVICE_COMPLETE: self._handle_service_complete,
-            MessageType.REPORT_SERVICE_ERROR: self._handle_service_error
-        }
-
-        for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
-                self.module_identifier,
-                message_type.value,
-                handler
-            )
 
     async def _handle_control_point_created(self, message: ProcessingMessage) -> None:
         """Handle new control point for report generation"""

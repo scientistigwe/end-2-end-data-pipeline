@@ -52,60 +52,63 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
 
   const handleFormSubmit = useCallback(
     async (data: FileUploadFormData) => {
-        try {
-            setError(null);
-            const file = data.files[0];
+      try {
+        setError(null);
+        const file = data.files[0];
 
-            if (!file) {
-                throw new Error(DATASOURCE_MESSAGES.ERRORS.VALIDATION_FAILED);
-            }
-
-            // File size validation
-            if (file.size > FILE_SOURCE_CONSTANTS.maxFileSize) {
-                throw new Error(
-                    `File size exceeds maximum limit of ${
-                        FILE_SOURCE_CONSTANTS.maxFileSize / (1024 * 1024)
-                    }MB`
-                );
-            }
-
-            // Create FormData for proper multipart/form-data handling
-            const formData = new FormData();
-            formData.append('file', file);
-
-            // Add metadata as a JSON string
-            const metadata = {
-                type: data.config.type,
-                delimiter: data.config.delimiter,
-                encoding: data.config.encoding,
-                hasHeader: Boolean(data.config.hasHeader),
-                sheet: data.config.sheet,
-                skipRows: Number(data.config.skipRows) || 0,
-                parseOptions: data.config.parseOptions,
-            };
-            formData.append('metadata', JSON.stringify(metadata));
-
-            // Log what we're sending (for debugging)
-            console.log('Sending file:', file.name, 'size:', file.size);
-            console.log('Metadata:', metadata);
-
-            // Use dataSourceApi.uploadFile with proper content type
-            const result = await dataSourceApi.uploadFile(formData, (progress) => {
-                console.log('Upload progress:', progress);
-            });
-
-            console.log('Upload result:', result);
-            onSubmit(result.data);
-            reset();
-
-        } catch (err) {
-            console.error("Error during file upload:", err);
-            setError(
-                err instanceof Error
-                    ? err
-                    : new Error(DATASOURCE_MESSAGES.ERRORS.UPLOAD_FAILED)
-            );
+        if (!file) {
+          throw new Error(DATASOURCE_MESSAGES.ERRORS.VALIDATION_FAILED);
         }
+
+        // File size validation
+        if (file.size > FILE_SOURCE_CONSTANTS.maxFileSize) {
+          throw new Error(
+            `File size exceeds maximum limit of ${
+              FILE_SOURCE_CONSTANTS.maxFileSize / (1024 * 1024)
+            }MB`
+          );
+        }
+
+        // Create FormData for proper multipart/form-data handling
+        const formData = new FormData();
+        formData.append("file", file);
+
+        // Add metadata as a JSON string
+        const metadata = {
+          type: data.config.type,
+          delimiter: data.config.delimiter,
+          encoding: data.config.encoding,
+          hasHeader: Boolean(data.config.hasHeader),
+          sheet: data.config.sheet,
+          skipRows: Number(data.config.skipRows) || 0,
+          parseOptions: data.config.parseOptions,
+        };
+        formData.append("metadata", JSON.stringify(metadata));
+
+        // Log what we're sending (for debugging)
+        console.log("Sending file:", file.name, "size:", file.size);
+        console.log("Metadata:", metadata);
+
+        // Use dataSourceApi.uploadFile with proper content type
+        const result = await dataSourceApi.uploadFile(
+          file, // Send the file directly, not formData
+          metadata, // Send the metadata object
+          (progress) => {
+            console.log("Upload progress:", progress);
+          }
+        );
+
+        console.log("Upload result:", result);
+        onSubmit(result.data);
+        reset();
+      } catch (err) {
+        console.error("Error during file upload:", err);
+        setError(
+          err instanceof Error
+            ? err
+            : new Error(DATASOURCE_MESSAGES.ERRORS.UPLOAD_FAILED)
+        );
+      }
     },
     [onSubmit, reset]
   );

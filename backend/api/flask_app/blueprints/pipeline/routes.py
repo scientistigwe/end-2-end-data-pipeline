@@ -70,13 +70,14 @@ def validate_pipeline_id(func):
     return wrapper
 
 
-def create_pipeline_blueprint(pipeline_service, staging_manager):
+def create_pipeline_blueprint(pipeline_service, staging_manager, jwt_manager):
     """
     Create an enhanced pipeline blueprint with comprehensive routing and error handling.
 
     Args:
         pipeline_service: Service for pipeline operations
         staging_manager: Manager for staging operations
+        jwt_manager: JWT manager for authentication and authorization
 
     Returns:
         Blueprint: Configured pipeline routes
@@ -84,6 +85,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
     pipeline_bp = Blueprint('pipeline', __name__)
 
     @pipeline_bp.route('/', methods=['GET'])
+    @jwt_manager.permission_required('pipeline:list')
     def list_pipelines():
         """List pipelines with filtering and pagination"""
         try:
@@ -126,6 +128,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
             )
 
     @pipeline_bp.route('/', methods=['POST'])
+    @jwt_manager.permission_required('pipeline:create')
     async def create_pipeline():
         """Create new pipeline with staging integration"""
         try:
@@ -176,6 +179,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
 
     @pipeline_bp.route('/<pipeline_id>', methods=['GET'])
     @validate_pipeline_id
+    @jwt_manager.permission_required('pipeline:read')
     async def get_pipeline(pipeline_id):
         """Get comprehensive pipeline details"""
         try:
@@ -208,6 +212,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
 
     @pipeline_bp.route('/<pipeline_id>/start', methods=['POST'])
     @validate_pipeline_id
+    @jwt_manager.permission_required('pipeline:execute')
     def start_pipeline(pipeline_id):
         """Start pipeline execution"""
         try:
@@ -249,6 +254,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
 
     @pipeline_bp.route('/<pipeline_id>/status', methods=['GET'])
     @validate_pipeline_id
+    @jwt_manager.permission_required('pipeline:read')
     async def get_pipeline_status(pipeline_id):
         """Get comprehensive pipeline status"""
         try:
@@ -284,6 +290,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
 
     @pipeline_bp.route('/<pipeline_id>/logs', methods=['GET'])
     @validate_pipeline_id
+    @jwt_manager.permission_required('pipeline:read')
     def get_pipeline_logs(pipeline_id):
         """Get filtered pipeline logs"""
         try:
@@ -308,6 +315,7 @@ def create_pipeline_blueprint(pipeline_service, staging_manager):
 
     @pipeline_bp.route('/<pipeline_id>/metrics', methods=['GET'])
     @validate_pipeline_id
+    @jwt_manager.permission_required('pipeline:read')
     async def get_pipeline_metrics(pipeline_id):
         """Get comprehensive pipeline metrics"""
         try:

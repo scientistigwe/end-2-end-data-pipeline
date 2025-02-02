@@ -1,7 +1,7 @@
 # backend/data/source/file/file_handler.py
 
 import logging
-from typing import Dict, Any, Optional, BinaryIO
+from typing import Dict, Any, Optional, BinaryIO, List
 from datetime import datetime
 from pathlib import Path
 import aiofiles
@@ -94,3 +94,39 @@ class FileHandler:
         except Exception as e:
             logger.error(f"File staging error: {str(e)}")
             raise
+
+    def list_files(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        List files in staging area for a user
+
+        Args:
+            user_id: ID of the user
+
+        Returns:
+            List of file metadata
+        """
+        try:
+            # Query staging area for user's files
+            staged_files = self.staging_manager.get_staged_files(
+                filter_params={
+                    'user_id': user_id,
+                    'source_type': 'file'
+                }
+            )
+
+            return [
+                {
+                    'staged_id': file['id'],
+                    'filename': file['metadata'].get('original_filename', ''),
+                    'status': file['status'],
+                    'created_at': file['created_at'],
+                    'metadata': file['metadata'],
+                    'size': file['metadata'].get('size', 0),
+                    'mime_type': file['metadata'].get('mime_type', ''),
+                    'processing_status': file['processing_status']
+                }
+                for file in staged_files
+            ]
+        except Exception as e:
+            logger.error(f"Error listing staged files: {str(e)}")
+            return []

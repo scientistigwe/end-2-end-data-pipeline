@@ -1,6 +1,6 @@
 # backend\backend\db\types\pipeline.py
 from sqlalchemy import (
-    Column, String, DateTime, Enum, ForeignKey, Float, Text, 
+    Column, String, DateTime, Enum, ForeignKey, Float, Text, Table,
     Integer, Boolean, Index, UniqueConstraint, event, DDL, CheckConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -8,6 +8,43 @@ from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 from .base import BaseModel
 from datetime import datetime
+
+# Import all staged output models
+from .staging.decision_output_model import StagedDecisionOutput
+from .staging.recommendation_output_model import StagedRecommendationOutput
+from .staging.monitoring_output_model import StagedMonitoringOutput
+from .staging.insight_output_model import StagedInsightOutput
+from .staging.quality_output_model import StagedQualityOutput
+from .staging.advanced_analytics_output_model import StagedAnalyticsOutput
+from .staging.report_output_model import StagedReportOutput
+from .staging.staging_control_model import StagingControlPoint
+
+# Add before the Pipeline class definition
+pipeline_tags = Table(
+    'pipeline_tags',
+    BaseModel.metadata,
+    Column('pipeline_id', UUID(as_uuid=True), ForeignKey('pipelines.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', UUID(as_uuid=True), ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True),
+    Index('ix_pipeline_tags_pipeline', 'pipeline_id'),
+    Index('ix_pipeline_tags_tag', 'tag_id')
+)
+
+
+class Tag(BaseModel):
+    """Model for pipeline tags."""
+    __tablename__ = 'tags'
+
+    name = Column(String(100), nullable=False, unique=True)
+    description = Column(Text)
+    color = Column(String(7))  # Hex color code
+
+    # Relationships
+    pipelines = relationship(
+        'Pipeline',
+        secondary=pipeline_tags,
+        back_populates='tags'
+    )
+
 
 class Pipeline(BaseModel):
     __tablename__ = 'pipelines'
@@ -62,19 +99,82 @@ class Pipeline(BaseModel):
     steps = relationship('PipelineStep', back_populates='pipeline', cascade='all, delete-orphan')
     runs = relationship('PipelineRun', back_populates='pipeline', cascade='all, delete-orphan')
     quality_gates = relationship('QualityGate', back_populates='pipeline', cascade='all, delete-orphan')
-    alerts = relationship('Alert', back_populates='pipeline')
-    alert_rules = relationship('AlertRule', back_populates='pipeline')
-    health_checks = relationship('HealthCheck', back_populates='pipeline')
-    resource_usage = relationship('ResourceUsage', back_populates='pipeline')
-    decisions = relationship('Decision', back_populates='pipeline', cascade='all, delete-orphan')
-    recommendations = relationship('Recommendation', back_populates='pipeline', cascade='all, delete-orphan')
-  
-    tags = relationship(
-        'Tag',
-        secondary='pipeline_tags',  # Using the association table
-        back_populates='pipelines'
+
+    base_outputs = relationship(
+        "db.models.staging.base_staging_model.BaseStagedOutput",
+        backref="pipeline_ref",
+        foreign_keys="[db.models.staging.base_staging_model.BaseStagedOutput.pipeline_id]",
+        cascade="all, delete-orphan"
+    )
+    # Update the base_outputs relationship
+    staged_outputs = relationship(
+        "BaseStagedOutput",
+        backref="pipeline",
+        foreign_keys="[BaseStagedOutput.pipeline_id]",
+        cascade="all, delete-orphan"
     )
 
+    decisions = relationship(
+        "db.models.staging.decision_output_model.StagedDecisionOutput",
+        primaryjoin="and_(Pipeline.id==StagedDecisionOutput.pipeline_id, "
+                   "StagedDecisionOutput.component_type=='decision')",
+        viewonly=True
+    )
+
+    recommendations = relationship(
+        "db.models.staging.recommendation_output_model.StagedRecommendationOutput",
+        primaryjoin="and_(Pipeline.id==StagedRecommendationOutput.pipeline_id, "
+                   "StagedRecommendationOutput.component_type=='recommendation')",
+        viewonly=True
+    )
+
+    monitoring_outputs = relationship(
+        "db.models.staging.monitoring_output_model.StagedMonitoringOutput",
+        primaryjoin="and_(Pipeline.id==StagedMonitoringOutput.pipeline_id, "
+                   "StagedMonitoringOutput.component_type=='monitoring')",
+        viewonly=True
+    )
+
+    insight_outputs = relationship(
+        "db.models.staging.insight_output_model.StagedInsightOutput",
+        primaryjoin="and_(Pipeline.id==StagedInsightOutput.pipeline_id, "
+                   "StagedInsightOutput.component_type=='insight')",
+        viewonly=True
+    )
+
+    quality_outputs = relationship(
+        "db.models.staging.quality_output_model.StagedQualityOutput",
+        primaryjoin="and_(Pipeline.id==StagedQualityOutput.pipeline_id, "
+                   "StagedQualityOutput.component_type=='quality')",
+        viewonly=True
+    )
+
+    analytics_outputs = relationship(
+        "db.models.staging.advanced_analytics_output_model.StagedAnalyticsOutput",
+        primaryjoin="and_(Pipeline.id==StagedAnalyticsOutput.pipeline_id, "
+                   "StagedAnalyticsOutput.component_type=='analytics')",
+        viewonly=True
+    )
+
+    report_outputs = relationship(
+        "db.models.staging.report_output_model.StagedReportOutput",
+        primaryjoin="and_(Pipeline.id==StagedReportOutput.pipeline_id, "
+                   "StagedReportOutput.component_type=='report')",
+        viewonly=True
+    )
+
+    control_points = relationship(
+        "db.models.staging.staging_control_model.StagingControlPoint",
+        primaryjoin="and_(Pipeline.id==StagingControlPoint.pipeline_id, "
+                   "StagingControlPoint.component_type=='control')",
+        viewonly=True
+    )
+
+    tags = relationship(
+        'Tag',
+        secondary='pipeline_tags',
+        back_populates='pipelines'
+    )
     __table_args__ = (
         Index('ix_pipelines_status', 'status'),
         Index('ix_pipelines_mode', 'mode'),
@@ -260,6 +360,40 @@ class QualityGate(BaseModel):
        {'extend_existing': True}
    )
 
+class QualityCheck(BaseModel):
+    """Model for tracking quality check results for pipeline runs."""
+    __tablename__ = 'quality_checks'
+
+    pipeline_run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('pipeline_runs.id', ondelete='CASCADE'),
+        nullable=False
+    )
+    gate_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('quality_gates.id', ondelete='CASCADE'),
+        nullable=False
+    )
+    status = Column(
+        Enum('passed', 'failed', 'warning', name='check_status'),
+        nullable=False
+    )
+    check_time = Column(DateTime, nullable=False)
+    metrics = Column(JSONB)
+    threshold_value = Column(Float)
+    actual_value = Column(Float)
+    details = Column(JSONB)
+
+    # Relationships
+    pipeline_run = relationship('PipelineRun', back_populates='quality_checks')
+    quality_gate = relationship('QualityGate')
+
+    __table_args__ = (
+        Index('ix_quality_checks_run', 'pipeline_run_id'),
+        Index('ix_quality_checks_gate', 'gate_id'),
+        Index('ix_quality_checks_status', 'status'),
+        {'extend_existing': True}
+    )
 
 class PipelineLog(BaseModel):
     __tablename__ = 'pipeline_logs'

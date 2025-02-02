@@ -37,9 +37,6 @@ class StagedMonitoringOutput(BaseStagedOutput):
     monitoring_created_at = column_property(Column(DateTime, default=datetime.utcnow))
     monitoring_updated_at = column_property(Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow))
 
-    # Relationships
-    base_output = relationship("BaseStagedOutput", back_populates="monitoring_output")
-
     __mapper_args__ = {
         "polymorphic_identity": "staging.monitoring_output",
         "inherit_condition": base_id == BaseStagedOutput.id

@@ -18,6 +18,12 @@ class BaseStagedOutput(Base):
     # Change pipeline_id to UUID
     pipeline_id = Column(UUID(as_uuid=True), ForeignKey('pipelines.id'))
 
+    # Source_id field
+    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'), nullable=True)
+
+    # Source relationship
+    source = relationship("DataSource", foreign_keys=[source_id])
+
     # Rest of the model remains the same
     component_type = Column(Enum(ComponentType))
     output_type = Column(Enum(ReportSectionType))
@@ -30,8 +36,6 @@ class BaseStagedOutput(Base):
     expires_at = Column(DateTime, nullable=True)
     is_temporary = Column(Boolean, default=True)
 
-    # Relationships
-    pipeline = relationship("Pipeline", back_populates="staged_outputs")
     metrics = Column(JSON, default={})
     processing_history = relationship("StagingProcessingHistory", back_populates="staged_output")
 

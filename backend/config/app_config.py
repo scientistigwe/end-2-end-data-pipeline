@@ -31,20 +31,52 @@ class Config:
         self.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
         # Security configuration
+        # JWT Settings - Consolidated and Enhanced
         self.JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
-        self.JWT_PRIVATE_KEY = os.getenv('JWT_PRIVATE_KEY')
-        self.JWT_PUBLIC_KEY = os.getenv('JWT_PUBLIC_KEY')
-        self.JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', 3600))
-        self.ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
+        self.JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', 3600))  # 1 hour
+        self.JWT_REFRESH_TOKEN_EXPIRES = int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES', 2592000))  # 30 days
 
-        # CORS configuration
+        # JWT Cookie Configuration
+        self.JWT_TOKEN_LOCATION = ['cookies']
+        self.JWT_ACCESS_COOKIE_NAME = 'access_token_cookie'  # Must match exactly
+        self.JWT_REFRESH_COOKIE_NAME = 'refresh_token_cookie'  # Must match exactly
+        self.JWT_ACCESS_COOKIE_PATH = '/'
+        self.JWT_REFRESH_COOKIE_PATH = '/api/v1/auth/refresh'
+        self.JWT_COOKIE_CSRF_PROTECT = False  # Set to True in production
+        self.JWT_COOKIE_SECURE = self.ENV != 'development'  # True in production
+        self.JWT_COOKIE_SAMESITE = 'Lax' if self.ENV == 'development' else 'Strict'
+
+        # Enhanced CORS Settings
         self.CORS_SETTINGS = {
-            'origins': [os.getenv('VITE_API_URL', 'http://localhost:3000')],
+            'origins': [
+                'http://localhost:3000',
+                'http://localhost:5000',
+                'http://localhost:5173',
+                os.getenv('FRONTEND_URL', ''),  # Add your frontend URL
+                os.getenv('PRODUCTION_DOMAIN', '')
+            ],
             'methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-            'allow_headers': ['Content-Type', 'Authorization'],
-            'supports_credentials': True
+            'allow_headers': [
+                'Content-Type',
+                'Authorization',
+                'X-CSRF-TOKEN',  # Add CSRF token header
+                'X-Requested-With'
+            ],
+            'expose_headers': [
+                'Content-Type',
+                'Authorization',
+                'Set-Cookie'  # Important for cookie handling
+            ],
+            'supports_credentials': True,
+            'max_age': 600  # Cache preflight requests
         }
 
+        # Additional Security Headers
+        self.SECURITY_HEADERS = {
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'SAMEORIGIN',
+            'X-XSS-Protection': '1; mode=block'
+        }
 
 class DevelopmentConfig(Config):
     """Development configuration."""

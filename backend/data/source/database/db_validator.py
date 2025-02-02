@@ -3,43 +3,11 @@
 import re
 import logging
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
 from datetime import datetime
 
+from config.validation_config import DatabaseValidationConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class DatabaseValidationConfig:
-    """Configuration for database source validation"""
-
-    REQUEST_TIMEOUT: int = 30  # 30 seconds default timeout
-
-    # Supported database types with their default ports
-    supported_sources: Dict[str, Dict[str, Optional[int]]] = field(default_factory=lambda: {
-        'postgresql': {'default_port': 5432},
-        'mysql': {'default_port': 3306},
-        'mssql': {'default_port': 1433},
-        'oracle': {'default_port': 1521},
-        'sqlite': {'default_port': None}
-    })
-
-    # Validation constraints
-    min_database_length: int = 1
-    max_database_length: int = 128
-    min_host_length: int = 1
-    max_host_length: int = 255
-
-    # Regular expression patterns
-    allowed_database_chars: str = r'^[a-zA-Z0-9_\-\.]+$'
-    allowed_host_chars: str = r'^[a-zA-Z0-9.-]+$'
-    allowed_username_chars: str = r'^[a-zA-Z0-9_\-\.]+$'
-
-    # Sensitive information patterns
-    blocked_patterns: List[str] = field(default_factory=lambda: [
-        r'password', r'secret', r'key', r'token', r'credential'
-    ])
-
 
 class DatabaseSourceValidator:
     """Enhanced database source validator with integrated config"""

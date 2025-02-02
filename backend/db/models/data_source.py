@@ -1,27 +1,23 @@
-# backend\backend\db\types\base.py
+# backend/db/models/data_source.py
+
 from sqlalchemy import (
     Column, String, DateTime, Enum, ForeignKey, Text, Boolean, Integer, Index
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, validates, configure_mappers
+from sqlalchemy.orm import relationship
 from .base import BaseModel
-
-# backend/db/types/base.py
-
-from sqlalchemy import (
-    Column, String, DateTime, Enum, ForeignKey, Text, Boolean, Integer, Index
-)
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, validates
 from typing import TYPE_CHECKING
-from .base import BaseModel
 
 if TYPE_CHECKING:
-    from .insight_model import InsightRun, Insight
-    from .advanced_analytics_model import AnalyticsRun
-    from .data_quality_model import QualityRun
+    from .staging import (
+        StagedInsightOutput,
+        StagedAnalyticsOutput,
+        StagedQualityOutput,
+        BaseStagedOutput
+    )
+    from .auth import User
     from .pipeline import Pipeline
-    from .dataset import Dataset
+
 
 class DataSource(BaseModel):
     """Model for managing data sources and their configurations."""
@@ -52,39 +48,26 @@ class DataSource(BaseModel):
 
     # Basic relationships
     owner = relationship('User', back_populates='data_sources', foreign_keys=[owner_id])
-    
-    # Analytics relationships
-    insight_runs = relationship(
-        'InsightRun',
+
+    # Staged output relationships
+    insight_outputs = relationship(
+        'StagedInsightOutput',
         back_populates='source',
-        foreign_keys='[InsightRun.source_id]',
-        cascade='all, delete-orphan'
-    )
-    
-    analytics_runs = relationship(
-        'AnalyticsRun',
-        back_populates='source',
-        foreign_keys='[AnalyticsRun.source_id]',
-        cascade='all, delete-orphan'
-    )
-    
-    quality_runs = relationship(
-        'QualityRun',
-        back_populates='source',
-        foreign_keys='[QualityRun.source_id]',
+        foreign_keys='[StagedInsightOutput.source_id]',
         cascade='all, delete-orphan'
     )
 
-    # Data relationships
-    datasets = relationship(
-        'Dataset',
+    analytics_outputs = relationship(
+        'StagedAnalyticsOutput',
         back_populates='source',
+        foreign_keys='[StagedAnalyticsOutput.source_id]',
         cascade='all, delete-orphan'
     )
-    
-    validation_results = relationship(
-        'ValidationResult',
+
+    quality_outputs = relationship(
+        'StagedQualityOutput',
         back_populates='source',
+        foreign_keys='[StagedQualityOutput.source_id]',
         cascade='all, delete-orphan'
     )
 
@@ -94,7 +77,7 @@ class DataSource(BaseModel):
         foreign_keys='[Pipeline.source_id]',
         back_populates='source'
     )
-    
+
     pipelines_as_target = relationship(
         'Pipeline',
         foreign_keys='[Pipeline.target_id]',
@@ -108,52 +91,33 @@ class DataSource(BaseModel):
         uselist=False,
         cascade='all, delete-orphan'
     )
-    
+
     db_config = relationship(
         'DatabaseSourceConfig',
         back_populates='source',
         uselist=False,
         cascade='all, delete-orphan'
     )
-    
+
     s3_config = relationship(
         'S3SourceConfig',
         back_populates='source',
         uselist=False,
         cascade='all, delete-orphan'
     )
-    
+
     stream_config = relationship(
         'StreamSourceConfig',
         back_populates='source',
         uselist=False,
         cascade='all, delete-orphan'
     )
-    
+
     file_info = relationship(
         'FileSourceInfo',
         back_populates='source',
         uselist=False,
         cascade='all, delete-orphan'
-    )
-    
-    # History and tracking relationships
-    connections = relationship(
-        'SourceConnection',
-        back_populates='source',
-        cascade='all, delete-orphan'
-    )
-    
-    sync_history = relationship(
-        'SourceSyncHistory',
-        back_populates='source',
-        cascade='all, delete-orphan'
-    )
-
-    tags = relationship(
-        'Tag',
-        secondary='datasource_tags',
-        back_populates='data_sources'
     )
 
     # Constraints and indexes
@@ -170,25 +134,36 @@ class DataSource(BaseModel):
         'with_polymorphic': '*'
     }
 
-    @validates('config')
-    def validate_config(self, key, config):
-        """Validate config based on source type."""
-        required_fields = {
-            'file': ['file_path', 'file_type'],
-            'db': ['connection_string', 'dialect'],
-            'api': ['base_url', 'auth_type'],
-            's3': ['bucket', 'region'],
-            'stream': ['stream_type', 'endpoint']
-        }
-        
-        if self.type in required_fields:
-            missing = [
-                field for field in required_fields[self.type] 
-                if field not in config
-            ]
-            if missing:
-                raise ValueError(f"Missing required config fields: {missing}")
-        return config
+
+class FileDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'file'
+    }
+
+
+class DatabaseDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'db'
+    }
+
+
+class APIDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'api'
+    }
+
+
+class S3DataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 's3'
+    }
+
+
+class StreamDataSource(DataSource):
+    __mapper_args__ = {
+        'polymorphic_identity': 'stream'
+    }
+
 
 class APISourceConfig(BaseModel):
     """Configuration model for API data sources."""

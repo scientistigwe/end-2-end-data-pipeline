@@ -84,3 +84,65 @@ class S3MetadataResponseSchema(StagingResponseSchema):
     tags = fields.Dict()
     version_id = fields.String()
     preview_data = fields.List(fields.Dict())
+
+
+class S3SourceConfigSchema(StagingRequestSchema):
+    """Schema for S3 source configuration and validation"""
+    # Bucket Configuration
+    bucket = fields.String(required=True)
+    region = fields.String(required=True)
+    prefix = fields.String(allow_none=True)
+
+    # Authentication
+    auth_config = fields.Dict(required=True, default=lambda: {
+        'access_key': None,
+        'secret_key': None,
+        'session_token': None,
+        'profile_name': None
+    })
+
+    # Transfer Settings
+    transfer_config = fields.Dict(default=lambda: {
+        'multipart_threshold': 8 * 1024 * 1024,  # 8MB
+        'multipart_chunksize': 8 * 1024 * 1024,
+        'max_concurrency': 10,
+        'use_threads': True
+    })
+
+    # Storage Settings
+    storage_config = fields.Dict(default=lambda: {
+        'storage_class': 'STANDARD',
+        'encryption': {
+            'type': 'AES256',
+            'kms_key_id': None
+        },
+        'versioning': False
+    })
+
+    # Lifecycle Rules
+    lifecycle_rules = fields.List(fields.Dict(), default=list)
+
+    # Access Control
+    access_control = fields.Dict(default=lambda: {
+        'public_access': False,
+        'bucket_owner_full_control': True
+    })
+
+    # Monitoring Settings
+    monitoring_config = fields.Dict(default=lambda: {
+        'enable_metrics': True,
+        'enable_logging': True,
+        'log_prefix': 'logs/'
+    })
+
+    @validates_schema
+    def validate_s3_config(self, data: Dict[str, Any], **kwargs) -> None:
+        if not 3 <= len(data['bucket']) <= 63:
+            raise ValidationError('Bucket name must be between 3 and 63 characters')
+
+        valid_regions = [
+            'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+            'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-northeast-1'
+        ]
+        if data['region'] not in valid_regions:
+            raise ValidationError(f'Invalid AWS region: {data["region"]}')

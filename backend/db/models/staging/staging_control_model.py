@@ -3,6 +3,7 @@
 from sqlalchemy.orm import column_property
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, JSON, DateTime, ForeignKey, Enum
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base_staging_model import BaseStagedOutput
 

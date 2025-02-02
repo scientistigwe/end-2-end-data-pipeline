@@ -88,8 +88,8 @@ class ControlPointManager:
     ):
         # Core components
         self.message_broker = message_broker
-        self.component_registry = ComponentRegistry()
         self.staging_manager = staging_manager
+        self.component_registry = ComponentRegistry()
 
         # State management
         self.active_control_points: Dict[str, ControlPoint] = {}
@@ -97,10 +97,9 @@ class ControlPointManager:
         self.department_chains: Dict[str, Dict[str, ModuleIdentifier]] = {}
         self.active_pipelines: Dict[str, PipelineContext] = {}
 
-        # Frontend tracking
-        self.frontend_requests: Dict[str, FrontendRequest] = {}
-        self.user_sessions: Dict[str, Set[str]] = defaultdict(set)
-        self.user_notifications: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        # Process flow configuration
+        self.stage_transitions = self._setup_stage_transitions()
+        self.department_sequence = self._setup_department_sequence()
 
         # Module identification
         self.module_identifier = ModuleIdentifier(
@@ -110,13 +109,114 @@ class ControlPointManager:
             role="manager"
         )
 
-        # Process flow configuration
-        self.stage_transitions = self._setup_stage_transitions()
-        self.department_sequence = self._setup_department_sequence()
+        # Background tasks
+        self.tasks: List[asyncio.Task] = []
 
-        # Initialize
-        self._initialize()
+    async def initialize(self):
+        """Initialize CPM asynchronously"""
+        try:
+            # Register message handlers
+            await self.message_broker.subscribe(
+                module_identifier=self.module_identifier,
+                message_patterns=[
+                    "control.*",
+                    "*.complete",
+                    "*.error",
+                    "decision.required",
+                    "quality.issues.detected",
+                    "insight.generated",
+                    "recommendation.ready"
+                ],
+                callback=self._handle_control_message
+            )
 
+            # Register processing chains
+            await self._register_department_chains()
+
+            # Start background monitoring tasks
+            self.tasks.extend([
+                asyncio.create_task(self._monitor_process_timeouts()),
+                asyncio.create_task(self._monitor_resource_usage()),
+                asyncio.create_task(self._monitor_component_health())
+            ])
+
+            logger.info("Control Point Manager initialized successfully")
+
+        except Exception as e:
+            logger.error(f"CPM initialization failed: {str(e)}")
+            raise
+
+    async def _monitor_process_timeouts(self):
+        """Monitor processes for timeouts"""
+        while True:
+            try:
+                # Check active control points for timeouts
+                current_time = datetime.now()
+                for cp in list(self.active_control_points.values()):
+                    elapsed_minutes = (current_time - cp.created_at).total_seconds() / 60
+                    if elapsed_minutes > cp.timeout_minutes:
+                        await self._handle_process_timeout(cp)
+
+                await asyncio.sleep(60)  # Check every minute
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Process timeout monitoring failed: {str(e)}")
+                await asyncio.sleep(60)  # Retry after error
+
+    async def _monitor_resource_usage(self):
+        """Monitor system resource usage"""
+        while True:
+            try:
+                # Check CPU, memory usage etc.
+                await self._check_resource_metrics()
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Resource monitoring failed: {str(e)}")
+                await asyncio.sleep(30)
+
+    async def _monitor_component_health(self):
+        """Monitor health of connected components"""
+        while True:
+            try:
+                await self._check_component_health()
+                await self._check_broker_connection()
+                await self._check_processing_health()
+                await asyncio.sleep(60)  # Check every minute
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Health monitoring failed: {str(e)}")
+                await asyncio.sleep(60)
+
+    async def cleanup(self):
+        """Cleanup CPM resources"""
+        try:
+            # Cancel all background tasks
+            for task in self.tasks:
+                task.cancel()
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+            self.tasks.clear()
+
+            # Cleanup active pipelines
+            for pipeline_id in list(self.active_pipelines.keys()):
+                await self._cleanup_pipeline(pipeline_id)
+
+            # Clear state
+            self.active_control_points.clear()
+            self.control_point_history.clear()
+            self.active_pipelines.clear()
+            self.department_chains.clear()
+
+            logger.info("CPM cleanup completed successfully")
+
+        except Exception as e:
+            logger.error(f"CPM cleanup failed: {str(e)}")
     # -------------------------------------------------------------------------
     # FRONTEND INTERFACE
     # -------------------------------------------------------------------------
@@ -916,29 +1016,6 @@ class ControlPointManager:
 
         except Exception as e:
             logger.error(f"Error handling failed: {str(e)}")
-
-    async def cleanup(self) -> None:
-        """Cleanup CPM resources"""
-        try:
-            # Cleanup active pipelines
-            for pipeline_id in list(self.active_pipelines.keys()):
-                await self._cleanup_pipeline(pipeline_id)
-
-            # Clear frontend tracking
-            self.frontend_requests.clear()
-            self.user_sessions.clear()
-            self.user_notifications.clear()
-
-            # Clear state
-            self.active_control_points.clear()
-            self.control_point_history.clear()
-            self.active_pipelines.clear()
-            self.department_chains.clear()
-
-            logger.info("CPM cleanup completed successfully")
-
-        except Exception as e:
-            logger.error(f"CPM cleanup failed: {str(e)}")
 
     #..................................................................................................
     # Helper Methods

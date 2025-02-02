@@ -1,5 +1,6 @@
 # backend/api/app.py
 
+import os
 import logging
 from typing import Dict, Any, Optional
 import asyncio
@@ -41,15 +42,18 @@ from core.managers import (
 from core.services import (
     QualityService, InsightService, AnalyticsService,
     DecisionService, MonitoringService, ReportService,
-    SettingsService
+    AuthService, PipelineService, RecommendationService
 )
 from data.source import (
     FileService, DatabaseService as DBService,
     APIService, S3Service, StreamService
 )
 
+from config.validation_config import ValidationConfigs
+
 # Import route handling
 from api.flask_app.blueprints import create_blueprints
+from api.flask_app.auth.jwt_manager import JWTTokenManager
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,7 @@ class ApplicationFactory:
         self.logger = logging.getLogger(__name__)
         self.config = None
         self.db_config = None
+        self.jwt_manager = None
 
     @asynccontextmanager
     async def lifespan_context(self, config_name: str):
@@ -107,17 +112,6 @@ class ApplicationFactory:
             if self.db_config:
                 self.db_config.cleanup()
             await self._cleanup_async_resources()
-
-    async def create_app(self, config_name: str = 'development') -> Flask:
-        """Create and configure Flask application"""
-        try:
-            async with self.lifespan_context(config_name):
-                self.logger.info(f"Application initialized successfully in {config_name} mode")
-                return self.app
-
-        except Exception as e:
-            self.logger.error(f"Application creation failed: {e}")
-            raise
 
     def _configure_paths(self) -> None:
         """Configure application paths."""
@@ -205,23 +199,38 @@ class ApplicationFactory:
         """Initialize Flask extensions"""
         try:
             # Setup CORS
-            CORS(self.app, resources={r"/api/*": self.config.CORS_SETTINGS})
+            CORS(self.app,
+                 resources={r"/api/*": {
+                     "origins": self.config.CORS_SETTINGS['origins'],
+                     "methods": self.config.CORS_SETTINGS['methods'],
+                     "allow_headers": self.config.CORS_SETTINGS['allow_headers']
+                 }},
+                 supports_credentials=True)
 
-            # Setup JWT
-            jwt = JWTManager(self.app)
+            # Initialize JWT Manager
+            self.jwt_manager = JWTTokenManager()
+            self.jwt_manager.init_app(self.app)
 
             # Configure CORS headers
             @self.app.after_request
             def after_request(response):
+                origin = request.headers.get('Origin')
+                if origin:
+                    # Check if origin is in allowed origins (case-insensitive)
+                    allowed_origins = [o.lower() for o in self.config.CORS_SETTINGS['origins'] if o]
+                    if origin.lower() in allowed_origins:
+                        response.headers.update({
+                            'Access-Control-Allow-Origin': origin,
+                            'Access-Control-Allow-Methods': ', '.join(self.config.CORS_SETTINGS['methods']),
+                            'Access-Control-Allow-Headers': ', '.join(self.config.CORS_SETTINGS['allow_headers']),
+                            'Access-Control-Allow-Credentials': str(
+                                self.config.CORS_SETTINGS.get('supports_credentials', True)).lower(),
+                            'Access-Control-Max-Age': '3600'
+                        })
+
                 if request.method == 'OPTIONS':
                     response.status_code = 200
-                    response.headers.update({
-                        'Access-Control-Allow-Origin': self.config.CORS_SETTINGS['origins'][0],
-                        'Access-Control-Allow-Methods': ', '.join(self.config.CORS_SETTINGS['methods']),
-                        'Access-Control-Allow-Headers': ', '.join(self.config.CORS_SETTINGS['allow_headers']),
-                        'Access-Control-Allow-Credentials': str(self.config.CORS_SETTINGS.get('supports_credentials', True)).lower(),
-                        'Access-Control-Max-Age': '3600'
-                    })
+
                 return response
 
             self.logger.info("Extensions initialized successfully")
@@ -266,7 +275,7 @@ class ApplicationFactory:
     def _register_routes(self) -> None:
         """Register all application routes and blueprints."""
         try:
-            create_blueprints(self.app, self.services)
+            create_blueprints(self.app, self.services, self.jwt_manager)
             self.logger.info("Routes registered successfully")
         except Exception as e:
             self.logger.error(f"Route registration failed: {str(e)}")
@@ -287,53 +296,33 @@ class ApplicationFactory:
             staging_repository = StagingRepository(self.components.get('db_session'))
             storage_path = Path(self.config.STAGING_FOLDER)
 
+            # Initialize StagingManager first
+            staging_manager = StagingManager(
+                message_broker=message_broker,
+                repository=staging_repository,
+                storage_path=storage_path,
+                component_name="staging_manager",
+                domain_type="staging"
+            )
+            await staging_manager.start()  # Use start() instead of _initialize_manager
+            self.components['staging_manager'] = staging_manager
+
             # Define components to initialize
             components_to_initialize = [
-                ('staging_manager', StagingManager(
-                    message_broker=message_broker,
-                    repository=staging_repository,
-                    storage_path=storage_path,
-                    component_name="staging_manager",
-                    domain_type="staging"
-                )),
                 ('cpm', ControlPointManager(
                     message_broker=message_broker,
-                    staging_manager=None  # Will be set after initialization
+                    staging_manager=staging_manager
                 )),
                 ('quality_manager', QualityManager(
                     message_broker=message_broker,
                     component_name="quality_manager",
                     domain_type="quality"
                 )),
-                ('insight_manager', InsightManager(
-                    message_broker=message_broker,
-                    component_name="insight_manager",
-                    domain_type="insight"
-                )),
-                ('analytics_manager', AnalyticsManager(
-                    message_broker=message_broker,
-                    component_name="analytics_manager",
-                    domain_type="analytics"
-                )),
-                ('recommendation_manager', RecommendationManager(
-                    message_broker=message_broker,
-                    component_name="recommendation_manager",
-                    domain_type="recommendation"
-                )),
+                # ... other managers ...
                 ('decision_manager', DecisionManager(
                     message_broker=message_broker,
                     component_name="decision_manager",
                     domain_type="decision"
-                )),
-                ('monitoring_manager', MonitoringManager(
-                    message_broker=message_broker,
-                    component_name="monitoring_manager",
-                    domain_type="monitoring"
-                )),
-                ('report_manager', ReportManager(
-                    message_broker=message_broker,
-                    component_name="report_manager",
-                    domain_type="report"
                 ))
             ]
 
@@ -341,8 +330,8 @@ class ApplicationFactory:
             init_tasks = []
             for name, component in components_to_initialize:
                 self.components[name] = component
-                if hasattr(component, 'initialize') and asyncio.iscoroutinefunction(component.initialize):
-                    init_tasks.append(component.initialize())
+                if hasattr(component, 'start'):  # Use start() instead of _initialize_manager
+                    init_tasks.append(component.start())
 
             if init_tasks:
                 await asyncio.gather(*init_tasks)
@@ -366,57 +355,127 @@ class ApplicationFactory:
     def _initialize_services(self, db_session: scoped_session) -> None:
         """Initialize services with proper dependency management."""
         try:
-            message_broker = self.components['message_broker']
-            staging_manager = self.components['staging_manager']
-            cpm = self.components['cpm']
+            # Get required components
+            message_broker = self.components.get('message_broker')
+            if not message_broker:
+                raise ValueError("Message broker not initialized")
 
-            # Initialize services with dependencies
-            services = {
-                'file_service': FileService(
-                    message_broker=message_broker,
-                    cpm=cpm,
-                    config=self.config.FILE_SERVICE_CONFIG
-                ),
-                'quality_service': QualityService(
-                    manager=self.components['quality_manager'],
-                    message_broker=message_broker
-                ),
-                'insight_service': InsightService(
-                    manager=self.components['insight_manager'],
-                    message_broker=message_broker
-                ),
-                'analytics_service': AnalyticsService(
-                    manager=self.components['analytics_manager'],
-                    message_broker=message_broker
-                ),
-                'decision_service': DecisionService(
-                    manager=self.components['decision_manager'],
-                    message_broker=message_broker
-                ),
-                'monitoring_service': MonitoringService(
-                    manager=self.components['monitoring_manager'],
-                    message_broker=message_broker
-                ),
-                'report_service': ReportService(
-                    manager=self.components['report_manager'],
-                    message_broker=message_broker
-                ),
-                'settings_service': SettingsService(
-                    message_broker=message_broker,
-                    config=self.config.SETTINGS_SERVICE_CONFIG
+            staging_manager = self.components.get('staging_manager')
+            if not staging_manager:
+                raise ValueError("Staging manager not initialized")
+
+            cpm = self.components.get('cpm')
+            if not cpm:
+                raise ValueError("Control Point Manager not initialized")
+
+            # Initialize validation configurations
+            validation_configs = ValidationConfigs()
+
+            # First add core components that other services depend on
+            self.services = {
+                'staging_manager': staging_manager,
+                'cpm': cpm
+            }
+
+            # Initialize auth service
+            auth_services = {
+                'auth_service': AuthService(
+                    db_session=db_session
                 )
             }
 
-            # Add source services
+            # Initialize source services
             source_services = {
-                'db_service': DBService(message_broker=message_broker),
-                'api_service': APIService(message_broker=message_broker),
-                's3_service': S3Service(message_broker=message_broker),
-                'stream_service': StreamService(message_broker=message_broker)
+                'file_service': FileService(
+                    staging_manager=staging_manager,
+                    cpm=cpm,
+                    config={
+                        'validation': validation_configs.file,
+                        'staging_path': str(self.config.STAGING_FOLDER),
+                        'chunk_size': 1024 * 1024  # 1MB chunks
+                    }
+                ),
+                'db_service': DBService(
+                    staging_manager=staging_manager,
+                    cpm=cpm,
+                    config={
+                        'validation': validation_configs.database,
+                        'pool_size': 5,
+                        'max_overflow': 10,
+                        'pool_timeout': 30
+                    }
+                ),
+                'api_service': APIService(
+                    staging_manager=staging_manager,
+                    cpm=cpm,
+                    config={
+                        'validation': validation_configs.api,
+                        'request_timeout': 30,
+                        'response_cache_ttl': 300
+                    }
+                ),
+                's3_service': S3Service(
+                    staging_manager=staging_manager,
+                    cpm=cpm,
+                    config={
+                        'validation': validation_configs.s3,
+                        'bucket_name': os.getenv('S3_BUCKET_NAME'),
+                        'region': os.getenv('AWS_REGION')
+                    }
+                ),
+                'stream_service': StreamService(
+                    staging_manager=staging_manager,
+                    cpm=cpm,
+                    config={
+                        'validation': validation_configs.stream,
+                        'consumer_group': 'data_pipeline',
+                        'auto_offset_reset': 'earliest'
+                    }
+                )
             }
 
-            self.services.update(services)
+            # Initialize pipeline and processing services
+            processing_services = {
+                'pipeline_service': PipelineService(
+                    message_broker=message_broker,
+                ),
+                'quality_service': QualityService(
+                    message_broker=message_broker
+                ),
+                'insight_service': InsightService(
+                    message_broker=message_broker
+                ),
+                'analytics_service': AnalyticsService(
+                    message_broker=message_broker
+                ),
+                'recommendation_service': RecommendationService(
+                    message_broker=message_broker
+                ),
+                'decision_service': DecisionService(
+                    message_broker=message_broker
+                ),
+                'monitoring_service': MonitoringService(
+                    message_broker=message_broker
+                ),
+                'report_service': ReportService(
+                    message_broker=message_broker
+                )
+            }
+
+            # Initialize staging service
+            staging_services = {
+                'staging_service': StagingService(
+                    message_broker=message_broker
+                )
+            }
+
+            # Update all services
+            self.services.update(auth_services)
             self.services.update(source_services)
+            self.services.update(processing_services)
+            self.services.update(staging_services)
+
+            # Make services available to Flask app
             self.app.services = self.services
 
             self.logger.info("Services initialized successfully")
@@ -425,23 +484,13 @@ class ApplicationFactory:
             self.logger.error(f"Service initialization failed: {str(e)}")
             raise
 
-
-def create_app(config_name: str = 'development') -> Flask:
-    """Create application with proper event loop handling"""
-    try:
-        # Setup event loop
+    async def create_app(self, config_name: str = 'development') -> Flask:
+        """Create and configure Flask application"""
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            async with self.lifespan_context(config_name):
+                self.logger.info(f"Application initialized successfully in {config_name} mode")
+                return self.app
 
-        # Create and initialize application
-        factory = ApplicationFactory()
-        app = loop.run_until_complete(factory.create_app(config_name))
-
-        return app
-
-    except Exception as e:
-        logging.error(f"Failed to create application: {e}")
-        raise
+        except Exception as e:
+            self.logger.error(f"Application creation failed: {e}")
+            raise

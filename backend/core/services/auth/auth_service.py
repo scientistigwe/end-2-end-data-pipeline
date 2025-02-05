@@ -1,28 +1,35 @@
-# backend/api/flask_app/pipeline/auth/auth_service.py
+# backend/api/fastapi_app/pipeline/auth/auth_service.py
+
 import logging
+import secrets
 from typing import Dict, Any, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
-from db.models.auth import User, UserSession
-from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import update
 from datetime import datetime, timedelta
+
+from db.models.auth import User, UserSession, PasswordResetToken
+from werkzeug.security import generate_password_hash, check_password_hash
 
 logger = logging.getLogger(__name__)
 
+
 class AuthService:
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
         self.logger = logging.getLogger(__name__)
 
-    def register_user(self, data: Dict[str, Any]) -> User:
+    async def register_user(self, data: Dict[str, Any]) -> User:
         """Register a new user."""
         try:
             # Check if user exists
-            if self.get_user_by_email(data['email']):
+            existing_user = await self.get_user_by_email(data['email'])
+            if existing_user:
                 raise ValueError("Email already registered")
 
             password_hash = generate_password_hash(data['password'])
-            
+
             # Create user with required fields
             user = User(
                 email=data['email'],
@@ -37,26 +44,27 @@ class AuthService:
 
             # Add optional fields if provided
             optional_fields = [
-                'phone_number', 'department', 
+                'phone_number', 'department',
                 'timezone', 'locale', 'preferences'
             ]
-            
+
             for field in optional_fields:
                 if field in data and data[field] is not None:
                     setattr(user, field, data[field])
 
             self.db_session.add(user)
-            self.db_session.commit()
+            await self.db_session.commit()
+            await self.db_session.refresh(user)
             return user
         except Exception as e:
+            await self.db_session.rollback()
             self.logger.error(f"User registration error: {str(e)}")
-            self.db_session.rollback()
             raise
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
+    async def authenticate_user(self, email: str, password: str) -> Optional[User]:
         """Authenticate a user."""
         try:
-            user = self.get_user_by_email(email)
+            user = await self.get_user_by_email(email)
             if not user:
                 return None
 
@@ -70,13 +78,13 @@ class AuthService:
                 user.failed_login_attempts += 1
                 if user.failed_login_attempts >= 5:
                     user.locked_until = datetime.utcnow() + timedelta(minutes=30)
-                self.db_session.commit()
+                await self.db_session.commit()
                 return None
 
             # Reset failed attempts on successful login
             user.failed_login_attempts = 0
             user.locked_until = None
-            self.db_session.commit()
+            await self.db_session.commit()
             return user
 
         except ValueError as e:
@@ -85,135 +93,72 @@ class AuthService:
             self.logger.error(f"Authentication error: {str(e)}")
             raise
 
-    def update_last_login(self, user_id: UUID) -> None:
+    async def update_last_login(self, user_id: UUID) -> None:
         """Update user's last login timestamp."""
         try:
-            user = self.get_user_by_id(user_id)
+            user = await self.get_user_by_id(user_id)
             if user:
                 user.last_login = datetime.utcnow()
-                self.db_session.commit()
+                await self.db_session.commit()
         except Exception as e:
+            await self.db_session.rollback()
             self.logger.error(f"Error updating last login: {str(e)}")
-            self.db_session.rollback()
             raise
 
-    def create_session(self, user_id: UUID, device_info: Dict = None) -> UserSession:
-            """Create a new user session."""
-            try:
-                session = UserSession(
-                    user_id=user_id,
-                    expires_at=datetime.utcnow() + timedelta(days=1),
-                    device_id=device_info.get('device_id') if device_info else None,
-                    device_type=device_info.get('device_type') if device_info else None,
-                    ip_address=device_info.get('ip_address') if device_info else None,
-                    user_agent=device_info.get('user_agent') if device_info else None
-                )
-                self.db_session.add(session)
-                self.db_session.commit()
-                return session
-            except Exception as e:
-                self.logger.error(f"Session creation error: {str(e)}")
-                self.db_session.rollback()
-                raise
+    async def create_session(self, user_id: UUID, device_info: Dict = None) -> UserSession:
+        """Create a new user session."""
+        try:
+            session = UserSession(
+                user_id=user_id,
+                expires_at=datetime.utcnow() + timedelta(days=1),
+                device_id=device_info.get('device_id') if device_info else None,
+                device_type=device_info.get('device_type') if device_info else None,
+                ip_address=device_info.get('ip_address') if device_info else None,
+                user_agent=device_info.get('user_agent') if device_info else None
+            )
+            self.db_session.add(session)
+            await self.db_session.commit()
+            await self.db_session.refresh(session)
+            return session
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Session creation error: {str(e)}")
+            raise
 
-    def update_user_profile(self, user_id: UUID, data: Dict[str, Any]) -> User:
+    async def update_user_profile(self, user_id: UUID, data: Dict[str, Any]) -> User:
         """Update user's profile information."""
         try:
-            user = self.get_user_by_id(user_id)
+            user = await self.get_user_by_id(user_id)
             if not user:
                 raise ValueError("User not found")
-            
+
             # Update allowed fields
             allowed_fields = {
                 'first_name', 'last_name', 'phone_number',
                 'department', 'timezone', 'locale', 'preferences',
                 'profile_image'
             }
-            
+
             for key, value in data.items():
                 if key in allowed_fields:
                     setattr(user, key, value)
-                    
+
             user.updated_at = datetime.utcnow()
-            self.db_session.commit()
+            await self.db_session.commit()
+            await self.db_session.refresh(user)
             return user
         except Exception as e:
+            await self.db_session.rollback()
             self.logger.error(f"Profile update error: {str(e)}")
-            self.db_session.rollback()
             raise
 
-    def invalidate_token(self, token_jti: str) -> None:
-        """Invalidate a JWT token."""
+    async def get_user_by_id(self, user_id: UUID) -> Optional[User]:
+        """Get user by their ID."""
         try:
-            session = UserSession(
-                token=token_jti,
-                expires_at=datetime.utcnow()
-            )
-            self.db_session.add(session)
-            self.db_session.commit()
-        except Exception as e:
-            self.logger.error(f"Token invalidation error: {str(e)}")
-            self.db_session.rollback()
-            raise
+            query = select(User).filter_by(id=user_id)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
 
-    def verify_email(self, token: str) -> None:
-        """Verify user's email address."""
-        try:
-            # Add email verification logic
-            pass
-        except Exception as e:
-            self.logger.error(f"Email verification error: {str(e)}")
-            raise
-
-    def initiate_password_reset(self, email: str) -> None:
-        """Initiate password reset process."""
-        try:
-            user = self.db_session.query(User).filter_by(email=email).first()
-            if user:
-                # Add password reset logic
-                pass
-        except Exception as e:
-            self.logger.error(f"Password reset initiation error: {str(e)}")
-            raise
-
-    def reset_password(self, token: str, new_password: str) -> None:
-        """Reset user's password using reset token."""
-        try:
-            # Add password reset logic
-            pass
-        except Exception as e:
-            self.logger.error(f"Password reset error: {str(e)}")
-            raise
-
-    def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None:
-        """Change user's password."""
-        try:
-            user = self.db_session.query(User).get(user_id)
-            if user and check_password_hash(user.password_hash, current_password):
-                user.password_hash = generate_password_hash(new_password)
-                self.db_session.commit()
-            else:
-                raise ValueError("Invalid current password")
-        except Exception as e:
-            self.logger.error(f"Password change error: {str(e)}")
-            self.db_session.rollback()
-            raise
-
-    def get_user_by_id(self, user_id: UUID) -> Optional[User]:
-        """
-        Get user by their ID.
-        
-        Args:
-            user_id (UUID): The user's unique identifier
-            
-        Returns:
-            Optional[User]: The user object if found, None otherwise
-            
-        Raises:
-            Exception: If db query fails
-        """
-        try:
-            user = self.db_session.query(User).filter_by(id=user_id).first()
             if not user:
                 self.logger.warning(f"User not found with id: {user_id}")
                 return None
@@ -222,21 +167,13 @@ class AuthService:
             self.logger.error(f"Error fetching user by id: {str(e)}")
             raise
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
-        """
-        Get user by their email address.
-        
-        Args:
-            email (str): The user's email address
-            
-        Returns:
-            Optional[User]: The user object if found, None otherwise
-            
-        Raises:
-            Exception: If db query fails
-        """
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get user by their email address."""
         try:
-            user = self.db_session.query(User).filter_by(email=email).first()
+            query = select(User).filter_by(email=email)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
             if not user:
                 self.logger.warning(f"User not found with email: {email}")
                 return None
@@ -245,66 +182,240 @@ class AuthService:
             self.logger.error(f"Error fetching user by email: {str(e)}")
             raise
 
-    def get_user_profile(self, user_id: UUID) -> User:
-        """
-        Get user's profile information.
-        
-        Args:
-            user_id (UUID): The user's unique identifier
-            
-        Returns:
-            User: The user's profile information
-            
-        Raises:
-            ValueError: If user is not found
-            Exception: If db query fails
-        """
+    async def invalidate_token(self, token_jti: str) -> None:
+        """Invalidate a JWT token."""
         try:
-            user = self.get_user_by_id(user_id)
-            if not user:
-                raise ValueError(f"User not found with id: {user_id}")
-            return user
+            session = UserSession(
+                token=token_jti,
+                expires_at=datetime.utcnow()
+            )
+            self.db_session.add(session)
+            await self.db_session.commit()
         except Exception as e:
-            self.logger.error(f"Profile fetch error: {str(e)}")
+            await self.db_session.rollback()
+            self.logger.error(f"Token invalidation error: {str(e)}")
             raise
 
-    def verify_account(self, token: str) -> User:
+    async def verify_email(self, token: str) -> User:
         """
-        Verify user's account using verification token.
-        
+        Verify user's email address.
+
         Args:
-            token (str): The verification token
-            
+            token (str): Email verification token
+
         Returns:
-            User: The verified user object
-            
+            User: Verified user
+
         Raises:
             ValueError: If token is invalid or expired
-            Exception: If verification fails
         """
         try:
-            # Verify the token and get user_id
-            user_id = self.verify_token(token, purpose='account_verification')
-            
-            user = self.get_user_by_id(user_id)
+            # Find user with the verification token
+            query = select(User).filter_by(verification_token=token)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
             if not user:
-                raise ValueError("User not found")
-                
-            # Update user verification status
+                raise ValueError("Invalid verification token")
+
+            # Check token expiration (e.g., token valid for 24 hours)
+            if user.verification_token_expires_at < datetime.utcnow():
+                raise ValueError("Verification token has expired")
+
+            # Mark user as verified
             user.is_verified = True
             user.verified_at = datetime.utcnow()
             user.verification_token = None
-            
-            self.db_session.commit()
+            user.verification_token_expires_at = None
+
+            await self.db_session.commit()
             return user
-            
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Email verification error: {str(e)}")
+            raise
+
+    async def generate_verification_token(self, user: User) -> str:
+        """
+        Generate email verification token for a user.
+
+        Args:
+            user (User): User to generate token for
+
+        Returns:
+            str: Verification token
+        """
+        try:
+            # Generate a secure random token
+            token = secrets.token_urlsafe(32)
+
+            # Set token expiration to 24 hours from now
+            user.verification_token = token
+            user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=24)
+
+            await self.db_session.commit()
+            return token
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Token generation error: {str(e)}")
+            raise
+
+    async def initiate_password_reset(self, email: str) -> str:
+        """
+        Initiate password reset process.
+
+        Args:
+            email (str): User's email address
+
+        Returns:
+            str: Password reset token
+
+        Raises:
+            ValueError: If user not found
+        """
+        try:
+            # Find user by email
+            query = select(User).filter_by(email=email)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                raise ValueError("User not found")
+
+            # Generate a secure password reset token
+            reset_token = secrets.token_urlsafe(32)
+
+            # Create or update password reset token record
+            reset_record = PasswordResetToken(
+                user_id=user.id,
+                token=reset_token,
+                expires_at=datetime.utcnow() + timedelta(hours=1)
+            )
+
+            self.db_session.add(reset_record)
+            await self.db_session.commit()
+
+            return reset_token
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Password reset initiation error: {str(e)}")
+            raise
+
+    async def reset_password(self, token: str, new_password: str) -> User:
+        """
+        Reset user's password using reset token.
+
+        Args:
+            token (str): Password reset token
+            new_password (str): New password
+
+        Returns:
+            User: User with reset password
+
+        Raises:
+            ValueError: If token is invalid or expired
+        """
+        try:
+            # Find the password reset token record
+            query = select(PasswordResetToken).filter_by(token=token)
+            result = await self.db_session.execute(query)
+            reset_record = result.scalar_one_or_none()
+
+            if not reset_record:
+                raise ValueError("Invalid reset token")
+
+            # Check token expiration
+            if reset_record.expires_at < datetime.utcnow():
+                raise ValueError("Reset token has expired")
+
+            # Find the associated user
+            query = select(User).filter_by(id=reset_record.user_id)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                raise ValueError("User not found")
+
+            # Update password
+            user.password_hash = generate_password_hash(new_password)
+
+            # Delete the used reset token
+            await self.db_session.delete(reset_record)
+            await self.db_session.commit()
+
+            return user
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Password reset error: {str(e)}")
+            raise
+
+    async def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None:
+        """
+        Change user's password after verifying current password.
+
+        Args:
+            user_id (UUID): User's ID
+            current_password (str): Current password
+            new_password (str): New password
+
+        Raises:
+            ValueError: If current password is invalid
+        """
+        try:
+            query = select(User).filter_by(id=user_id)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                raise ValueError("User not found")
+
+            if not check_password_hash(user.password_hash, current_password):
+                raise ValueError("Invalid current password")
+
+            # Update password
+            user.password_hash = generate_password_hash(new_password)
+            await self.db_session.commit()
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Password change error: {str(e)}")
+            raise
+
+    async def verify_account(self, token: str) -> User:
+        """
+        Verify user's account using verification token.
+
+        Args:
+            token (str): Verification token
+
+        Returns:
+            User: Verified user object
+
+        Raises:
+            ValueError: If token is invalid or expired
+        """
+        try:
+            # Use email verification method
+            return await self.verify_email(token)
+
         except Exception as e:
             self.logger.error(f"Account verification error: {str(e)}")
-            self.db_session.rollback()
             raise
 
     def get_user_permissions(self, user) -> list:
-        """Get user permissions based on role."""
+        """
+        Get user permissions based on role.
+
+        Args:
+            user (User): User object
+
+        Returns:
+            list: Sorted list of user permissions
+        """
         # Define base permissions that all users have
         base_permissions = ['read:own_profile', 'update:own_profile']
 

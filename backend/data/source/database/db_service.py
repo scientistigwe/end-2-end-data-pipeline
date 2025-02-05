@@ -1,8 +1,9 @@
 # backend/source_handlers/database/db_service.py
 
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Dict, Any, Optional, List, Union
+from utils.exceptions import ResourceNotFoundError, ValidationError
 
 from core.managers.staging_manager import StagingManager
 from core.control.cpm import ControlPointManager
@@ -236,36 +237,80 @@ class DatabaseService:
                 'error': str(e)
             }
 
-    async def list_user_sources(
+    async def list_sources(
             self,
             user_id: str
-    ) -> Dict[str, Any]:
-        """List database sources for a user"""
+    ) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
+        """
+        List database sources for a user
+
+        Args:
+            user_id (str): ID of the user whose sources to list
+
+        Returns:
+            Dict containing:
+                - status (str): Operation status ('success' or 'error')
+                - sources (List[Dict]): List of source information
+                - error (str, optional): Error message if status is 'error'
+
+        Raises:
+            ResourceNotFoundError: If no sources are found
+            ValidationError: If user_id is invalid
+        """
         try:
+            if not user_id:
+                raise ValidationError("User ID is required")
+
+            # Add timing for performance monitoring
+            start_time = datetime.utcnow()
+
             user_sources = await self.staging_manager.list_data(
-                filters={'metadata.user_id': user_id, 'metadata.source_type': 'database'}
+                filters={
+                    'metadata.user_id': user_id,
+                    'metadata.source_type': 'database'
+                }
             )
+
+            # Log performance metrics
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            logger.debug(f"Listed {len(user_sources)} sources in {duration:.2f}s")
+
+            if not user_sources:
+                return {
+                    'status': 'success',
+                    'sources': []
+                }
 
             return {
                 'status': 'success',
                 'sources': [
-                    {
-                        'staged_id': f['id'],
-                        'source_type': f['metadata'].get('db_type'),
-                        'host': f['metadata'].get('host'),
-                        'database': f['metadata'].get('database'),
-                        'operation': f['metadata'].get('operation'),
-                        'status': f['status'],
-                        'fetched_at': f['created_at'],
-                        'db_info': f['metadata'].get('db_info')
-                    }
-                    for f in user_sources
+                    self._format_source_data(source)
+                    for source in user_sources
                 ]
             }
 
-        except Exception as e:
-            logger.error(f"Source listing error: {str(e)}")
+        except ValidationError as e:
+            logger.warning(f"Validation error in list_sources: {str(e)}")
             return {
                 'status': 'error',
                 'error': str(e)
             }
+        except Exception as e:
+            logger.error(f"Unexpected error in list_sources: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'error': "Internal server error"
+            }
+
+    def _format_source_data(self, source: Dict) -> Dict[str, Any]:
+        """Helper method to format source data consistently"""
+        return {
+            'staged_id': source['id'],
+            'source_type': source['metadata'].get('db_type'),
+            'host': source['metadata'].get('host'),
+            'database': source['metadata'].get('database'),
+            'operation': source['metadata'].get('operation'),
+            'status': source['status'],
+            'fetched_at': source['created_at'],
+            'db_info': source['metadata'].get('db_info')
+        }

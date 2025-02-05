@@ -25,11 +25,15 @@ class StagedAnalyticsOutput(BaseStagedOutput):
     model_artifacts = Column(JSON)
 
     # Add source relationship explicitly
-    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
-    source = relationship(
+    analytics_source_id = Column(
+        'source_id',  # Actual column name in database
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+    analytics_source = relationship(
         "DataSource",
         back_populates="analytics_outputs",
-        foreign_keys=[source_id]
+        foreign_keys=[analytics_source_id]
     )
 
     __mapper_args__ = {

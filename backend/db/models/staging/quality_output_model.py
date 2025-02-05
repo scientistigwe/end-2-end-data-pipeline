@@ -30,11 +30,15 @@ class StagedQualityOutput(BaseStagedOutput):
     issue_summary = Column(JSON)
     recommendations = Column(JSON)
 
-    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
-    source = relationship(
+    quality_source_id = Column(
+        'source_id',  # Actual column name in database
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+    quality_source = relationship(
         "DataSource",
         back_populates="quality_outputs",
-        foreign_keys=[source_id]
+        foreign_keys=[quality_source_id]
     )
 
     __mapper_args__ = {

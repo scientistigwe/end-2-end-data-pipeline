@@ -1,5 +1,6 @@
 # backend/db/models/auth.py
 
+import uuid
 from sqlalchemy import (
     Column, String, DateTime, Boolean, Enum, ForeignKey,
     CheckConstraint, Index, Integer, UniqueConstraint
@@ -41,6 +42,8 @@ class User(BaseModel):
     password_reset_expires = Column(DateTime)
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime)
+    # verification_token_expires_at = Column(DateTime, nullable=True)
+
 
     # Profile
     profile_image = Column(String(255))
@@ -106,7 +109,13 @@ class User(BaseModel):
         foreign_keys="[UserActivityLog.user_id]",
         cascade="all, delete-orphan"
     )
-
+    reset_tokens = relationship(
+        'PasswordResetToken',
+        back_populates='user',
+        cascade='all, delete-orphan',
+        foreign_keys='[PasswordResetToken.user_id]',  # Reference using string path
+        lazy='select'  # Add lazy loading strategy
+    )
     __table_args__ = (
         Index('ix_users_email_status', 'email', 'status'),
         Index('ix_users_role', 'role'),
@@ -443,3 +452,29 @@ class ServiceAccount(BaseModel):
                 self.is_active() and
                 any(permission_scope in scope for scope in self.scope)
         )
+
+
+class PasswordResetToken(BaseModel):
+    __tablename__ = 'password_reset_tokens'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    token = Column(String, unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+
+    # Update the relationship definition
+    user = relationship(
+        'User',
+        foreign_keys=[user_id],
+        back_populates='reset_tokens'
+    )
+
+    __table_args__ = (
+        Index('ix_password_reset_tokens_user', 'user_id'),
+        {'extend_existing': True}
+    )

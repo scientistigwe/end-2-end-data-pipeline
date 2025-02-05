@@ -41,7 +41,7 @@ class PipelineHandler(BaseChannelHandler):
         # Track routing contexts
         self.routing_contexts: Dict[str, Dict[str, Any]] = {}
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup routing message handlers"""
         handlers = {
             # Quality Flow
@@ -83,7 +83,7 @@ class PipelineHandler(BaseChannelHandler):
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"pipeline.{message_type.value}",
                 handler

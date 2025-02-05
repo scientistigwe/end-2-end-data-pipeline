@@ -25,6 +25,10 @@ class Config:
             f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
         )
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
+        self.SQLALCHEMY_POOL_SIZE = int(os.getenv('SQLALCHEMY_POOL_SIZE', 5))
+        self.SQLALCHEMY_MAX_OVERFLOW = int(os.getenv('SQLALCHEMY_MAX_OVERFLOW', 10))
+        self.SQLALCHEMY_POOL_TIMEOUT = int(os.getenv('SQLALCHEMY_POOL_TIMEOUT', 30))
+        self.SQLALCHEMY_ISOLATION_LEVEL = os.getenv('SQLALCHEMY_ISOLATION_LEVEL', 'READ_COMMITTED')
 
         # Logging configuration
         self.LOG_FILENAME = 'app.log'
@@ -82,6 +86,7 @@ class DevelopmentConfig(Config):
     """Development configuration."""
     DEBUG = True
     TESTING = False
+    SQLALCHEMY_ECHO = True
 
 
 class ProductionConfig(Config):

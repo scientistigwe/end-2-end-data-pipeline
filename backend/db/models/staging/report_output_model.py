@@ -22,6 +22,18 @@ class StagedReportOutput(BaseStagedOutput):
     interactivity_config = Column(JSON)
     distribution_info = Column(JSON)
 
+    report_source_id = Column(
+        'source_id',
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    report_source = relationship(
+        "DataSource",
+        back_populates="report_outputs",
+        foreign_keys=[report_source_id]
+    )
+
     __mapper_args__ = {
         "polymorphic_identity": ComponentType.REPORT_MANAGER,
         "inherit_condition": base_id == BaseStagedOutput.id

@@ -43,7 +43,7 @@ class PipelineService:
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup message handling for service layer"""
         handlers = {
             # Pipeline Management
@@ -76,7 +76,7 @@ class PipelineService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"pipeline.{message_type.value}",
                 handler

@@ -1,24 +1,73 @@
-# api/flask_app/__init__.py
-
+# api/__init__.py
 import logging
-from flask import Flask
+from typing import AsyncGenerator
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from .app import ApplicationFactory
 
 logger = logging.getLogger(__name__)
 
-
-def create_app(config_name: str = 'development') -> Flask:
+@asynccontextmanager
+async def lifespan_context(app: FastAPI, factory: ApplicationFactory) -> AsyncGenerator[None, None]:
     """
-    Application factory function that serves as the main entry point.
+    Lifespan context manager for the FastAPI application.
+    Handles startup and shutdown events.
+    """
+    try:
+        # Initialize async resources
+        await factory._init_async_resources()
+        logger.info("Application startup complete")
+        yield
+    finally:
+        # Cleanup on shutdown
+        await factory._cleanup_async_resources()
+        logger.info("Application shutdown complete")
+
+async def create_app(config_name: str = 'development') -> FastAPI:
+    """
+    Asynchronous application factory function.
 
     Args:
-        config_name (str): Name of configuration to use (development, production, etc.)
+        config_name: Configuration environment to use
 
     Returns:
-        Flask: Configured Flask application instance
+        FastAPI: Configured application instance
     """
-    factory = ApplicationFactory()
-    return factory.create_app(config_name)
+    try:
+        # Create application factory
+        factory = ApplicationFactory()
+
+        # Create FastAPI app with lifespan management
+        app = FastAPI(
+            title="Data Pipeline API",
+            description="End-to-end data pipeline API service",
+            version="1.0.0",
+            lifespan=lambda app: lifespan_context(app, factory)
+        )
+
+        # Configure the application
+        await factory.configure(app, config_name)
+
+        # Store factory reference
+        app.state.factory = factory
+
+        logger.info(f"Application created successfully in {config_name} environment")
+        return app
+
+    except Exception as e:
+        logger.error("Failed to create application: %s", str(e), exc_info=True)
+        raise
 
 
-__all__ = ['create_app']
+# Add new helper function for managing dependencies
+def get_factory(app: FastAPI) -> ApplicationFactory:
+    """
+    Helper function to get the ApplicationFactory instance.
+    Can be used as a FastAPI dependency.
+    """
+    return app.state.factory
+
+# Type hints for better IDE support
+Factory = ApplicationFactory
+
+__all__ = ['create_app', 'get_factory', 'Factory']

@@ -484,7 +484,7 @@ class PipelineManager(BaseManager):
             for metric, threshold in thresholds.items()
         )
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup comprehensive message handling"""
         handlers = {
             # Control Point Messages
@@ -550,7 +550,7 @@ class PipelineManager(BaseManager):
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"{message_type.value}",
                 handler

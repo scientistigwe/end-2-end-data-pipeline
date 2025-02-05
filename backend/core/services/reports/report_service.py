@@ -44,7 +44,7 @@ class ReportService:
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup service message handlers"""
         handlers = {
             # Report Process Flow
@@ -73,7 +73,7 @@ class ReportService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler

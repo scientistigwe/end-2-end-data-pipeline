@@ -89,7 +89,7 @@ class QualityProcessor:
             QualityCheckType.TEXT_STANDARD: text_resolver
         }
 
-    def _setup_subscriptions(self) -> None:
+    async def _setup_subscriptions(self) -> None:
         """Setup comprehensive message subscriptions"""
         handlers = {
             # Core Process Flow
@@ -112,7 +112,7 @@ class QualityProcessor:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"quality.{message_type.value}",
                 handler

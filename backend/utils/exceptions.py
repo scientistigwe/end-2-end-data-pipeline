@@ -112,3 +112,39 @@ class DatabaseValidationError(DatabaseError):
     """Validation-related errors"""
     pass
 
+
+class BaseCustomException(Exception):
+    """Base class for all custom exceptions"""
+    def __init__(self, message: str = None):
+        self.message = message
+        super().__init__(self.message)
+
+
+class ResourceNotFoundError(BaseCustomException):
+    """Raised when a requested resource is not found"""
+    def __init__(self, message: str = "Resource not found"):
+        super().__init__(message)
+
+
+class ValidationError(BaseCustomException):
+    """Raised when data validation fails"""
+    def __init__(self, message: str = "Validation failed"):
+        super().__init__(message)
+
+
+class DatabaseError(BaseCustomException):
+    """Raised when database operations fail"""
+    def __init__(self, message: str = "Database operation failed"):
+        super().__init__(message)
+
+
+class AuthenticationError(BaseCustomException):
+    """Raised when authentication fails"""
+    def __init__(self, message: str = "Authentication failed"):
+        super().__init__(message)
+
+
+class AuthorizationError(BaseCustomException):
+    """Raised when user lacks required permissions"""
+    def __init__(self, message: str = "Not authorized"):
+        super().__init__(message)

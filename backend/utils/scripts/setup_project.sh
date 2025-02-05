@@ -47,7 +47,7 @@
 #touch data_pipeline/deployment/{model_serving,monitoring,scaling}.py
 #
 ## Create API files
-#touch api/flask_app.py
+#touch api/fastapi_app.py
 #touch api/routes/{ingestion,processing,prediction}.py
 #touch api/middleware/{auth,validation}.py
 #

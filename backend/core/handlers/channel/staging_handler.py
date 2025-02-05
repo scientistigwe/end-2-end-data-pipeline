@@ -40,7 +40,7 @@ class StagingHandler:
         # Initialize message routing
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Configure message routing table"""
         routing_map = {
             # Service Layer Messages
@@ -57,7 +57,7 @@ class StagingHandler:
 
         # Subscribe to all routing patterns
         for message_type, handler in routing_map.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 module_identifier=self.module_identifier,
                 message_patterns=f"staging.{message_type.value}.*",
                 callback=handler

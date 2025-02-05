@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from api.flask_app import create_app
+from api.fastapi_app import create_app
 
 def setup_logging():
     logging.basicConfig(

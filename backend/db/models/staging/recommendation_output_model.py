@@ -20,6 +20,18 @@ class StagedRecommendationOutput(BaseStagedOutput):
     diversity_score = Column(Float, nullable=True)
     personalization_score = Column(Float, nullable=True)
 
+    recommendation_source_id = Column(
+        'source_id',
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    recommendation_source = relationship(
+        "DataSource",
+        back_populates="recommendation_outputs",
+        foreign_keys=[recommendation_source_id]
+    )
+
     # Relationship configuration
     __mapper_args__ = {
         'polymorphic_identity': ComponentType.RECOMMENDATION_MANAGER,

@@ -24,6 +24,18 @@ class StagingControlPoint(BaseStagedOutput):
     control_created_at = column_property(Column(DateTime, default=datetime.now))
     control_updated_at = column_property(Column(DateTime, default=datetime.now, onupdate=datetime.now))
 
+    control_source_id = Column(
+        'source_id',
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    control_source = relationship(
+        "DataSource",
+        back_populates="control_points",
+        foreign_keys=[control_source_id]
+    )
+
     __mapper_args__ = {
         "polymorphic_identity": "staging.control_point",  # Unique string identity
         "inherit_condition": base_id == BaseStagedOutput.id

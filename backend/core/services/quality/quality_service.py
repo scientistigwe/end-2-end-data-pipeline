@@ -40,7 +40,7 @@ class QualityService:
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Initialize all message handlers"""
         handlers = {
             # Manager Requests
@@ -65,7 +65,7 @@ class QualityService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler

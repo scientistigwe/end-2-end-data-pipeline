@@ -41,8 +41,13 @@ class RecommendationHandler:
         # Setup message routing
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
-        """Setup message routing handlers"""
+    async def _setup_message_handlers(self) -> None:
+        """
+        Setup asynchronous message routing handlers for recommendation service.
+
+        Maps different message types to their corresponding handler functions
+        and sets up subscriptions through the message broker.
+        """
         routing_map = {
             # Service Messages
             MessageType.RECOMMENDATION_HANDLER_START: self._route_start_request,
@@ -64,8 +69,9 @@ class RecommendationHandler:
             MessageType.RECOMMENDATION_ERROR: self._handle_error_routing
         }
 
+        # Set up subscriptions asynchronously
         for message_type, handler in routing_map.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"recommendation.{message_type.value}.#",
                 handler

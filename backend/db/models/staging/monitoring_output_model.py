@@ -32,6 +32,19 @@ class StagedMonitoringOutput(BaseStagedOutput):
     throughput = Column(Float)
     error_count = Column(Integer, default=0)
 
+    monitoring_source_id = Column(
+        'source_id',  # Actual column name in database
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    # Add unique relationship
+    monitoring_source = relationship(
+        "DataSource",
+        back_populates="monitoring_outputs",
+        foreign_keys=[monitoring_source_id]
+    )
+
     # Metadata and timestamps with unique column names
     staged_monitoring_metadata = Column(JSON, default=dict)
     monitoring_created_at = column_property(Column(DateTime, default=datetime.utcnow))

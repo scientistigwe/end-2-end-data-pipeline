@@ -21,6 +21,20 @@ class StagedDecisionOutput(BaseStagedOutput):
     impact_analysis = Column(JSON, default={})
     confidence_score = Column(Float, nullable=True)
 
+    # Add unique source column name
+    decision_source_id = Column(
+        'source_id',  # Actual column name in database
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    # Add relationship with unique name
+    decision_source = relationship(
+        "DataSource",
+        back_populates="decision_outputs",
+        foreign_keys=[decision_source_id]
+    )
+
     # Relationship configuration
     __mapper_args__ = {
         'polymorphic_identity': ComponentType.DECISION_MANAGER,

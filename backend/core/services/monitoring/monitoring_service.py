@@ -42,7 +42,7 @@ class MonitoringService:
         # Setup message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup handlers for service-level messages"""
         handlers = {
             # Monitoring Process Flow
@@ -67,7 +67,7 @@ class MonitoringService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler

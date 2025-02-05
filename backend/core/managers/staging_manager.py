@@ -337,17 +337,19 @@ class StagingManager(BaseManager):
             # Validate storage limits
             await self._validate_storage_limits(data)
 
-            # Generate storage reference
+            # Generate storage reference and stage key
             storage_ref = f"{datetime.now().timestamp()}_{source_type}"
-            storage_path = self.storage_path / storage_ref
+            stage_key = f"stage_{datetime.now().timestamp()}"  # Add this line
 
             # Store data
+            storage_path = self.storage_path / storage_ref
             await self._store_data_by_type(storage_path, data, source_type)
 
-            # Create repository record
+            # Create repository record with stage_key
             stored_resource = await self.repository.store_staged_resource(
                 pipeline_id=metadata.get('pipeline_id'),
                 data={
+                    'stage_key': stage_key,  # Add this line
                     'storage_location': str(storage_path),
                     'resource_type': source_type,
                     'size_bytes': storage_path.stat().st_size,

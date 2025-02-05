@@ -59,8 +59,6 @@ class Pipeline(BaseModel):
         Enum('development', 'staging', 'production', name='pipeline_mode'),
         default='development'
     )
-    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
-    target_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
     config = Column(JSONB)
     progress = Column(Float, default=0)
     error = Column(Text)
@@ -91,26 +89,39 @@ class Pipeline(BaseModel):
     
     # Foreign Keys
     owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+
     
     # Relationships
     owner = relationship('User', back_populates='pipelines', foreign_keys=[owner_id])
-    source = relationship('DataSource', foreign_keys=[source_id], back_populates='pipelines_as_source')
-    target = relationship('DataSource', foreign_keys=[target_id], back_populates='pipelines_as_target')
     steps = relationship('PipelineStep', back_populates='pipeline', cascade='all, delete-orphan')
     runs = relationship('PipelineRun', back_populates='pipeline', cascade='all, delete-orphan')
     quality_gates = relationship('QualityGate', back_populates='pipeline', cascade='all, delete-orphan')
-
-    base_outputs = relationship(
-        "db.models.staging.base_staging_model.BaseStagedOutput",
-        backref="pipeline_ref",
-        foreign_keys="[db.models.staging.base_staging_model.BaseStagedOutput.pipeline_id]",
-        cascade="all, delete-orphan"
+    pipeline_source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id'),
+        name='source_id'  # Keep database column name as is
     )
-    # Update the base_outputs relationship
+    pipeline_target_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id'),
+        name='target_id'  # Keep database column name as is
+    )
+
+    # Update relationships with explicit source naming
+    pipeline_source = relationship(
+        'DataSource',
+        foreign_keys=[pipeline_source_id],
+        back_populates='pipelines_as_source'
+    )
+    pipeline_target = relationship(
+        'DataSource',
+        foreign_keys=[pipeline_target_id],
+        back_populates='pipelines_as_target'
+    )
+
     staged_outputs = relationship(
         "BaseStagedOutput",
-        backref="pipeline",
-        foreign_keys="[BaseStagedOutput.pipeline_id]",
+        back_populates="pipeline",
         cascade="all, delete-orphan"
     )
 

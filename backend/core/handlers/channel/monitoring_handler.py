@@ -40,7 +40,7 @@ class MonitoringHandler(BaseChannelHandler):
         # Track active monitoring contexts
         self.active_contexts: Dict[str, MonitoringContext] = {}
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup message routing handlers"""
         handlers = {
             # From Service Layer
@@ -56,7 +56,7 @@ class MonitoringHandler(BaseChannelHandler):
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"monitoring.{message_type.value}",
                 handler

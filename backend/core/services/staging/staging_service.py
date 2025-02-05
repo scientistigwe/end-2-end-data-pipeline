@@ -49,7 +49,7 @@ class StagingService:
         # Initialize message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Configure message handlers for staging service"""
         handlers = {
             # Manager Initiated Messages
@@ -72,7 +72,7 @@ class StagingService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 module_identifier=self.module_identifier,
                 message_patterns=f"staging.{message_type.value}.*",
                 callback=handler

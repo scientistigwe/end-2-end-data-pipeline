@@ -53,35 +53,76 @@ class DataSource(BaseModel):
     insight_outputs = relationship(
         'StagedInsightOutput',
         back_populates='source',
-        foreign_keys='[StagedInsightOutput.source_id]',
+        foreign_keys='[StagedInsightOutput.insight_source_id]',
         cascade='all, delete-orphan'
     )
 
     analytics_outputs = relationship(
         'StagedAnalyticsOutput',
         back_populates='source',
-        foreign_keys='[StagedAnalyticsOutput.source_id]',
+        foreign_keys='[StagedAnalyticsOutput.analytics_source_id]',
         cascade='all, delete-orphan'
     )
 
     quality_outputs = relationship(
         'StagedQualityOutput',
         back_populates='source',
-        foreign_keys='[StagedQualityOutput.source_id]',
+        foreign_keys='[StagedQualityOutput.quality_source_id]',
+        cascade='all, delete-orphan'
+    )
+    decision_outputs = relationship(
+        'StagedDecisionOutput',
+        back_populates='decision_source',
+        foreign_keys='[StagedDecisionOutput.decision_source_id]',
+        cascade='all, delete-orphan'
+    )
+
+    recommendation_outputs = relationship(
+        'StagedRecommendationOutput',
+        back_populates='recommendation_source',
+        foreign_keys='[StagedRecommendationOutput.recommendation_source_id]',
+        cascade='all, delete-orphan'
+    )
+
+    monitoring_outputs = relationship(
+        'StagedMonitoringOutput',
+        back_populates='monitoring_source',
+        foreign_keys='[StagedMonitoringOutput.monitoring_source_id]',
+        cascade='all, delete-orphan'
+    )
+
+    report_outputs = relationship(
+        'StagedReportOutput',
+        back_populates='report_source',
+        foreign_keys='[StagedReportOutput.report_source_id]',
+        cascade='all, delete-orphan'
+    )
+
+    control_points = relationship(
+        'StagingControlPoint',
+        back_populates='control_source',
+        foreign_keys='[StagingControlPoint.control_source_id]',
+        cascade='all, delete-orphan'
+    )
+
+    processing_history = relationship(
+        'StagingProcessingHistory',
+        back_populates='history_source',
+        foreign_keys='[StagingProcessingHistory.history_source_id]',
         cascade='all, delete-orphan'
     )
 
     # Pipeline relationships
     pipelines_as_source = relationship(
         'Pipeline',
-        foreign_keys='[Pipeline.source_id]',
-        back_populates='source'
+        foreign_keys='[Pipeline.pipeline_source_id]',
+        back_populates='pipeline_source'
     )
 
     pipelines_as_target = relationship(
         'Pipeline',
-        foreign_keys='[Pipeline.target_id]',
-        back_populates='target'
+        foreign_keys='[Pipeline.pipeline_target_id]',
+        back_populates='pipeline_target'
     )
 
     # Configuration relationships
@@ -132,12 +173,6 @@ class DataSource(BaseModel):
         'polymorphic_identity': 'base_source',
         'polymorphic_on': type,
         'with_polymorphic': '*'
-    }
-
-
-class FileDataSource(DataSource):
-    __mapper_args__ = {
-        'polymorphic_identity': 'file'
     }
 
 
@@ -332,27 +367,8 @@ class SourceSyncHistory(BaseModel):
     def __repr__(self):
         return f"<SourceSyncHistory(source_id='{self.source_id}', status='{self.status}')>"
 
+
 class FileDataSource(DataSource):
     __mapper_args__ = {
         'polymorphic_identity': 'file'
-    }
-
-class DatabaseDataSource(DataSource):
-    __mapper_args__ = {
-        'polymorphic_identity': 'db'
-    }
-
-class APIDataSource(DataSource):
-    __mapper_args__ = {
-        'polymorphic_identity': 'api'
-    }
-
-class S3DataSource(DataSource):
-    __mapper_args__ = {
-        'polymorphic_identity': 's3'
-    }
-
-class StreamDataSource(DataSource):
-    __mapper_args__ = {
-        'polymorphic_identity': 'stream'
     }

@@ -90,10 +90,10 @@ class AnalyticsHandler(BaseChannelHandler):
             )
         }
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup message handlers based on route map"""
         for source_type in self.route_map.keys():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 source_type.value,
                 self._handle_message

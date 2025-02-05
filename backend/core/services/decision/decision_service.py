@@ -63,7 +63,7 @@ class DecisionService:
         self._setup_error_handling()
         self._setup_monitoring()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """
         Configure message routing and handlers for different decision stages
         Uses comprehensive event types for precise routing
@@ -93,13 +93,13 @@ class DecisionService:
         }
 
         for message_type, handler in handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler
             )
 
-    def _setup_error_handling(self) -> None:
+    async def _setup_error_handling(self) -> None:
         """
         Configure comprehensive error handling mechanisms
         """
@@ -110,13 +110,13 @@ class DecisionService:
         }
 
         for message_type, handler in error_handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler
             )
 
-    def _setup_monitoring(self) -> None:
+    async def _setup_monitoring(self) -> None:
         """
         Configure monitoring and metrics collection
         """
@@ -126,7 +126,7 @@ class DecisionService:
         }
 
         for message_type, handler in monitoring_handlers.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 message_type.value,
                 handler

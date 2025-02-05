@@ -5,6 +5,9 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from uuid import UUID
 from sqlalchemy import and_, or_, desc, func, asc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from .base_repository import BaseRepository
 from ..models.staging.base_staging_model import BaseStagedOutput
@@ -16,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 class StagingRepository(BaseRepository[BaseStagedOutput]):
     """Repository for staging operations with enhanced error handling and logging"""
+
+    def __init__(self, db_session: AsyncSession):
+        """
+        Initialize the repository with an async database session
+
+        Args:
+            db_session (AsyncSession): Async SQLAlchemy session
+        """
+        super().__init__(db_session)
 
     async def store_staged_resource(
             self,
@@ -68,110 +80,22 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
     ) -> List[BaseStagedOutput]:
         """Get pipeline resources with filtering"""
         try:
-            query = self.db_session.query(BaseStagedOutput) \
-                .filter(BaseStagedOutput.pipeline_id == pipeline_id)
+            # Construct query using select
+            query = select(BaseStagedOutput).where(
+                BaseStagedOutput.pipeline_id == pipeline_id
+            )
 
             if status:
-                query = query.filter(BaseStagedOutput.status == status)
+                query = query.where(BaseStagedOutput.status == status)
             if resource_type:
-                query = query.filter(BaseStagedOutput.resource_type == resource_type)
+                query = query.where(BaseStagedOutput.resource_type == resource_type)
 
-            return await query.all()
+            # Execute query and return results
+            result = await self.db_session.execute(query)
+            return result.scalars().all()
 
         except Exception as e:
             logger.error(f"Error retrieving pipeline resources: {str(e)}")
-            raise
-
-    async def get_expired_resources(self, expiry_time: datetime) -> List[str]:
-        """
-        Get list of expired resource IDs based on expiry time.
-
-        Args:
-            expiry_time (datetime): Time threshold for expiration
-
-        Returns:
-            List[str]: List of expired resource IDs
-        """
-        try:
-            expired_resources = await self.db_session.query(BaseStagedOutput).filter(
-                and_(
-                    BaseStagedOutput.expires_at <= expiry_time,
-                    BaseStagedOutput.status != 'expired'
-                )
-            ).all()
-
-            # Track expiry check in history
-            for resource in expired_resources:
-                await self.create({
-                    'staged_output_id': resource.id,
-                    'event_type': 'expiry_check',
-                    'status': 'expired',
-                    'details': {
-                        'expiry_time': expiry_time.isoformat(),
-                        'resource_type': resource.resource_type
-                    }
-                }, StagingProcessingHistory)
-
-            return [str(resource.id) for resource in expired_resources]
-
-        except Exception as e:
-            logger.error(f"Failed to get expired resources: {str(e)}")
-            await self.db_session.rollback()
-            raise
-
-    async def cleanup_pending(self) -> None:
-        """
-        Clean up pending transactions and resources.
-        Handles resources stuck in pending state beyond timeout period.
-        """
-        try:
-            # Get current time
-            current_time = datetime.utcnow()
-            # Define timeout period (e.g., 1 hour for pending resources)
-            timeout_period = timedelta(hours=1)
-            timeout_threshold = current_time - timeout_period
-
-            # Find resources stuck in pending state
-            pending_resources = await self.db_session.query(BaseStagedOutput).filter(
-                and_(
-                    BaseStagedOutput.status == 'pending',
-                    BaseStagedOutput.created_at <= timeout_threshold
-                )
-            ).all()
-
-            # Update their status and track in history
-            for resource in pending_resources:
-                resource.status = 'expired'
-
-                # Track cleanup in history
-                await self.create({
-                    'staged_output_id': resource.id,
-                    'event_type': 'pending_cleanup',
-                    'status': 'expired',
-                    'details': {
-                        'original_status': 'pending',
-                        'cleanup_time': current_time.isoformat(),
-                        'resource_age': (current_time - resource.created_at).total_seconds()
-                    }
-                }, StagingProcessingHistory)
-
-            # Clean up any orphaned history records
-            orphaned_history = await self.db_session.query(StagingProcessingHistory).filter(
-                ~StagingProcessingHistory.staged_output_id.in_(
-                    self.db_session.query(BaseStagedOutput.id)
-                )
-            ).all()
-
-            for history in orphaned_history:
-                await self.db_session.delete(history)
-
-            await self.db_session.commit()
-            logger.info(
-                f"Cleaned up {len(pending_resources)} pending resources and {len(orphaned_history)} orphaned history records")
-
-        except Exception as e:
-            logger.error(f"Failed to cleanup pending resources: {str(e)}")
-            await self.db_session.rollback()
             raise
 
     async def get_staging_metrics(self) -> Dict[str, Any]:
@@ -182,27 +106,31 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
             # Get current time for calculations
             current_time = datetime.utcnow()
 
-            # Get total resources count by status
-            status_counts = await self.db_session.query(
+            # Count resources by status
+            status_count_query = select(
                 BaseStagedOutput.status,
                 func.count(BaseStagedOutput.id)
-            ).group_by(BaseStagedOutput.status).all()
+            ).group_by(BaseStagedOutput.status)
+            status_counts_result = await self.db_session.execute(status_count_query)
+            status_counts = status_counts_result.all()
 
-            # Get resources by type
-            type_counts = await self.db_session.query(
+            # Count resources by type
+            type_count_query = select(
                 BaseStagedOutput.resource_type,
                 func.count(BaseStagedOutput.id)
-            ).group_by(BaseStagedOutput.resource_type).all()
+            ).group_by(BaseStagedOutput.resource_type)
+            type_counts_result = await self.db_session.execute(type_count_query)
+            type_counts = type_counts_result.all()
 
-            # Calculate average processing time
-            processing_times = await self.db_session.query(
+            # Calculate average processing time for completed resources
+            processing_time_query = select(
                 func.avg(
                     func.extract('epoch', BaseStagedOutput.updated_at) -
                     func.extract('epoch', BaseStagedOutput.created_at)
                 )
-            ).filter(
-                BaseStagedOutput.status == 'completed'
-            ).scalar()
+            ).where(BaseStagedOutput.status == 'completed')
+            processing_times_result = await self.db_session.execute(processing_time_query)
+            processing_times = processing_times_result.scalar()
 
             return {
                 'resource_counts': {
@@ -220,6 +148,84 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
         except Exception as e:
             logger.error(f"Failed to get staging metrics: {str(e)}")
             raise
+
+    async def list_resources(
+            self,
+            query_params: Dict[str, Any],
+            sort_params: Optional[List[Tuple[str, int]]] = None
+    ) -> List[BaseStagedOutput]:
+        """
+        Get all resources matching query parameters with sorting
+
+        Args:
+            query_params: Dictionary of query parameters
+            sort_params: List of tuples (field, direction) for sorting
+
+        Returns:
+            List[BaseStagedOutput]: List of matched resources
+        """
+        try:
+            # Start with base query
+            query = select(BaseStagedOutput)
+
+            # Apply filters
+            for key, value in query_params.items():
+                if hasattr(BaseStagedOutput, key):
+                    query = query.where(getattr(BaseStagedOutput, key) == value)
+                elif key == 'resource_type':
+                    query = query.where(BaseStagedOutput.resource_type == value)
+                elif key == 'user_id':
+                    query = query.where(BaseStagedOutput.owner_id == UUID(value))
+
+            # Apply sorting
+            if sort_params:
+                for field, direction in sort_params:
+                    if hasattr(BaseStagedOutput, field):
+                        sort_field = getattr(BaseStagedOutput, field)
+                        query = query.order_by(
+                            desc(sort_field) if direction == -1 else sort_field
+                        )
+
+            # Execute query
+            result = await self.db_session.execute(query)
+            return result.scalars().all()
+
+        except Exception as e:
+            logger.error(f"Error listing resources: {str(e)}")
+            return []
+
+    async def delete_resource(self, resource_id: str) -> bool:
+        """
+        Delete a resource by ID
+
+        Args:
+            resource_id: ID of the resource to delete
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Create async select statement
+            stmt = select(BaseStagedOutput).filter(
+                BaseStagedOutput.id == UUID(resource_id)
+            )
+
+            # Execute query asynchronously
+            result = await self.db_session.execute(stmt)
+            resource = result.scalar_one_or_none()
+
+            if resource:
+                # Delete the resource asynchronously
+                await self.db_session.delete(resource)
+                await self.db_session.commit()
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error deleting resource: {str(e)}")
+            await self.db_session.rollback()
+            return False
 
     async def update_resource_metadata(
             self,
@@ -264,6 +270,68 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
             logger.error(f"Failed to update resource metadata: {str(e)}")
             await self.db_session.rollback()
             raise
+
+    async def get_all_resources(
+            self,
+            filters: Optional[Dict[str, Any]] = None,
+            sort: Optional[List[Tuple[str, int]]] = None
+    ) -> List[BaseStagedOutput]:
+        """
+        Get all resources matching the given filters (alias for list_resources)
+
+        Args:
+            filters (Optional[Dict]): Filter criteria for resources
+            sort (Optional[List[Tuple[str, int]]]): List of (field, direction) tuples for sorting
+
+        Returns:
+            List[BaseStagedOutput]: List of matching resources
+        """
+        try:
+            # Convert filters to query params format
+            query_params = filters or {}
+
+            # Call the existing list_resources method
+            return await self.list_resources(
+                query_params=query_params,
+                sort_params=sort
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting resources: {str(e)}", exc_info=True)
+            return []
+
+    async def list_data(
+            self,
+            filters: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List data with filters (alias for compatibility with staging manager)
+
+        Args:
+            filters (Optional[Dict]): Filter criteria
+
+        Returns:
+            List[Dict[str, Any]]: List of resources as dictionaries
+        """
+        try:
+            resources = await self.get_all_resources(filters=filters)
+
+            # Convert SQLAlchemy models to dictionaries
+            return [
+                {
+                    'id': str(resource.id),
+                    'status': resource.status,
+                    'created_at': resource.created_at.isoformat(),
+                    'metadata': resource.metadata or {},
+                    'resource_type': resource.resource_type,
+                    'storage_location': resource.storage_location
+                }
+                for resource in resources
+            ]
+
+        except Exception as e:
+            logger.error(f"Error listing data: {str(e)}", exc_info=True)
+            return []
 
     async def create_control_point(
             self,
@@ -343,48 +411,6 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
             logger.error(f"Failed to cleanup expired resources: {str(e)}")
             raise
 
-
-    async def list_resources(
-            self,
-            query_params: Dict[str, Any],
-            sort_params: Optional[List[Tuple[str, int]]] = None
-    ) -> List[BaseStagedOutput]:
-        """
-        Get all resources matching query parameters with sorting
-
-        Args:
-            query_params: Dictionary of query parameters
-            sort_params: List of tuples (field, direction) for sorting
-
-        Returns:
-            List[BaseStagedOutput]: List of matched resources
-        """
-        try:
-            query = self.db_session.query(BaseStagedOutput)
-
-            # Apply filters
-            for key, value in query_params.items():
-                if hasattr(BaseStagedOutput, key):
-                    query = query.filter(getattr(BaseStagedOutput, key) == value)
-                elif key == 'resource_type':  # Special handling for resource type
-                    query = query.filter(BaseStagedOutput.resource_type == value)
-                elif key == 'user_id':  # Special handling for user ID
-                    query = query.filter(BaseStagedOutput.owner_id == UUID(value))
-
-            # Apply sorting
-            if sort_params:
-                for field, direction in sort_params:
-                    if hasattr(BaseStagedOutput, field):
-                        sort_field = getattr(BaseStagedOutput, field)
-                        query = query.order_by(desc(sort_field) if direction == -1 else sort_field)
-
-            return await query.all()
-
-        except Exception as e:
-            logger.error(f"Error listing resources: {str(e)}")
-            return []
-
-
     async def list_user_files(self, user_id: str) -> List[BaseStagedOutput]:
         """
         List all files for a specific user
@@ -405,30 +431,86 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
             logger.error(f"Error listing user files: {str(e)}")
             return []
 
-
-    async def delete_resource(self, resource_id: str) -> bool:
-        """
-        Delete a resource by ID
-
-        Args:
-            resource_id: ID of the resource to delete
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
+    async def get_expired_resources(self, expiry_time: datetime) -> List[str]:
+        """Get list of expired resource IDs based on expiry time."""
         try:
-            resource = await self.db_session.query(BaseStagedOutput).filter(
-                BaseStagedOutput.id == UUID(resource_id)
-            ).first()
+            # Remove stage_key from the query
+            query = select(BaseStagedOutput).where(
+                and_(
+                    BaseStagedOutput.expires_at <= expiry_time,
+                    BaseStagedOutput.status.in_(['pending', 'awaiting_decision'])
+                )
+            )
 
-            if resource:
-                await self.db_session.delete(resource)
+            result = await self.db_session.execute(query)
+            expired_resources = result.scalars().all()
+
+            # Track expiry check in history
+            expired_ids = []
+            for resource in expired_resources:
+                resource.status = 'expired'
+                resource.updated_at = datetime.utcnow()
+                expired_ids.append(str(resource.id))
+
+                # Track in history
+                await self.create({
+                    'staged_output_id': resource.id,
+                    'event_type': 'expiry_check',
+                    'status': 'expired',
+                    'details': {
+                        'expiry_time': expiry_time.isoformat(),
+                        'previous_status': resource.status
+                    }
+                }, StagingProcessingHistory)
+
+            if expired_ids:
                 await self.db_session.commit()
-                return True
 
-            return False
+            return expired_ids
 
         except Exception as e:
-            logger.error(f"Error deleting resource: {str(e)}")
             await self.db_session.rollback()
-            return False
+            logger.error(f"Failed to get expired resources: {e}")
+            raise
+
+    async def cleanup_pending(self) -> List[str]:
+        """Cleanup pending resources"""
+        try:
+            # Modified query without stage_key
+            query = select(BaseStagedOutput).where(
+                and_(
+                    BaseStagedOutput.status == 'pending',
+                    BaseStagedOutput.expires_at <= datetime.utcnow()
+                )
+            )
+
+            result = await self.db_session.execute(query)
+            pending_resources = result.scalars().all()
+
+            cleaned_ids = []
+            for resource in pending_resources:
+                resource.status = 'expired'
+                resource.updated_at = datetime.utcnow()
+                cleaned_ids.append(resource.id)
+
+                # Track cleanup in history
+                await self.create({
+                    'staged_output_id': resource.id,
+                    'event_type': 'cleanup_pending',
+                    'status': 'expired',
+                    'details': {
+                        'cleanup_time': datetime.utcnow().isoformat(),
+                        'previous_status': 'pending'
+                    }
+                }, StagingProcessingHistory)
+
+            if cleaned_ids:
+                await self.db_session.commit()
+                logger.info(f"Cleaned up {len(cleaned_ids)} pending resources")
+
+            return cleaned_ids
+
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"Failed to cleanup pending resources: {e}")
+            raise

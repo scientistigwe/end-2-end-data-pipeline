@@ -26,6 +26,18 @@ class StagingProcessingHistory(BaseStagedOutput):
     # Use unique timestamp column
     history_created_at = column_property(Column(DateTime, default=datetime.utcnow))
 
+    history_source_id = Column(
+        'source_id',
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id')
+    )
+
+    history_source = relationship(
+        "DataSource",
+        back_populates="processing_history",
+        foreign_keys=[history_source_id]
+    )
+
     # Relationship with explicit back_populates
     staged_output = relationship(
         "BaseStagedOutput",

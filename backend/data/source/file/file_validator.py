@@ -21,7 +21,7 @@ class FileValidator:
 
     async def validate_file_source(
             self,
-            file_path: str,  # Changed from Path to str
+            filename: str,  # Change parameter name to be clearer
             metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Validate file source with comprehensive checks"""
@@ -29,37 +29,56 @@ class FileValidator:
             issues = []
             warnings = []
 
-            # Create Path object from string
-            file_path = Path(file_path) if isinstance(file_path, str) else file_path
-
-            # Basic checks
-            if not file_path.exists():
-                issues.append("File does not exist")
+            # Validate filename without checking existence
+            if not filename:
+                issues.append("Filename is required")
                 return self._build_result(False, issues, warnings)
 
-            # Size validation
-            size_validation = await self._validate_size(file_path)
-            issues.extend(size_validation.get('issues', []))
-            warnings.extend(size_validation.get('warnings', []))
-
             # Format validation
-            format_validation = await self._validate_format(
-                file_path,
+            format_validation = await self._validate_format_from_name(
+                filename,
                 metadata.get('content_type')
             )
             issues.extend(format_validation.get('issues', []))
             warnings.extend(format_validation.get('warnings', []))
 
-            # Security validation
-            security_validation = await self._validate_security(file_path, metadata)
+            # Security validation for filename
+            security_validation = await self._validate_filename_security(filename, metadata)
             issues.extend(security_validation.get('issues', []))
             warnings.extend(security_validation.get('warnings', []))
 
             return self._build_result(len(issues) == 0, issues, warnings)
 
         except Exception as e:
-            logger.error(f"Validation error: {str(e)}")
+            logger.error(f"Validation error: {str(e)}", exc_info=True)
             return self._build_result(False, [str(e)], [])
+
+    async def _validate_format_from_name(
+            self,
+            filename: str,
+            content_type: Optional[str]
+    ) -> Dict[str, Any]:
+        """Validate file format using filename and content type"""
+        issues = []
+        warnings = []
+
+        try:
+            # Extension check
+            ext = Path(filename).suffix[1:].lower()
+            if ext not in self.config.allowed_formats:
+                issues.append(f"Unsupported file format: {ext}")
+
+            # Validate content type
+            if content_type:
+                allowed_mimes = self.config.mime_types.get(ext, [])
+                if content_type not in allowed_mimes:
+                    issues.append(f"Invalid content type for {ext}: {content_type}")
+
+            return {'issues': issues, 'warnings': warnings}
+
+        except Exception as e:
+            logger.error(f"Format validation error: {str(e)}")
+            return {'issues': [str(e)], 'warnings': []}
 
     async def _validate_size(self, file_path: Path) -> Dict[str, Any]:
         """Validate file size constraints"""
@@ -221,3 +240,50 @@ class FileValidator:
             'warnings': warnings,
             'validation_time': datetime.utcnow().isoformat()
         }
+
+    async def _validate_filename_security(
+            self,
+            filename: str,
+            metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Validate filename for security concerns
+
+        Args:
+            filename: Name of the file to validate
+            metadata: Additional metadata about the file
+
+        Returns:
+            Dict containing validation issues and warnings
+        """
+        issues = []
+        warnings = []
+
+        try:
+            # Check filename patterns
+            for pattern in self.config.blocked_patterns:
+                if pattern.lower() in filename.lower():
+                    issues.append(f"Filename contains blocked pattern: {pattern}")
+
+            # Check filename length
+            if len(filename) > 255:
+                issues.append("Filename is too long (max 255 characters)")
+
+            # Check for dangerous characters
+            dangerous_chars = ['..', '/', '\\', ':', '*', '?', '"', '<', '>', '|']
+            for char in dangerous_chars:
+                if char in filename:
+                    issues.append(f"Filename contains invalid character: {char}")
+
+            # Check file extension
+            ext = Path(filename).suffix.lower()
+            if not ext:
+                warnings.append("File has no extension")
+            elif ext[1:] not in self.config.allowed_formats:
+                issues.append(f"Unsupported file extension: {ext}")
+
+            return {'issues': issues, 'warnings': warnings}
+
+        except Exception as e:
+            logger.error(f"Security validation error: {str(e)}")
+            return {'issues': [str(e)], 'warnings': []}

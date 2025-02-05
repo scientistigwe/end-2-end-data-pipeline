@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 import logging
 import asyncio
 from api import create_app
+import sys
+from hypercorn.config import Config
+from hypercorn.asyncio import serve
 
 # Configure logging
 logging.basicConfig(
@@ -10,9 +13,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Load environment variables at startup
 load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 
@@ -26,34 +27,38 @@ async def init_app():
         raise
 
 
-def run_app():
-    """Run the Flask application with proper async handling"""
+async def async_main():
+    """Main asynchronous entrypoint"""
     try:
         logger.info("Starting development server...")
+        app = await init_app()
 
-        # Setup event loop
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Configure Hypercorn
+        config = Config()
+        config.bind = ["0.0.0.0:5000"]
+        config.use_reloader = False
+        config.worker_class = "asyncio"
 
-        # Initialize the app
-        app = loop.run_until_complete(init_app())
-
-        # Run Flask application
-        app.run(
-            host='0.0.0.0',
-            port=5000,
-            debug=True,
-            use_reloader=True
-        )
+        await serve(app, config)
 
     except Exception as e:
         logger.error("Failed to start development server", exc_info=True)
         raise
-    finally:
-        loop.close()
+
+
+def run_app():
+    """Entry point for running the application"""
+    try:
+        if sys.platform.startswith('win'):
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+        asyncio.run(async_main())
+
+    except KeyboardInterrupt:
+        logger.info("Shutting down gracefully...")
+    except Exception as e:
+        logger.error("Application runtime error", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

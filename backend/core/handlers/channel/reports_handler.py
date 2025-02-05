@@ -41,7 +41,7 @@ class ReportHandler:
         # Setup message routing
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup message routing handlers"""
         routing_map = {
             # Service Messages
@@ -63,7 +63,7 @@ class ReportHandler:
         }
 
         for message_type, handler in routing_map.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"report.{message_type.value}.#",
                 handler

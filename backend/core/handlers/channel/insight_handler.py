@@ -40,7 +40,7 @@ class InsightHandler:
         # Initialize message handlers
         self._setup_message_handlers()
 
-    def _setup_message_handlers(self) -> None:
+    async def _setup_message_handlers(self) -> None:
         """Setup message routing handlers"""
         routing_map = {
             # Service Messages
@@ -58,7 +58,7 @@ class InsightHandler:
         }
 
         for message_type, handler in routing_map.items():
-            self.message_broker.subscribe(
+            await self.message_broker.subscribe(
                 self.module_identifier,
                 f"insight.{message_type.value}.#",
                 handler

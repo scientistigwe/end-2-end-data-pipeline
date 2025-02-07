@@ -1,122 +1,163 @@
-from functools import wraps
-from flask import g, request, current_app
-from typing import Callable, Any
-from ..utils.response_builder import ResponseBuilder
+from typing import Optional, Annotated
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from datetime import datetime
+
+from config.settings import settings
+from db.models.auth import User
 
 
-def login_required(f: Callable) -> Callable:
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    roles: list[str] = []
+
+
+# OAuth2 scheme for JWT tokens
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
+# API Key scheme
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> User:
     """
-    Decorator to verify user is logged in.
+    Dependency to get the current authenticated user.
 
     Args:
-        f: Function to decorate
+        token: JWT token from request
 
     Returns:
-        Decorated function that checks for authenticated user
+        User: Current authenticated user
+
+    Raises:
+        HTTPException: If authentication fails
     """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
-    @wraps(f)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if not hasattr(g, 'current_user') or not g.current_user:
-            return ResponseBuilder.error(
-                "Authentication required",
-                status_code=401
-            )
-        return f(*args, **kwargs)
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
 
-    return decorated_function
+        token_data = TokenData(
+            username=username,
+            roles=payload.get("roles", [])
+        )
+    except JWTError:
+        raise credentials_exception
+
+    # Get user from database using username
+    # This is a placeholder - implement your user retrieval logic
+    user = await get_user_from_db(username)
+    if user is None:
+        raise credentials_exception
+
+    return user
 
 
-def role_required(role: str) -> Callable:
+async def get_current_active_user(
+        current_user: Annotated[User, Depends(get_current_user)]
+) -> User:
     """
-    Decorator to verify user has required role.
+    Dependency to get current active user.
 
     Args:
-        role: Required role name
+        current_user: User from get_current_user dependency
 
     Returns:
-        Decorated function that checks for role authorization
+        User: Current active user
+
+    Raises:
+        HTTPException: If user is inactive
     """
-
-    def decorator(f: Callable) -> Callable:
-        @wraps(f)
-        def decorated_function(*args: Any, **kwargs: Any) -> Any:
-            if not hasattr(g, 'current_user') or not g.current_user:
-                return ResponseBuilder.error(
-                    "Authentication required",
-                    status_code=401
-                )
-
-            if not hasattr(g.current_user, 'roles') or role not in g.current_user.roles:
-                return ResponseBuilder.error(
-                    "Insufficient permissions",
-                    status_code=403
-                )
-
-            return f(*args, **kwargs)
-
-        return decorated_function
-
-    return decorator
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+    return current_user
 
 
-def admin_required(f: Callable) -> Callable:
+def check_role(required_role: str):
     """
-    Decorator to verify user has admin role.
+    Create a dependency that checks for a specific role.
 
     Args:
-        f: Function to decorate
+        required_role: Role to check for
 
     Returns:
-        Decorated function that checks for admin authorization
+        Dependency function checking for role
     """
 
-    @wraps(f)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if not hasattr(g, 'current_user') or not g.current_user:
-            return ResponseBuilder.error(
-                "Authentication required",
-                status_code=401
+    async def role_checker(
+            current_user: Annotated[User, Depends(get_current_active_user)]
+    ) -> User:
+        if required_role not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions"
             )
+        return current_user
 
-        if not hasattr(g.current_user, 'roles') or 'admin' not in g.current_user.roles:
-            return ResponseBuilder.error(
-                "Admin access required",
-                status_code=403
-            )
-
-        return f(*args, **kwargs)
-
-    return decorated_function
+    return role_checker
 
 
-def verify_api_key() -> Callable:
+# Role-specific dependencies
+get_admin_user = check_role("admin")
+
+
+async def verify_api_key(
+        api_key: Annotated[str, Security(api_key_header)]
+) -> str:
     """
-    Decorator to verify API key for service-to-service communication.
+    Dependency to verify API key.
+
+    Args:
+        api_key: API key from request header
 
     Returns:
-        Decorated function that checks for valid API key
+        str: Verified API key
+
+    Raises:
+        HTTPException: If API key is invalid
     """
+    if api_key not in settings.API_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key"
+        )
+    return api_key
 
-    def decorator(f: Callable) -> Callable:
-        @wraps(f)
-        def decorated_function(*args: Any, **kwargs: Any) -> Any:
-            api_key = request.headers.get('X-API-Key')
-            if not api_key:
-                return ResponseBuilder.error(
-                    "API key required",
-                    status_code=401
-                )
 
-            valid_api_keys = current_app.config.get('API_KEYS', set())
-            if api_key not in valid_api_keys:
-                return ResponseBuilder.error(
-                    "Invalid API key",
-                    status_code=403
-                )
+# Example usage in routes:
+"""
+@router.get("/users/me")
+async def read_user_me(
+    current_user: Annotated[User, Depends(get_current_active_user)]
+):
+    return current_user
 
-            return f(*args, **kwargs)
+@router.get("/admin/users")
+async def read_all_users(
+    current_user: Annotated[User, Depends(get_admin_user)]
+):
+    # Only admins can access this
+    return {"message": "Admin only endpoint"}
 
-        return decorated_function
-
-    return decorator
+@router.get("/service/status")
+async def check_service_status(
+    api_key: Annotated[str, Depends(verify_api_key)]
+):
+    return {"status": "operational"}
+"""

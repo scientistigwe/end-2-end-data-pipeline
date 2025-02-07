@@ -464,26 +464,6 @@ async def validate_source_data(
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to validate source")
 
-
-# Health check endpoints
-@router.get("/{source_id}/health", response_model=Dict[str, Any])
-async def check_source_health(
-        source_id: UUID,
-        current_user: dict = Depends(get_current_user),
-        services: Dict[str, Any] = Depends(get_services)
-):
-    """Check health status of a data source"""
-    try:
-        source, service = await validate_source_access(source_id, current_user, services)
-        health_status = await service.check_health(str(source_id))
-        return {'health_status': health_status}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Health check error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to check source health")
-
-
 # Add metadata endpoints
 @router.get("/{source_id}/metadata", response_model=Dict[str, Any])
 async def get_source_metadata(

@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
 from datetime import datetime, timedelta
+from passlib.context import CryptContext
 
 from db.models.auth import User, UserSession, PasswordResetToken
-from werkzeug.security import generate_password_hash, check_password_hash
+
+# Configure password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,14 @@ class AuthService:
         self.db_session = db_session
         self.logger = logging.getLogger(__name__)
 
+    def _hash_password(self, password: str) -> str:
+        """Hash a password using passlib."""
+        return pwd_context.hash(password)
+
+    def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        """Verify a password against its hash using passlib."""
+        return pwd_context.verify(plain_password, hashed_password)
+
     async def register_user(self, data: Dict[str, Any]) -> User:
         """Register a new user."""
         try:
@@ -28,7 +39,7 @@ class AuthService:
             if existing_user:
                 raise ValueError("Email already registered")
 
-            password_hash = generate_password_hash(data['password'])
+            password_hash = self._hash_password(data['password'])
 
             # Create user with required fields
             user = User(
@@ -74,7 +85,7 @@ class AuthService:
             if user.failed_login_attempts >= 5 and user.locked_until and user.locked_until > datetime.utcnow():
                 raise ValueError("Account is locked. Please try again later")
 
-            if not check_password_hash(user.password_hash, password):
+            if not self._verify_password(password, user.password_hash):
                 user.failed_login_attempts += 1
                 if user.failed_login_attempts >= 5:
                     user.locked_until = datetime.utcnow() + timedelta(minutes=30)
@@ -91,6 +102,62 @@ class AuthService:
             raise
         except Exception as e:
             self.logger.error(f"Authentication error: {str(e)}")
+            raise
+
+    async def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None:
+        """Change user's password after verifying current password."""
+        try:
+            query = select(User).filter_by(id=user_id)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                raise ValueError("User not found")
+
+            if not self._verify_password(current_password, user.password_hash):
+                raise ValueError("Invalid current password")
+
+            # Update password
+            user.password_hash = self._hash_password(new_password)
+            await self.db_session.commit()
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Password change error: {str(e)}")
+            raise
+
+    async def reset_password(self, token: str, new_password: str) -> User:
+        """Reset user's password using reset token."""
+        try:
+            query = select(PasswordResetToken).filter_by(token=token)
+            result = await self.db_session.execute(query)
+            reset_record = result.scalar_one_or_none()
+
+            if not reset_record:
+                raise ValueError("Invalid reset token")
+
+            if reset_record.expires_at < datetime.utcnow():
+                raise ValueError("Reset token has expired")
+
+            query = select(User).filter_by(id=reset_record.user_id)
+            result = await self.db_session.execute(query)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                raise ValueError("User not found")
+
+            # Update password
+            user.password_hash = self._hash_password(new_password)
+
+            # Delete the used reset token
+            await self.db_session.delete(reset_record)
+            await self.db_session.commit()
+
+            return user
+
+        except Exception as e:
+            await self.db_session.rollback()
+            self.logger.error(f"Password reset error: {str(e)}")
             raise
 
     async def update_last_login(self, user_id: UUID) -> None:
@@ -302,87 +369,6 @@ class AuthService:
         except Exception as e:
             await self.db_session.rollback()
             self.logger.error(f"Password reset initiation error: {str(e)}")
-            raise
-
-    async def reset_password(self, token: str, new_password: str) -> User:
-        """
-        Reset user's password using reset token.
-
-        Args:
-            token (str): Password reset token
-            new_password (str): New password
-
-        Returns:
-            User: User with reset password
-
-        Raises:
-            ValueError: If token is invalid or expired
-        """
-        try:
-            # Find the password reset token record
-            query = select(PasswordResetToken).filter_by(token=token)
-            result = await self.db_session.execute(query)
-            reset_record = result.scalar_one_or_none()
-
-            if not reset_record:
-                raise ValueError("Invalid reset token")
-
-            # Check token expiration
-            if reset_record.expires_at < datetime.utcnow():
-                raise ValueError("Reset token has expired")
-
-            # Find the associated user
-            query = select(User).filter_by(id=reset_record.user_id)
-            result = await self.db_session.execute(query)
-            user = result.scalar_one_or_none()
-
-            if not user:
-                raise ValueError("User not found")
-
-            # Update password
-            user.password_hash = generate_password_hash(new_password)
-
-            # Delete the used reset token
-            await self.db_session.delete(reset_record)
-            await self.db_session.commit()
-
-            return user
-
-        except Exception as e:
-            await self.db_session.rollback()
-            self.logger.error(f"Password reset error: {str(e)}")
-            raise
-
-    async def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None:
-        """
-        Change user's password after verifying current password.
-
-        Args:
-            user_id (UUID): User's ID
-            current_password (str): Current password
-            new_password (str): New password
-
-        Raises:
-            ValueError: If current password is invalid
-        """
-        try:
-            query = select(User).filter_by(id=user_id)
-            result = await self.db_session.execute(query)
-            user = result.scalar_one_or_none()
-
-            if not user:
-                raise ValueError("User not found")
-
-            if not check_password_hash(user.password_hash, current_password):
-                raise ValueError("Invalid current password")
-
-            # Update password
-            user.password_hash = generate_password_hash(new_password)
-            await self.db_session.commit()
-
-        except Exception as e:
-            await self.db_session.rollback()
-            self.logger.error(f"Password change error: {str(e)}")
             raise
 
     async def verify_account(self, token: str) -> User:

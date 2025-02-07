@@ -4,7 +4,9 @@ import logging
 import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from werkzeug.datastructures import FileStorage
+
+from fastapi import UploadFile
+import json
 
 from core.control.cpm import ControlPointManager
 from core.managers.staging_manager import StagingManager
@@ -13,6 +15,7 @@ from .file_validator import FileValidator
 from config.validation_config import FileValidationConfig
 
 logger = logging.getLogger(__name__)
+
 
 class FileService:
     """Service for handling file operations"""
@@ -26,30 +29,24 @@ class FileService:
         self.staging_manager = staging_manager
         self.cpm = cpm
         self.config = config or FileValidationConfig()
-        
+
         # Initialize components
         self.handler = FileHandler(staging_manager)
         self.validator = FileValidator()
 
-    def process_file_upload(
+    async def process_file_upload(
             self,
-            file: FileStorage,
-            metadata: str,
+            file: UploadFile,
+            metadata: str | Dict[str, Any],
             user_id: str
     ) -> Dict[str, Any]:
-        """Process file upload (synchronous wrapper around async handle_upload)"""
-        import json
-        import asyncio
-
+        """Process file upload"""
         try:
+            # Parse metadata
             metadata_dict = json.loads(metadata) if isinstance(metadata, str) else metadata
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(
-                self.handle_upload(file, user_id, metadata_dict)
-            )
-            loop.close()
+            # Handle upload
+            result = await self.handle_upload(file, user_id, metadata_dict)
 
             # Format response to match schema
             return {
@@ -76,7 +73,7 @@ class FileService:
 
     async def handle_upload(
             self,
-            file: FileStorage,
+            file: UploadFile,
             user_id: str,
             metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -100,7 +97,7 @@ class FileService:
 
             # Process through handler
             result = await self.handler.handle_file(
-                file.stream,
+                file.file,  # file-like object instead of stream
                 file.filename,
                 file.content_type,
                 metadata
@@ -133,7 +130,7 @@ class FileService:
                 'error': str(e)
             }
 
-    def list_sources(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_sources(self, user_id: str) -> List[Dict[str, Any]]:
         """
         List file sources for a user
 
@@ -145,13 +142,7 @@ class FileService:
         """
         try:
             # Get files from staging area using the new method
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            staged_files = loop.run_until_complete(
-                self.staging_manager.list_files(user_id)
-            )
-            loop.close()
-
+            staged_files = await self.staging_manager.list_files(user_id)
             return staged_files
 
         except Exception as e:

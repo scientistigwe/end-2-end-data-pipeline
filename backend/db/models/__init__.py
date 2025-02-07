@@ -1,88 +1,131 @@
-# backend/db/types/__init__.py
-import logging
-from sqlalchemy import Column, String, DateTime, Boolean, Enum, ForeignKey, Text, Integer, Float, JSON, Table
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, validates
-from sqlalchemy.ext.hybrid import hybrid_property
-from .auth import User
-from .events import EventSubscription
+# backend/db/models/__init__.py
 
-logger = logging.getLogger(__name__)
+from .core.base import Base, BaseModel
 
-try:
-    logger.info("Importing base model...")
-    from .base import Base, BaseModel
+# Auth Models
+from .auth.user import (
+    User, UserActivityLog, PasswordResetToken, ServiceAccount
+)
+from .auth.session import (
+    UserSession, SessionDevice, RefreshToken
+)
+from .auth.team import (
+    Team, TeamMember, TeamResource, TeamInvitation
+)
 
-    # Import all types with error handling
-    logger.info("Importing auth types...")
-    from .auth import User, UserSession, UserActivityLog
+# Data Source Models
+from .data.sources import (
+    DataSource, DatabaseSourceConfig, APISourceConfig,
+    S3SourceConfig, StreamSourceConfig, FileSourceInfo,
+    SourceConnection, SourceSyncHistory,
+    DatabaseDataSource, APIDataSource, S3DataSource,
+    StreamDataSource, FileDataSource
+)
 
-    logger.info("Importing data source types...")
-    from .data_source import (
-        DataSource, APISourceConfig, DatabaseSourceConfig,
-        S3SourceConfig, StreamSourceConfig, FileSourceInfo,
-        SourceConnection, SourceSyncHistory
-    )
+# Pipeline Models
+from .data.pipeline import (
+    Pipeline, PipelineStep, PipelineRun, PipelineStepRun,
+    QualityGate, QualityCheck, PipelineLog, PipelineTemplate,
+    PipelineVersion, PipelineSchedule, Tag, PipelineDependency
+)
 
-    logger.info("Importing pipeline types...")
-    from .pipeline import (
-        Pipeline, PipelineStep, PipelineRun,
-        PipelineStepRun, QualityGate, PipelineLog, PipelineVersion, PipelineTemplate
-    )
+# Staging Models - Base
+from .staging.base import (
+    BaseStagedOutput, StagingProcessingHistory,
+    StagingControlPoint
+)
 
-    logger.info("Importing staging types...")
-    from .staging.base_staging_model import BaseStagedOutput
-    from .staging.advanced_analytics_output_model import StagedAnalyticsOutput
-    from .staging.insight_output_model import StagedInsightOutput
-    from .staging.quality_output_model import StagedQualityOutput
-    from .staging.report_output_model import StagedReportOutput
-    from .staging.staging_control_model import StagingControlPoint
-    from .staging.staging_history_model import StagingProcessingHistory
+# Staging Models - Analytics
+from .staging.analytics import (
+    StagedAnalyticsOutput,
+    StagedInsightOutput,
+    StagedDecisionOutput
+)
 
-    logger.info("Importing event types...")
-    from .events import EventSubscription, Event, EventProcessor
+# Staging Models - Processing
+from .staging.processing import (
+    StagedMonitoringOutput,
+    StagedQualityOutput,
+    StagedRecommendationOutput
+)
 
-    logger.info("All types imported successfully")
+# Staging Models - Reporting
+from .staging.reporting import (
+    StagedReportOutput,
+    StagedMetricsOutput,
+    StagedComplianceReport
+)
 
-except Exception as e:
-    logger.error(f"Error importing types: {str(e)}")
-    import traceback
-
-    logger.error(f"Traceback: {traceback.format_exc()}")
-    raise
-
-# Export all types
 __all__ = [
+    # Base
     'Base',
     'BaseModel',
 
-    # Auth
+    # Auth Models
     'User',
-    'UserSession',
     'UserActivityLog',
+    'PasswordResetToken',
+    'ServiceAccount',
+    'UserSession',
+    'SessionDevice',
+    'RefreshToken',
+    'Team',
+    'TeamMember',
+    'TeamResource',
+    'TeamInvitation',
 
-    # Data Sources
+    # Data Source Models
     'DataSource',
-    'APISourceConfig',
     'DatabaseSourceConfig',
+    'APISourceConfig',
     'S3SourceConfig',
     'StreamSourceConfig',
     'FileSourceInfo',
     'SourceConnection',
     'SourceSyncHistory',
+    'DatabaseDataSource',
+    'APIDataSource',
+    'S3DataSource',
+    'StreamDataSource',
+    'FileDataSource',
 
-    # Pipeline
+    # Pipeline Models
     'Pipeline',
     'PipelineStep',
     'PipelineRun',
     'PipelineStepRun',
     'QualityGate',
+    'QualityCheck',
     'PipelineLog',
-    'PipelineVersion',
     'PipelineTemplate',
+    'PipelineVersion',
+    'PipelineSchedule',
+    'Tag',
+    'PipelineDependency',
 
-    # Events
-    'EventSubscription',
-    'Event',
-    'EventProcessor',
+    # Staging Models - Base
+    'BaseStagedOutput',
+    'StagingProcessingHistory',
+    'StagingControlPoint',
+
+    # Staging Models - Analytics
+    'StagedAnalyticsOutput',
+    'StagedInsightOutput',
+    'StagedDecisionOutput',
+
+    # Staging Models - Processing
+    'StagedMonitoringOutput',
+    'StagedQualityOutput',
+    'StagedRecommendationOutput',
+
+    # Staging Models - Reporting
+    'StagedReportOutput',
+    'StagedMetricsOutput',
+    'StagedComplianceReport'
 ]
+
+# Ensure all models are loaded
+import logging
+
+logger = logging.getLogger(__name__)
+logger.info(f"Loaded {len(__all__)} models")

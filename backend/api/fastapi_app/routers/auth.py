@@ -1,10 +1,7 @@
 # api/fastapi_app/routers/auth.py
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-from datetime import datetime, timedelta
 import logging
 
 from api.fastapi_app.dependencies.database import get_db_session

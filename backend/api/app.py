@@ -22,8 +22,8 @@ from core.messaging.event_types import (
 )
 
 # Import repositories and services
-from db.repository.staging_repository import StagingRepository
-from db.repository.pipeline_repository import PipelineRepository
+from db.repository.staging import StagingRepository
+from db.repository.data import DataRepository
 from core.services.staging.staging_service import StagingService
 from core.managers import (
     QualityManager, InsightManager, AnalyticsManager, PipelineManager,

@@ -32,7 +32,7 @@ class ControlPoint:
     status: ProcessingStatus = ProcessingStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    cp_metadata: Dict[str, Any] = field(default_factory=dict)
     decisions: List[Dict[str, Any]] = field(default_factory=list)
     next_stages: List[ProcessingStage] = field(default_factory=list)
     requires_decision: bool = True

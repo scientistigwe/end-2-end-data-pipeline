@@ -1,25 +1,32 @@
-# Import blueprint creation functions
-from backend.api.fastapi_app.routers.auth import create_auth_blueprint
-from backend.api.fastapi_app.routers.data_sources import create_data_source_blueprint
-from backend.api.fastapi_app.routers.pipeline import create_pipeline_blueprint
-from backend.api.fastapi_app.routers.analytics import create_analytics_blueprint
-from backend.api.fastapi_app.routers.quality import create_quality_blueprint
-from backend.api.fastapi_app.routers.insight import create_insight_blueprint
-from backend.api.fastapi_app.routers.recommendations import create_recommendation_blueprint
-from backend.api.fastapi_app.routers.decisions import create_decision_blueprint
-from backend.api.fastapi_app.routers.monitoring import create_monitoring_blueprint
-from backend.api.fastapi_app.routers.reports import create_reports_blueprint
-from backend.api.fastapi_app.routers.staging import create_staging_blueprint
+from fastapi import FastAPI, APIRouter
+from typing import Dict, Any, Optional
+from api.fastapi_app.auth.jwt_manager import JWTTokenManager
 
-from flask import Flask
-from typing import Dict, Any, List, Tuple
-from api.flask_app.auth.jwt_manager import JWTTokenManager
+# Import routers
+from api.fastapi_app.routers import (
+    auth,
+    data_sources,
+    pipeline,
+    analytics,
+    quality,
+    insight,
+    recommendations,
+    decisions,
+    monitoring,
+    reports,
+    staging
+)
 
 
-class BlueprintManager:
-    """Manages the creation and registration of Flask routers."""
+class RouterManager:
+    """Manages the creation and registration of FastAPI routers."""
 
-    def __init__(self, app: Flask, services: Dict[str, Any], jwt_manager: JWTTokenManager):
+    def __init__(
+            self,
+            app: FastAPI,
+            services: Dict[str, Any],
+            jwt_manager: JWTManager
+    ):
         self.app = app
         self.services = services
         self.jwt_manager = jwt_manager
@@ -27,16 +34,17 @@ class BlueprintManager:
         self.async_session_factory = None
         self.staging_manager = None
 
-    def _validate_core_dependencies(self):
+    def _validate_core_dependencies(self) -> None:
         """Validate core application dependencies."""
         if not self.jwt_manager:
             raise ValueError("JWT manager not initialized")
 
-        self.db_config = self.app.config.get('DATABASE_CONFIG')
-        if not self.db_config:
+        if not hasattr(self.app, 'db_config'):
             raise AttributeError("Database configuration not found")
 
-    def _setup_database(self):
+        self.db_config = self.app.db_config
+
+    def _setup_database(self) -> None:
         """Setup database session and configuration."""
         self.async_session_factory = self.db_config.session_factory()
         if not self.async_session_factory:
@@ -49,7 +57,7 @@ class BlueprintManager:
                 'config': self.db_config
             })
 
-    def _validate_services(self) -> Tuple[List[str], List[str]]:
+    def _validate_services(self) -> tuple[list[str], list[str]]:
         """Validate required services and their health checks."""
         service_categories = {
             'core': {
@@ -93,81 +101,36 @@ class BlueprintManager:
 
         return missing, invalid
 
-    def _create_blueprints(self) -> Dict[str, Any]:
+    def _create_routers(self) -> Dict[str, APIRouter]:
         """Create application routers."""
         # Get staging_manager reference
         self.staging_manager = self.services['staging_manager']
 
         return {
-            'auth': create_auth_blueprint(
-                auth_service=self.services['auth_service'],
-                jwt_manager=self.jwt_manager
-            ),
-            'data-sources': create_data_source_blueprint(
-                file_service=self.services['file_service'],
-                db_service=self.services['db_service'],
-                s3_service=self.services['s3_service'],
-                api_service=self.services['api_service'],
-                stream_service=self.services['stream_service'],
-                jwt_manager=self.jwt_manager
-            ),
-            'pipeline': create_pipeline_blueprint(
-                pipeline_service=self.services['pipeline_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'analytics': create_analytics_blueprint(
-                quality_service=self.services['quality_service'],
-                analytics_service=self.services['analytics_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'quality': create_quality_blueprint(
-                quality_service=self.services['quality_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'insight': create_insight_blueprint(
-                insight_service=self.services['insight_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'recommendations': create_recommendation_blueprint(
-                recommendation_service=self.services['recommendation_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'decisions': create_decision_blueprint(
-                decision_service=self.services['decision_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'monitoring': create_monitoring_blueprint(
-                monitoring_service=self.services['monitoring_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'reports': create_reports_blueprint(
-                report_service=self.services['report_service'],
-                staging_manager=self.staging_manager,
-                jwt_manager=self.jwt_manager
-            ),
-            'staging': create_staging_blueprint(
-                staging_service=self.services['staging_service'],
-                jwt_manager=self.jwt_manager
-            )
+            'auth': auth.router,
+            'data-sources': data_sources.router,
+            'pipeline': pipeline.router,
+            'analytics': analytics.router,
+            'quality': quality.router,
+            'insight': insight.router,
+            'recommendations': recommendations.router,
+            'decisions': decisions.router,
+            'monitoring': monitoring.router,
+            'reports': reports.router,
+            'staging': staging.router
         }
 
-    def _register_blueprints(self, blueprints: Dict[str, Any]):
-        """Register routers with the Flask application."""
-        for name, blueprint in blueprints.items():
-            if blueprint is None:
-                raise ValueError(f"Blueprint {name} was not properly created")
-            url_prefix = f'/api/v1/{name}'
-            self.app.register_blueprint(blueprint, url_prefix=url_prefix)
-            self.app.logger.info(f"Registered blueprint: {name} with prefix {url_prefix}")
+    def _register_routers(self, routers: Dict[str, APIRouter]) -> None:
+        """Register routers with the FastAPI application."""
+        for name, router in routers.items():
+            if router is None:
+                raise ValueError(f"Router {name} was not properly created")
 
-    def setup(self):
+            url_prefix = f'/api/v1/{name}'
+            self.app.include_router(router, prefix=url_prefix)
+            self.app.logger.info(f"Registered router: {name} with prefix {url_prefix}")
+
+    def setup(self) -> None:
         """Setup and register all routers."""
         try:
             # 1. Validate core dependencies
@@ -184,25 +147,26 @@ class BlueprintManager:
                 self.app.logger.warning(f"Services with missing health checks: {', '.join(invalid_services)}")
 
             # 4. Create and register routers
-            blueprints = self._create_blueprints()
-            self._register_blueprints(blueprints)
+            routers = self._create_routers()
+            self._register_routers(routers)
 
         except Exception as e:
-            self.app.logger.error(f"Failed to create routers: {str(e)}", exc_info=True)
+            self.app.logger.error(f"Failed to setup routers: {str(e)}", exc_info=True)
             raise
 
 
-def create_blueprints(app: Flask, services: Dict[str, Any], jwt_manager: JWTTokenManager) -> None:
+def setup_routers(
+        app: FastAPI,
+        services: Dict[str, Any],
+        jwt_manager: JWTManager
+) -> None:
     """
     Register all application routers with their required service dependencies.
 
     Args:
-        app: Flask application instance
+        app: FastAPI application instance
         services: Dictionary containing service instances
         jwt_manager: JWT manager for authentication
     """
-    blueprint_manager = BlueprintManager(app, services, jwt_manager)
-    blueprint_manager.setup()
-
-
-
+    router_manager = RouterManager(app, services, jwt_manager)
+    router_manager.setup()

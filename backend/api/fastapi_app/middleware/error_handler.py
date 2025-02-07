@@ -1,27 +1,38 @@
-"""
-Error handling middleware for Flask application.
-Provides comprehensive HTTP error handling and request validation.
-"""
+# backend/api/fastapi_app/middleware/error_handling.py
 
-from flask import request, jsonify, current_app
-from werkzeug.exceptions import HTTPException
 import logging
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Optional, Union
+
+from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_405_METHOD_NOT_ALLOWED,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_429_TOO_MANY_REQUESTS,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE
+)
 
 # Configure logger
 logger = logging.getLogger(__name__)
-
 
 class ErrorResponse:
     """Standardized error response formatting."""
 
     @staticmethod
     def create(
-            code: int,
-            name: str,
-            description: str,
-            additional_info: Optional[Dict[str, Any]] = None
-    ) -> Tuple[Dict[str, Any], int]:
+        code: int,
+        name: str,
+        description: str,
+        additional_info: Optional[Dict[str, Any]] = None
+    ) -> JSONResponse:
         """
         Create a standardized error response.
 
@@ -32,9 +43,9 @@ class ErrorResponse:
             additional_info: Optional additional error details
 
         Returns:
-            Tuple of (response_dict, status_code)
+            JSONResponse with standardized error format
         """
-        response = {
+        response_data = {
             'error': {
                 'code': code,
                 'name': name,
@@ -43,10 +54,53 @@ class ErrorResponse:
         }
 
         if additional_info:
-            response['error'].update(additional_info)
+            response_data['error'].update(additional_info)
 
-        return jsonify(response), code
+        return JSONResponse(
+            status_code=code,
+            content=response_data
+        )
 
+class GlobalErrorHandlingMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware for global error handling and logging
+    """
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint
+    ) -> Response:
+        """
+        Global error handling middleware
+
+        Args:
+            request: Incoming request
+            call_next: Next middleware or request handler
+
+        Returns:
+            Response from the request handler
+        """
+        try:
+            response = await call_next(request)
+            return response
+
+        except HTTPException as http_exc:
+            # Handle known HTTP exceptions
+            logger.error(f"HTTP Error: {http_exc.status_code} - {http_exc.detail}")
+            return ErrorResponse.create(
+                http_exc.status_code,
+                http_exc.detail,
+                str(http_exc.detail)
+            )
+
+        except Exception as exc:
+            # Handle unexpected errors
+            logger.error("Unhandled error", exc_info=True)
+            return ErrorResponse.create(
+                HTTP_500_INTERNAL_SERVER_ERROR,
+                'Internal Server Error',
+                'An unexpected error occurred.'
+            )
 
 def create_cors_headers(origin: Optional[str] = None) -> Dict[str, str]:
     """
@@ -59,125 +113,112 @@ def create_cors_headers(origin: Optional[str] = None) -> Dict[str, str]:
         Dictionary of CORS headers
     """
     return {
-        'Access-Control-Allow-Origin': origin or request.headers.get('Origin', '*'),
+        'Access-Control-Allow-Origin': origin or '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '3600'
     }
 
-
-def handle_preflight() -> Tuple[Dict[str, str], int]:
+def custom_route_handler(route: APIRoute) -> APIRoute:
     """
-    Handle preflight OPTIONS requests with appropriate CORS headers.
+    Custom route handler to enhance error handling and logging
+
+    Args:
+        route: Original FastAPI route
 
     Returns:
-        Tuple of (response, status_code)
+        Modified route with enhanced error handling
     """
-    response = jsonify({'message': 'OK'})
-    response.headers.update(create_cors_headers())
-    return response, 200
+    original_handler = route.endpoint
 
+    async def custom_handler(*args, **kwargs):
+        try:
+            return await original_handler(*args, **kwargs)
+        except HTTPException as http_exc:
+            logger.error(
+                f"HTTP Error in {route.endpoint.__name__}: "
+                f"{http_exc.status_code} - {http_exc.detail}"
+            )
+            raise
+        except Exception as exc:
+            logger.error(
+                f"Unhandled error in {route.endpoint.__name__}",
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='An unexpected error occurred.'
+            )
+
+    route.endpoint = custom_handler
+    return route
 
 def register_error_handlers(app):
     """
-    Register comprehensive error handlers for the Flask application.
+    Register comprehensive error handlers for the FastAPI application.
 
     Args:
-        app: Flask application instance
+        app: FastAPI application instance
 
     Returns:
-        Modified Flask application with error handlers
+        Modified FastAPI application with error handlers
     """
+    # Add global error handling middleware
+    app.add_middleware(GlobalErrorHandlingMiddleware)
 
-    @app.before_request
-    def validate_request_method():
-        """Validate HTTP method for current request."""
-        if request.method == 'OPTIONS':
-            return handle_preflight()
-
-        try:
-            adapter = current_app.url_map.bind_to_environ(request.environ)
-            adapter.match()
-
-        except HTTPException as e:
-            if e.code == 405:
-                logger.warning(
-                    "Method not allowed: %s %s. Allowed methods: %s",
-                    request.method,
-                    request.path,
-                    ', '.join(e.valid_methods)
-                )
-
-                response = jsonify({
-                    'error': {
-                        'code': 405,
-                        'name': 'Method Not Allowed',
-                        'description': f'The method {request.method} is not allowed for this endpoint.',
-                        'allowed_methods': list(e.valid_methods)
-                    }
-                })
-                response.status_code = 405
-                response.headers['Allow'] = ', '.join(e.valid_methods)
-                return response
-
-            # Let Flask handle other HTTP exceptions
-            raise
-
-    def register_http_error_handler(error_code: int, name: str, description: str):
+    # Custom exception handlers
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
         """
-        Register handler for specific HTTP error code.
+        Global HTTP exception handler
 
         Args:
-            error_code: HTTP status code to handle
-            name: Error name
-            description: Default error description
+            request: Incoming request
+            exc: HTTP exception
+
+        Returns:
+            Standardized error response
         """
-
-        @app.errorhandler(error_code)
-        def handle_error(error):
-            logger.error("%s error: %s", name, error)
-            return ErrorResponse.create(
-                error_code,
-                name,
-                getattr(error, 'description', description)
-            )
-
-    # Register handlers for common HTTP errors
-    error_definitions = {
-        400: ('Bad Request', 'The request was invalid or malformed.'),
-        401: ('Unauthorized', 'Authentication is required to access this resource.'),
-        403: ('Forbidden', 'You do not have permission to access this resource.'),
-        404: ('Not Found', 'The requested resource was not found.'),
-        405: ('Method Not Allowed', 'The HTTP method is not allowed for this endpoint.'),
-        422: ('Unprocessable Entity', 'The request data was invalid.'),
-        429: ('Too Many Requests', 'Rate limit exceeded. Please try again later.'),
-        500: ('Internal Server Error', 'An unexpected error occurred on the server.'),
-        503: ('Service Unavailable', 'The service is temporarily unavailable.')
-    }
-
-    for code, (name, description) in error_definitions.items():
-        register_http_error_handler(code, name, description)
-
-    @app.errorhandler(HTTPException)
-    def handle_http_error(error):
-        """Handle any unregistered HTTP exceptions."""
-        logger.error("HTTP error occurred: %s", error)
-        return ErrorResponse.create(
-            error.code,
-            error.name,
-            error.description
+        logger.error(
+            f"HTTP Error: {exc.status_code} - {exc.detail} "
+            f"Path: {request.url.path}"
         )
 
-    @app.errorhandler(Exception)
-    def handle_generic_error(error):
-        """Handle all unhandled exceptions."""
-        logger.error("Unhandled error occurred: %s", str(error), exc_info=True)
         return ErrorResponse.create(
-            500,
+            exc.status_code,
+            exc.detail,
+            str(exc.detail)
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        """
+        Global generic exception handler
+
+        Args:
+            request: Incoming request
+            exc: Unexpected exception
+
+        Returns:
+            Standardized error response
+        """
+        logger.error(
+            f"Unhandled error: {str(exc)} "
+            f"Path: {request.url.path}",
+            exc_info=True
+        )
+
+        return ErrorResponse.create(
+            HTTP_500_INTERNAL_SERVER_ERROR,
             'Internal Server Error',
             'An unexpected error occurred.'
         )
+
+    # Modify all routes for enhanced error handling
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            route = custom_route_handler(route)
 
     logger.info("Error handlers registered successfully")
     return app

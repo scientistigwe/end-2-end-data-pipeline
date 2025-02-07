@@ -17,7 +17,7 @@ from ..messaging.event_types import (
     ManagerState
 )
 from .base.base_manager import BaseManager
-from db.repository.staging_repository import StagingRepository
+from db.repository.staging import StagingRepository
 
 logger = logging.getLogger(__name__)
 

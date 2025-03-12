@@ -1,0 +1,745 @@
+2025-02-14 08:17:30,505 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-14 08:17:30,505 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-14 08:17:30,506 - api.app - ERROR - Application creation failed: 'DevelopmentConfig' object has no attribute 'DATABASE'
+2025-02-14 08:17:30,507 - api.fastapi_app.main - ERROR - Failed to initialize application: 'DevelopmentConfig' object has no attribute 'DATABASE'
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 251, in create_app
+    self.db_config = DatabaseConfig(self.config.DATABASE)
+                                    ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DevelopmentConfig' object has no attribute 'DATABASE'
+2025-02-15 09:40:47,063 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:40:47,064 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:40:47,066 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:40:47,066 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:40:47,066 - api.app - ERROR - Failed to configure routes: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:40:47,066 - api.app - ERROR - Application creation failed: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:40:47,067 - api.fastapi_app.main - ERROR - Failed to initialize application: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 257, in create_app
+    self._configure_routes()
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 123, in _configure_routes
+    (monitoring.router, "/api/v1/monitoring", "Monitoring"),
+     ^^^^^^^^^^^^^^^^^
+AttributeError: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:44:36,636 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:44:36,636 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:44:36,637 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:44:36,637 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:44:36,637 - api.app - ERROR - Failed to configure routes: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:44:36,637 - api.app - ERROR - Application creation failed: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:44:36,638 - api.fastapi_app.main - ERROR - Failed to initialize application: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 257, in create_app
+    self._configure_routes()
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 123, in _configure_routes
+    (monitoring.router, "/api/v1/monitoring", "Monitoring"),
+     ^^^^^^^^^^^^^^^^^
+AttributeError: module 'api.fastapi_app.routers.monitoring' has no attribute 'router'
+2025-02-15 09:49:05,909 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:49:05,910 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:49:05,911 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:49:05,911 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:49:05,997 - api.app - INFO - Routes configured successfully
+2025-02-15 09:49:05,997 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:49:06,005 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:49:06,006 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:49:06,006 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:49:06,006 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:49:06,007 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:49:06,007 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:49:06,007 - api.app - INFO - Cleanup of async resources completed
+2025-02-15 09:49:06,007 - config.database - ERROR - Error during database cleanup: 'DatabaseConfig' object has no attribute '_lock'
+2025-02-15 09:50:23,340 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:50:23,341 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:50:23,342 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:50:23,343 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:50:23,426 - api.app - INFO - Routes configured successfully
+2025-02-15 09:50:23,426 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:50:23,428 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:50:23,428 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:50:23,428 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:50:23,429 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:50:23,429 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:50:23,429 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:50:23,429 - api.app - INFO - Cleanup of async resources completed
+2025-02-15 09:50:23,429 - config.database - INFO - Database resources cleaned up successfully
+2025-02-15 09:51:10,223 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:51:10,224 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:51:10,225 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:51:10,225 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:51:10,311 - api.app - INFO - Routes configured successfully
+2025-02-15 09:51:10,311 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:51:10,312 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:51:10,313 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:51:10,313 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:51:10,313 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:51:10,314 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:51:10,314 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:51:10,314 - api.app - INFO - Cleanup of async resources completed
+2025-02-15 09:51:10,315 - config.database - INFO - Database resources cleaned up successfully
+2025-02-15 09:51:22,448 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:51:22,449 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:51:22,450 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:51:22,450 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:51:22,538 - api.app - INFO - Routes configured successfully
+2025-02-15 09:51:22,538 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:51:22,539 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:51:22,540 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:51:22,540 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:51:22,541 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:51:22,541 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:51:22,541 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:51:22,541 - api.app - INFO - Cleanup of async resources completed
+2025-02-15 09:51:22,542 - config.database - INFO - Database resources cleaned up successfully
+2025-02-15 09:51:42,400 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:51:42,400 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:51:42,402 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:51:42,402 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:51:42,501 - api.app - INFO - Routes configured successfully
+2025-02-15 09:51:42,501 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:51:42,503 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:51:42,503 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:51:42,504 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:51:42,504 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:51:42,504 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:51:42,505 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:51:42,505 - api.app - INFO - Cleanup of async resources completed
+2025-02-15 09:51:42,506 - config.database - INFO - Database resources cleaned up successfully
+2025-02-15 09:54:41,120 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:54:41,122 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:54:41,123 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:54:41,123 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:54:41,206 - api.app - INFO - Routes configured successfully
+2025-02-15 09:54:41,207 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:54:41,208 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:54:41,208 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:54:41,208 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:54:41,209 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:54:41,209 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:54:41,209 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:55:57,908 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:55:57,908 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:55:57,909 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:55:57,909 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:55:57,996 - api.app - INFO - Routes configured successfully
+2025-02-15 09:55:57,997 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:55:57,997 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:55:57,998 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:55:57,998 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:55:57,998 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:55:57,998 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:55:57,998 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:56:14,932 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:56:14,933 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:56:14,934 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:56:14,934 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:56:15,018 - api.app - INFO - Routes configured successfully
+2025-02-15 09:56:15,019 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:56:15,019 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:56:15,020 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:56:15,020 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:56:15,020 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:56:15,022 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:56:15,022 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:56:39,793 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:56:39,793 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:56:39,793 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:56:39,795 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:56:39,879 - api.app - INFO - Routes configured successfully
+2025-02-15 09:56:39,879 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:56:39,880 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:56:39,880 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:56:39,881 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:56:39,881 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:56:39,881 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:56:39,881 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:58:10,135 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:58:10,135 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:58:10,136 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:58:10,136 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:58:10,222 - api.app - INFO - Routes configured successfully
+2025-02-15 09:58:10,222 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:58:10,223 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:58:10,224 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:58:10,224 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:58:10,224 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:58:10,224 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:58:10,224 - api.app - INFO - All application paths configured successfully
+2025-02-15 09:58:58,220 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 09:58:58,221 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 09:58:58,222 - api.app - INFO - Middleware configured successfully
+2025-02-15 09:58:58,222 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 09:58:58,308 - api.app - INFO - Routes configured successfully
+2025-02-15 09:58:58,309 - api.app - INFO - Application created successfully in development mode
+2025-02-15 09:58:58,310 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 09:58:58,310 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 09:58:58,311 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 09:58:58,311 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 09:58:58,311 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 09:58:58,311 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:02:02,925 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:02:02,926 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:02:02,927 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:02:02,927 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:02:03,011 - api.app - INFO - Routes configured successfully
+2025-02-15 10:02:03,012 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:02:03,013 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:02:03,013 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:02:03,014 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:02:03,014 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:02:03,014 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:02:03,014 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:02:29,040 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:02:29,041 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:02:29,041 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:02:29,042 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:02:29,126 - api.app - INFO - Routes configured successfully
+2025-02-15 10:02:29,127 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:02:29,127 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:02:29,128 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:02:29,128 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:02:29,128 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:02:29,128 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:02:29,128 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:05:42,239 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:05:42,240 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:05:42,241 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:05:42,241 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:05:42,326 - api.app - INFO - Routes configured successfully
+2025-02-15 10:05:42,327 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:05:42,328 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:05:42,328 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:05:42,329 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:05:42,329 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:05:42,329 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:05:42,330 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:36:53,544 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:36:53,545 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:36:53,546 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:36:53,546 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:36:53,672 - api.app - INFO - Routes configured successfully
+2025-02-15 10:36:53,672 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:36:53,673 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:36:53,674 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:36:53,674 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:36:53,674 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:36:53,674 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:36:53,674 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:38:18,291 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:38:18,292 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:38:18,293 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:38:18,293 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:38:18,380 - api.app - INFO - Routes configured successfully
+2025-02-15 10:38:18,380 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:38:18,381 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:38:18,382 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:38:18,382 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:38:18,382 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:38:18,383 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:38:18,383 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:40:21,137 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:40:21,138 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:40:21,140 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:40:21,140 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:40:21,229 - api.app - INFO - Routes configured successfully
+2025-02-15 10:40:21,230 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:40:21,232 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:40:21,232 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:40:21,233 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:40:21,233 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:40:21,233 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:40:21,233 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:51:18,693 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:51:18,694 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:51:18,695 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:51:18,695 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:51:18,781 - api.app - INFO - Routes configured successfully
+2025-02-15 10:51:18,782 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:51:18,783 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:51:18,783 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:51:18,784 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:51:18,784 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:51:18,785 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:51:18,785 - api.app - INFO - All application paths configured successfully
+2025-02-15 10:54:50,725 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 10:54:50,725 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 10:54:50,726 - api.app - INFO - Middleware configured successfully
+2025-02-15 10:54:50,726 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 10:54:50,812 - api.app - INFO - Routes configured successfully
+2025-02-15 10:54:50,813 - api.app - INFO - Application created successfully in development mode
+2025-02-15 10:54:50,814 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 10:54:50,815 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 10:54:50,815 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 10:54:50,816 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 10:54:50,816 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 10:54:50,817 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:02:43,995 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:02:43,996 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:02:43,997 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:02:43,997 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:02:44,086 - api.app - INFO - Routes configured successfully
+2025-02-15 11:02:44,087 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:02:44,088 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:02:44,088 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:02:44,088 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:02:44,088 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:02:44,089 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:02:44,089 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:03:28,901 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:03:28,902 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:03:28,902 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:03:28,902 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:03:28,987 - api.app - INFO - Routes configured successfully
+2025-02-15 11:03:28,987 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:03:28,988 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:03:28,988 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:03:28,988 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:03:28,988 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:03:28,988 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:03:28,988 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:05:33,779 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:05:33,780 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:05:33,781 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:05:33,781 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:05:33,868 - api.app - INFO - Routes configured successfully
+2025-02-15 11:05:33,868 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:05:33,869 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:05:33,870 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:05:33,870 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:05:33,870 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:05:33,871 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:05:33,871 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:06:10,014 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:06:10,014 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:06:10,015 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:06:10,016 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:06:10,100 - api.app - INFO - Routes configured successfully
+2025-02-15 11:06:10,100 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:06:10,101 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:06:10,101 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:06:10,102 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:06:10,102 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:06:10,102 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:06:10,102 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:06:41,500 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:06:41,501 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:06:41,502 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:06:41,502 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:06:41,587 - api.app - INFO - Routes configured successfully
+2025-02-15 11:06:41,588 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:06:41,589 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:06:41,589 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:06:41,590 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:06:41,590 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:06:41,590 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:06:41,591 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:08:02,302 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:08:02,302 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:08:02,305 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:08:02,305 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:08:02,392 - api.app - INFO - Routes configured successfully
+2025-02-15 11:08:02,393 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:08:02,394 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:08:02,394 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:08:02,394 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:08:02,395 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:08:02,395 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:08:02,395 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:08:46,323 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:08:46,324 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:08:46,325 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:08:46,325 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:08:46,439 - api.app - INFO - Routes configured successfully
+2025-02-15 11:08:46,439 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:08:46,440 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:08:46,440 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:08:46,441 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:08:46,441 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:08:46,441 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:08:46,441 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:09:13,528 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:09:13,529 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:09:13,530 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:09:13,531 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:09:13,615 - api.app - INFO - Routes configured successfully
+2025-02-15 11:09:13,615 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:09:13,616 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:09:13,617 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:09:13,617 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:09:13,617 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:09:13,618 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:09:13,618 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:10:23,744 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:10:23,745 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:10:23,746 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:10:23,746 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:10:23,833 - api.app - INFO - Routes configured successfully
+2025-02-15 11:10:23,834 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:10:23,835 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:10:23,836 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:10:23,836 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:10:23,836 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:10:23,837 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:10:23,837 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:25:23,055 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:25:23,055 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:25:23,056 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:25:23,056 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:25:23,143 - api.app - INFO - Routes configured successfully
+2025-02-15 11:25:23,143 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:25:23,144 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:25:23,145 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:25:23,145 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:25:23,145 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:25:23,146 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:25:23,146 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:48:36,765 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:48:36,766 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:48:36,767 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:48:36,767 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:48:36,853 - api.app - INFO - Routes configured successfully
+2025-02-15 11:48:36,854 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:48:36,855 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:48:36,855 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:48:36,856 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:48:36,856 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:48:36,856 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:48:36,856 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:53:12,654 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:53:12,655 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:53:12,656 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:53:12,656 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:53:12,741 - api.app - INFO - Routes configured successfully
+2025-02-15 11:53:12,742 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:53:12,743 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:53:12,743 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:53:12,743 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:53:12,744 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:53:12,744 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:53:12,744 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:53:28,892 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:53:28,893 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:53:28,894 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:53:28,894 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:53:28,980 - api.app - INFO - Routes configured successfully
+2025-02-15 11:53:28,981 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:53:28,982 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:53:28,982 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:53:28,983 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:53:28,983 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:53:28,984 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:53:28,984 - api.app - INFO - All application paths configured successfully
+2025-02-15 11:53:44,155 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 11:53:44,155 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 11:53:44,156 - api.app - INFO - Middleware configured successfully
+2025-02-15 11:53:44,157 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 11:53:44,242 - api.app - INFO - Routes configured successfully
+2025-02-15 11:53:44,242 - api.app - INFO - Application created successfully in development mode
+2025-02-15 11:53:44,243 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 11:53:44,244 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 11:53:44,244 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 11:53:44,245 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 11:53:44,245 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 11:53:44,245 - api.app - INFO - All application paths configured successfully
+2025-02-15 12:13:54,474 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 12:13:54,475 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 12:13:54,476 - api.app - INFO - Middleware configured successfully
+2025-02-15 12:13:54,476 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 12:13:54,563 - api.app - INFO - Routes configured successfully
+2025-02-15 12:13:54,563 - api.app - INFO - Application created successfully in development mode
+2025-02-15 12:13:54,564 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 12:13:54,565 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 12:13:54,565 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 12:13:54,565 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 12:13:54,566 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 12:13:54,566 - api.app - INFO - All application paths configured successfully
+2025-02-15 12:20:51,638 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 12:20:51,639 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 12:20:51,640 - api.app - INFO - Middleware configured successfully
+2025-02-15 12:20:51,640 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 12:20:51,724 - api.app - INFO - Routes configured successfully
+2025-02-15 12:20:51,725 - api.app - INFO - Application created successfully in development mode
+2025-02-15 12:20:51,726 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 12:20:51,726 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 12:20:51,727 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 12:20:51,727 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 12:20:51,727 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 12:20:51,727 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:11:10,167 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:11:10,168 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:11:10,169 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:11:10,169 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:11:10,280 - api.app - INFO - Routes configured successfully
+2025-02-15 14:11:10,280 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:11:10,281 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:11:10,281 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:11:10,282 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:11:10,282 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:11:10,282 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:11:10,282 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:11:44,611 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:11:44,612 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:11:44,613 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:11:44,613 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:11:44,697 - api.app - INFO - Routes configured successfully
+2025-02-15 14:11:44,697 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:11:44,699 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:11:44,699 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:11:44,699 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:11:44,699 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:11:44,701 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:11:44,701 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:12:23,441 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:12:23,441 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:12:23,442 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:12:23,442 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:12:23,537 - api.app - INFO - Routes configured successfully
+2025-02-15 14:12:23,538 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:12:23,540 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:12:23,540 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:12:23,541 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:12:23,541 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:12:23,541 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:12:23,541 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:12:50,057 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:12:50,057 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:12:50,058 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:12:50,059 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:12:50,143 - api.app - INFO - Routes configured successfully
+2025-02-15 14:12:50,144 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:12:50,146 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:12:50,146 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:12:50,147 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:12:50,147 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:12:50,147 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:12:50,148 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:13:34,162 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:13:34,163 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:13:34,163 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:13:34,164 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:13:34,253 - api.app - INFO - Routes configured successfully
+2025-02-15 14:13:34,254 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:13:34,255 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:13:34,256 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:13:34,256 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:13:34,257 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:13:34,257 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:13:34,257 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:17:58,011 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:17:58,012 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:17:58,013 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:17:58,013 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:17:58,099 - api.app - INFO - Routes configured successfully
+2025-02-15 14:17:58,099 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:17:58,101 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:17:58,101 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:17:58,101 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:17:58,102 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:17:58,102 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:17:58,102 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:24:48,537 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:24:48,537 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:24:48,539 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:24:48,539 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:24:48,540 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:24:48,633 - api.app - INFO - Routes configured successfully
+2025-02-15 14:24:48,633 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:24:48,634 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:24:48,635 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:24:48,635 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:24:48,635 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:24:48,636 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:24:48,636 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:25:58,884 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:25:58,885 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:25:58,886 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:25:58,886 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:25:58,886 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:25:58,973 - api.app - INFO - Routes configured successfully
+2025-02-15 14:25:58,974 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:25:58,975 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:25:58,976 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:25:58,976 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:25:58,977 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:25:58,977 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:25:58,977 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:26:29,992 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:26:29,993 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:26:29,994 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:26:29,994 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:26:29,994 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:26:30,081 - api.app - INFO - Routes configured successfully
+2025-02-15 14:26:30,083 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:26:30,084 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:26:30,084 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:26:30,085 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:26:30,085 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:26:30,086 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:26:30,086 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:27:36,649 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:27:36,650 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:27:36,651 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:27:36,651 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:27:36,652 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:27:36,738 - api.app - INFO - Routes configured successfully
+2025-02-15 14:27:36,738 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:27:36,740 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:27:36,740 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:27:36,741 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:27:36,741 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:27:36,741 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:27:36,742 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:28:03,609 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:28:03,610 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:28:03,611 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:28:03,611 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:28:03,612 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:28:03,699 - api.app - INFO - Routes configured successfully
+2025-02-15 14:28:03,700 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:28:03,701 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:28:03,701 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:28:03,702 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:28:03,702 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:28:03,703 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:28:03,703 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:29:32,537 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:29:32,537 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:29:32,538 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:29:32,538 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:29:32,538 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:29:32,639 - api.app - INFO - Routes configured successfully
+2025-02-15 14:29:32,639 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:29:32,641 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:29:32,641 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:29:32,642 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:29:32,642 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:29:32,642 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:29:32,642 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:29:38,040 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:29:38,041 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:29:38,042 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:29:38,042 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:29:38,042 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:29:38,131 - api.app - INFO - Routes configured successfully
+2025-02-15 14:29:38,131 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:29:38,133 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:29:38,133 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:29:38,133 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:29:38,134 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:29:38,134 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:29:38,135 - api.app - INFO - All application paths configured successfully
+2025-02-15 14:36:08,652 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:36:08,653 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:36:08,654 - api.app - ERROR - Application creation failed: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:36:08,654 - api.fastapi_app.main - ERROR - Failed to initialize application: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 281, in create_app
+    self.db_config = DatabaseConfig(self.config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:36:35,112 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:36:35,113 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:36:35,114 - api.app - ERROR - Application creation failed: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:36:35,114 - api.fastapi_app.main - ERROR - Failed to initialize application: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 281, in create_app
+    self.db_config = DatabaseConfig(self.config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:36:43,814 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:36:43,814 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:36:43,815 - api.app - ERROR - Application creation failed: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:36:43,815 - api.fastapi_app.main - ERROR - Failed to initialize application: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+Traceback (most recent call last):
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 87, in init_app
+    return create_application(env)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\fastapi_app\main.py", line 58, in create_application
+    application = app_factory.create_app(env)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\api\app.py", line 281, in create_app
+    self.db_config = DatabaseConfig(self.config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: DatabaseConfig.__new__() takes 1 positional argument but 2 were given
+2025-02-15 14:38:14,051 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 14:38:14,051 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 14:38:14,052 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 14:38:14,053 - api.app - INFO - Middleware configured successfully
+2025-02-15 14:38:14,053 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 14:38:14,138 - api.app - INFO - Routes configured successfully
+2025-02-15 14:38:14,138 - api.app - INFO - Application created successfully in development mode
+2025-02-15 14:38:14,139 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 14:38:14,139 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 14:38:14,139 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 14:38:14,140 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 14:38:14,140 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 14:38:14,140 - api.app - INFO - All application paths configured successfully
+2025-02-15 15:46:55,536 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 15:46:55,536 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 15:46:55,537 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 15:46:55,537 - api.app - INFO - Middleware configured successfully
+2025-02-15 15:46:55,537 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 15:46:55,623 - api.app - INFO - Routes configured successfully
+2025-02-15 15:46:55,624 - api.app - INFO - Application created successfully in development mode
+2025-02-15 15:46:55,624 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 15:46:55,625 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 15:46:55,625 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 15:46:55,625 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 15:46:55,625 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 15:46:55,625 - api.app - INFO - All application paths configured successfully
+2025-02-15 15:51:16,152 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-15 15:51:16,153 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-15 15:51:16,154 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-15 15:51:16,154 - api.app - INFO - Middleware configured successfully
+2025-02-15 15:51:16,154 - api.app - INFO - Exception handlers configured successfully
+2025-02-15 15:51:16,247 - api.app - INFO - Routes configured successfully
+2025-02-15 15:51:16,248 - api.app - INFO - Application created successfully in development mode
+2025-02-15 15:51:16,249 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-15 15:51:16,249 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-15 15:51:16,250 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-15 15:51:16,250 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-15 15:51:16,250 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-15 15:51:16,250 - api.app - INFO - All application paths configured successfully
+2025-02-16 23:21:35,366 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 39
+2025-02-16 23:21:35,367 - dotenv.main - WARNING - Python-dotenv could not parse statement starting at line 48
+2025-02-16 23:21:35,368 - config.database - INFO - Database configuration initialized with URI: localhost:5432/enterprise_pipeline_db
+2025-02-16 23:21:35,368 - api.app - INFO - Middleware configured successfully
+2025-02-16 23:21:35,368 - api.app - INFO - Exception handlers configured successfully
+2025-02-16 23:21:35,490 - api.app - INFO - Routes configured successfully
+2025-02-16 23:21:35,491 - api.app - INFO - Application created successfully in development mode
+2025-02-16 23:21:35,492 - api.app - INFO - Created uploads directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\uploads
+2025-02-16 23:21:35,493 - api.app - INFO - Created logs directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\logs
+2025-02-16 23:21:35,493 - api.app - INFO - Created staging directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\staging
+2025-02-16 23:21:35,494 - api.app - INFO - Created temp directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\temp
+2025-02-16 23:21:35,495 - api.app - INFO - Created cache directory at: C:\Users\admin\Desktop\end-2-end-data-pipeline\backend\cache
+2025-02-16 23:21:35,495 - api.app - INFO - All application paths configured successfully

@@ -18,12 +18,12 @@ class APIDocumentation:
         # Configure APISpec with marshmallow plugin
         app.config.update({
             'APISPEC_SPEC': APISpec(
-                title='Data Pipeline API',
+                title='Analytix Flow API',
                 version='1.0.0',
                 openapi_version='3.0.2',
                 plugins=[MarshmallowPlugin()],
                 info={
-                    'description': 'API documentation for the Data Pipeline system',
+                    'description': 'API documentation for the Analytix Flow System',
                     'contact': {'email': 'your-email@example.com'}
                 },
                 security=[{'Bearer': []}],

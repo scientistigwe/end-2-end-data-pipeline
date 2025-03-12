@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
+from ..base.base_service import BaseService
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
@@ -20,7 +21,7 @@ from ...messaging.event_types import (
 logger = logging.getLogger(__name__)
 
 
-class RecommendationService:
+class RecommendationService(BaseService):
     """
     Recommendation Service: Orchestrates recommendation generation process.
     Coordinates between Manager, Handler, and various recommendation engines.
@@ -28,7 +29,7 @@ class RecommendationService:
     """
 
     def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
+        super().__init__(message_broker)
 
         # Service identification
         self.module_identifier = ModuleIdentifier(

@@ -1,14 +1,61 @@
-# backend/backend/api/fastapi_app/middleware/logging.py
+# api/fastapi_app/middleware/logging.py
 
 import logging
 import time
-import os
-from typing import Optional, Callable, Dict, Any
+from typing import Optional
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
 
-from fastapi import Request, Response
-from fastapi.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+logger = logging.getLogger(__name__)
 
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware for logging HTTP requests and responses"""
+
+    def __init__(self, app, log_level: str = 'INFO'):
+        super().__init__(app)
+        self.log_level = getattr(logging, log_level.upper())
+        logger.setLevel(self.log_level)
+
+    async def dispatch(
+            self,
+            request: Request,
+            call_next: RequestResponseEndpoint
+    ) -> Response:
+        start_time = time.time()
+
+        # Process the request and get response
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+
+            # Create log message
+            status_code = response.status_code
+            log_msg = (
+                f"{request.method} {request.url.path} "
+                f"[{status_code}] "
+                f"took {process_time:.2f}s "
+                f"- {request.client.host if request.client else 'Unknown'}"
+            )
+
+            # Log based on status code
+            if status_code >= 500:
+                logger.error(log_msg)
+            elif status_code >= 400:
+                logger.warning(log_msg)
+            else:
+                logger.info(log_msg)
+
+            return response
+
+        except Exception as e:
+            process_time = time.time() - start_time
+            logger.error(
+                f"Request failed: {request.method} {request.url.path} "
+                f"took {process_time:.2f}s - Error: {str(e)}"
+            )
+            raise
 
 def configure_logging(app_name: str = "fastapi_app", log_level: Optional[str] = None) -> None:
     """Configure logging for the application."""
@@ -43,84 +90,6 @@ def configure_logging(app_name: str = "fastapi_app", log_level: Optional[str] = 
     logger.addHandler(file_handler)
 
     logger.info(f"Logging configured with level: {log_level}")
-
-
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware for logging HTTP requests and responses
-
-    Compatible with FastAPI/Starlette ASGI applications
-    """
-
-    def __init__(
-            self,
-            app: ASGIApp,
-            logger: Optional[logging.Logger] = None
-    ):
-        """
-        Initialize the logging middleware
-
-        Args:
-            app (ASGIApp): The ASGI application
-            logger (Optional[logging.Logger]): Custom logger.
-                                              If None, uses default 'request_logger'
-        """
-        super().__init__(app)
-        self.logger = logger or logging.getLogger('request_logger')
-
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """
-        Log details about each incoming request and its processing time
-
-        Args:
-            request (Request): Incoming HTTP request
-            call_next (Callable): Next middleware or request handler
-
-        Returns:
-            Response: HTTP response
-        """
-        # Start timer
-        start_time = time.time()
-
-        try:
-            # Process the request
-            response = await call_next(request)
-        except Exception as exc:
-            # Log any unexpected exceptions
-            self.logger.exception(f"Unhandled exception: {exc}")
-            raise
-        finally:
-            # Calculate request processing duration
-            duration = time.time() - start_time
-
-            # Log request details
-            log_dict: Dict[str, Any] = {
-                'method': request.method,
-                'path': request.url.path,
-                'status_code': response.status_code,
-                'duration': f'{duration:.2f}s'
-            }
-
-            # Log client information if available
-            log_dict['client'] = request.client.host if request.client else 'Unknown'
-
-            # Construct log message
-            log_message = (
-                f"Request: {log_dict['method']} {log_dict['path']} "
-                f"Status: {log_dict['status_code']} "
-                f"Client: {log_dict['client']} "
-                f"Duration: {log_dict['duration']}"
-            )
-
-            # Log based on response status
-            if response.status_code < 400:
-                self.logger.info(log_message)
-            elif 400 <= response.status_code < 500:
-                self.logger.warning(log_message)
-            else:
-                self.logger.error(log_message)
-
-        return response
 
 
 __all__ = ['RequestLoggingMiddleware', 'configure_logging']

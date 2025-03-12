@@ -1,9 +1,8 @@
-# backend/api/fastapi_app/middleware/error_handling.py
+# api/fastapi_app/middleware/error_handling.py
 
 import logging
-from typing import Dict, Any, Optional, Union
-
-from fastapi import Request, HTTPException
+from typing import Dict, Any, Optional, Type
+from fastapi import Request, HTTPException, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -23,84 +22,165 @@ from starlette.status import (
 # Configure logger
 logger = logging.getLogger(__name__)
 
-class ErrorResponse:
-    """Standardized error response formatting."""
+
+class ErrorDetail:
+    """Standardized error detail structure"""
+
+    def __init__(
+            self,
+            code: int,
+            message: str,
+            error_type: str,
+            details: Optional[Dict[str, Any]] = None
+    ):
+        self.code = code
+        self.message = message
+        self.error_type = error_type
+        self.details = details
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert error detail to dictionary format"""
+        error_dict = {
+            "code": self.code,
+            "message": self.message,
+            "type": self.error_type
+        }
+        if self.details:
+            error_dict["details"] = self.details
+        return {"error": error_dict}
+
+
+class ErrorHandler:
+    """Centralized error handling logic"""
 
     @staticmethod
-    def create(
-        code: int,
-        name: str,
-        description: str,
-        additional_info: Optional[Dict[str, Any]] = None
-    ) -> JSONResponse:
-        """
-        Create a standardized error response.
-
-        Args:
-            code: HTTP status code
-            name: Error name or title
-            description: Detailed error description
-            additional_info: Optional additional error details
-
-        Returns:
-            JSONResponse with standardized error format
-        """
-        response_data = {
-            'error': {
-                'code': code,
-                'name': name,
-                'description': description
-            }
-        }
-
-        if additional_info:
-            response_data['error'].update(additional_info)
-
+    def create_error_response(error_detail: ErrorDetail) -> JSONResponse:
+        """Create standardized JSON response for errors"""
         return JSONResponse(
-            status_code=code,
-            content=response_data
+            status_code=error_detail.code,
+            content=error_detail.to_dict()
         )
 
-class GlobalErrorHandlingMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware for global error handling and logging
-    """
+    @staticmethod
+    def handle_http_exception(exc: HTTPException) -> JSONResponse:
+        """Handle FastAPI HTTP exceptions"""
+        error_detail = ErrorDetail(
+            code=exc.status_code,
+            message=str(exc.detail),
+            error_type="http_error",
+            details=getattr(exc, "headers", None)
+        )
+        logger.error(f"HTTP Exception: {exc.detail}", exc_info=True)
+        return ErrorHandler.create_error_response(error_detail)
+
+    @staticmethod
+    def handle_validation_error(exc: Exception) -> JSONResponse:
+        """Handle Pydantic validation errors"""
+        error_detail = ErrorDetail(
+            code=HTTP_422_UNPROCESSABLE_ENTITY,
+            message="Validation error",
+            error_type="validation_error",
+            details={"errors": str(exc)}
+        )
+        logger.error(f"Validation Error: {exc}", exc_info=True)
+        return ErrorHandler.create_error_response(error_detail)
+
+    @staticmethod
+    def handle_generic_exception(exc: Exception, request: Request) -> JSONResponse:
+        """Handle generic unhandled exceptions"""
+        error_detail = ErrorDetail(
+            code=HTTP_500_INTERNAL_SERVER_ERROR,
+            message="Internal server error",
+            error_type="server_error",
+            details={"path": str(request.url.path)} if request else None
+        )
+        logger.critical(
+            f"Unhandled error processing request: {str(exc)}",
+            exc_info=True
+        )
+        return ErrorHandler.create_error_response(error_detail)
+
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    """Global error handling middleware"""
+
+    def __init__(self, app: FastAPI):
+        super().__init__(app)
+        self.error_handler = ErrorHandler()
+
     async def dispatch(
-        self,
-        request: Request,
-        call_next: RequestResponseEndpoint
+            self,
+            request: Request,
+            call_next: RequestResponseEndpoint
     ) -> Response:
-        """
-        Global error handling middleware
-
-        Args:
-            request: Incoming request
-            call_next: Next middleware or request handler
-
-        Returns:
-            Response from the request handler
-        """
         try:
             response = await call_next(request)
             return response
 
-        except HTTPException as http_exc:
-            # Handle known HTTP exceptions
-            logger.error(f"HTTP Error: {http_exc.status_code} - {http_exc.detail}")
-            return ErrorResponse.create(
-                http_exc.status_code,
-                http_exc.detail,
-                str(http_exc.detail)
-            )
+        except HTTPException as exc:
+            return self.error_handler.handle_http_exception(exc)
 
         except Exception as exc:
-            # Handle unexpected errors
-            logger.error("Unhandled error", exc_info=True)
-            return ErrorResponse.create(
-                HTTP_500_INTERNAL_SERVER_ERROR,
-                'Internal Server Error',
-                'An unexpected error occurred.'
-            )
+            return self.error_handler.handle_generic_exception(exc, request)
+
+
+class RouteErrorHandler:
+    """Enhanced error handling for individual routes"""
+
+    @staticmethod
+    def wrap_route(route: APIRoute) -> APIRoute:
+        """Wrap route with enhanced error handling"""
+        original_handler = route.endpoint
+
+        async def wrapped_handler(*args, **kwargs):
+            try:
+                return await original_handler(*args, **kwargs)
+            except HTTPException as http_exc:
+                logger.error(
+                    f"HTTP Error in {route.endpoint.__name__}: "
+                    f"{http_exc.status_code} - {http_exc.detail}"
+                )
+                raise
+            except Exception as exc:
+                logger.error(
+                    f"Unhandled error in {route.endpoint.__name__}",
+                    exc_info=True
+                )
+                raise HTTPException(
+                    status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail='An unexpected error occurred.'
+                )
+
+        route.endpoint = wrapped_handler
+        return route
+
+
+def setup_error_handling(app: FastAPI) -> None:
+    """
+    Configure comprehensive error handling for the FastAPI application.
+
+    Args:
+        app: FastAPI application instance
+    """
+    # Add global error handling middleware
+    app.add_middleware(ErrorHandlingMiddleware)
+
+    # Register exception handlers
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        return ErrorHandler.handle_http_exception(exc)
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        return ErrorHandler.handle_generic_exception(exc, request)
+
+    # Enhance all routes with additional error handling
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            RouteErrorHandler.wrap_route(route)
+
+    logger.info("Error handling configuration completed successfully")
+
 
 def create_cors_headers(origin: Optional[str] = None) -> Dict[str, str]:
     """
@@ -119,106 +199,3 @@ def create_cors_headers(origin: Optional[str] = None) -> Dict[str, str]:
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '3600'
     }
-
-def custom_route_handler(route: APIRoute) -> APIRoute:
-    """
-    Custom route handler to enhance error handling and logging
-
-    Args:
-        route: Original FastAPI route
-
-    Returns:
-        Modified route with enhanced error handling
-    """
-    original_handler = route.endpoint
-
-    async def custom_handler(*args, **kwargs):
-        try:
-            return await original_handler(*args, **kwargs)
-        except HTTPException as http_exc:
-            logger.error(
-                f"HTTP Error in {route.endpoint.__name__}: "
-                f"{http_exc.status_code} - {http_exc.detail}"
-            )
-            raise
-        except Exception as exc:
-            logger.error(
-                f"Unhandled error in {route.endpoint.__name__}",
-                exc_info=True
-            )
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='An unexpected error occurred.'
-            )
-
-    route.endpoint = custom_handler
-    return route
-
-def register_error_handlers(app):
-    """
-    Register comprehensive error handlers for the FastAPI application.
-
-    Args:
-        app: FastAPI application instance
-
-    Returns:
-        Modified FastAPI application with error handlers
-    """
-    # Add global error handling middleware
-    app.add_middleware(GlobalErrorHandlingMiddleware)
-
-    # Custom exception handlers
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException):
-        """
-        Global HTTP exception handler
-
-        Args:
-            request: Incoming request
-            exc: HTTP exception
-
-        Returns:
-            Standardized error response
-        """
-        logger.error(
-            f"HTTP Error: {exc.status_code} - {exc.detail} "
-            f"Path: {request.url.path}"
-        )
-
-        return ErrorResponse.create(
-            exc.status_code,
-            exc.detail,
-            str(exc.detail)
-        )
-
-    @app.exception_handler(Exception)
-    async def generic_exception_handler(request: Request, exc: Exception):
-        """
-        Global generic exception handler
-
-        Args:
-            request: Incoming request
-            exc: Unexpected exception
-
-        Returns:
-            Standardized error response
-        """
-        logger.error(
-            f"Unhandled error: {str(exc)} "
-            f"Path: {request.url.path}",
-            exc_info=True
-        )
-
-        return ErrorResponse.create(
-            HTTP_500_INTERNAL_SERVER_ERROR,
-            'Internal Server Error',
-            'An unexpected error occurred.'
-        )
-
-    # Modify all routes for enhanced error handling
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            route = custom_route_handler(route)
-
-    logger.info("Error handlers registered successfully")
-    return app

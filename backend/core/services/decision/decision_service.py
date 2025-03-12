@@ -6,6 +6,7 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
+from ..base.base_service import BaseService
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
@@ -25,7 +26,7 @@ from ...messaging.event_types import (
 logger = logging.getLogger(__name__)
 
 
-class DecisionService:
+class DecisionService(BaseService):
     """
     Enhanced Decision Service with comprehensive processing capabilities
     Manages complex decision-making workflows across multiple components
@@ -43,7 +44,7 @@ class DecisionService:
             message_broker (MessageBroker): Message routing and communication system
             decision_timeout (int, optional): Default timeout for decision processes. Defaults to 300 seconds.
         """
-        self.message_broker = message_broker
+        super().__init__(message_broker)
         self.decision_timeout = decision_timeout
 
         # Advanced tracking mechanisms

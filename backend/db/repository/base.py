@@ -1,7 +1,7 @@
 from typing import TypeVar, Generic, Dict, List, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import update, delete, desc
+from sqlalchemy import func, select, update, delete, desc
 from datetime import datetime
 from uuid import UUID
 import logging
@@ -12,15 +12,42 @@ T = TypeVar('T')
 
 
 class BaseRepository(Generic[T]):
-    """
-    Base repository providing fundamental database operations with comprehensive
-    error handling, logging, and audit trailing.
-    """
+    """Base repository providing fundamental database operations."""
 
     def __init__(self, db_session: AsyncSession):
+        """
+        Initialize repository with database session.
+
+        Args:
+            db_session: SQLAlchemy AsyncSession instance
+
+        Raises:
+            ValueError: If db_session is not an AsyncSession
+        """
         if not isinstance(db_session, AsyncSession):
-            raise ValueError(f"db_session must be AsyncSession, got {type(db_session)}")
-        self.db_session = db_session
+            raise ValueError(
+                f"db_session must be AsyncSession, got {type(db_session)}"
+            )
+        self._db_session = db_session
+
+    @property
+    def db_session(self) -> AsyncSession:
+        """Get the current database session."""
+        return self._db_session
+
+    async def set_session(self, session: AsyncSession) -> None:
+        """
+        Set a new database session.
+
+        Args:
+            session: New SQLAlchemy AsyncSession instance
+        """
+        if not isinstance(session, AsyncSession):
+            raise ValueError(
+                f"session must be AsyncSession, got {type(session)}"
+            )
+        self._db_session = session
+
 
     async def create(self, data: Dict[str, Any], model_class: T) -> T:
         """

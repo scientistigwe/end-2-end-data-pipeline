@@ -1,49 +1,42 @@
-# api/fastapi_app/middleware/cors_middleware.py
+# api/fastapi_app/middleware/cors.py
 
+from typing import List, Dict, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict
 
 
-def setup_cors(
-        app: FastAPI,
-        allowed_origins: List[str],
-        allowed_methods: List[str],
-        allowed_headers: List[str],
-        allow_credentials: bool = True
-) -> None:
-    """Configure CORS middleware for FastAPI application"""
+def setup_cors(app: FastAPI, cors_config: Dict[str, Any]) -> None:
+    """Configure CORS for the FastAPI application
 
+    Args:
+        app: FastAPI application instance
+        cors_config: CORS configuration dictionary
+    """
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=allow_credentials,
-        allow_methods=allowed_methods,
-        allow_headers=allowed_headers,
-        expose_headers=["*"],
-        max_age=3600,
+        allow_origins=cors_config.get('allowed_origins', ["*"]),
+        allow_credentials=cors_config.get('allow_credentials', True),
+        allow_methods=cors_config.get('allowed_methods', ["*"]),
+        allow_headers=cors_config.get('allowed_headers', ["*"]),
+        expose_headers=cors_config.get('expose_headers', []),
+        max_age=cors_config.get('max_age', 3600),
     )
 
 
 def get_cors_config() -> Dict[str, Any]:
-    """Get CORS configuration from settings"""
+    """Get default CORS configuration
+
+    Returns:
+        Dict with default CORS settings
+    """
     return {
         "allowed_origins": [
             "http://localhost:3000",
             "http://localhost:8000",
-            # Add other origins as needed
         ],
         "allowed_methods": ["*"],
         "allowed_headers": ["*"],
-        "allow_credentials": True
+        "allow_credentials": True,
+        "max_age": 3600,
+        "expose_headers": []
     }
-
-
-# Usage in your main app:
-"""
-from .middleware.cors_middleware import setup_cors, get_cors_config
-
-app = FastAPI()
-cors_config = get_cors_config()
-setup_cors(app, **cors_config)
-"""

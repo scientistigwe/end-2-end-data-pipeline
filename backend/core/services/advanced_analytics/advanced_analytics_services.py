@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from ..base.base_service import BaseService
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
@@ -19,14 +20,14 @@ from ...messaging.event_types import (
 logger = logging.getLogger(__name__)
 
 
-class AnalyticsService:
+class AnalyticsService(BaseService):
     """
     Analytics Service orchestrates business processes between manager and handler.
     Handles service-level operations and process control.
     """
 
     def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
+        super().__init__(message_broker)
         self.module_identifier = ModuleIdentifier(
             component_name="analytics_service",
             component_type=ComponentType.ANALYTICS_SERVICE,

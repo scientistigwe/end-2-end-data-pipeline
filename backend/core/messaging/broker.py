@@ -5,7 +5,9 @@ import logging
 from typing import Dict, List, Any, Optional, Callable, Union, Set, Coroutine
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
+from collections import deque, defaultdict
 import uuid
+import random
 
 from .event_types import (
     ProcessingMessage,
@@ -48,12 +50,16 @@ class SubscriptionInfo:
 
 class MessageBroker:
     """Enhanced message broker with department-based routing"""
-
     def __init__(self):
         # Core storage
         self.subscriptions: Dict[str, List[SubscriptionInfo]] = {}
         self.active_messages: Dict[str, ProcessingMessage] = {}
-        self.message_history: Dict[str, List[ProcessingMessage]] = {}
+        self.max_history_per_correlation = 1000
+        self.history_cleanup_interval = 3600  # 1 hour
+        self.message_history: Dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=self.max_history_per_correlation)
+        )
+        self._active_subscriptions: Dict[str, SubscriptionInfo] = {}
 
         # Department routing
         self.department_routes: Dict[str, Set[str]] = {}  # Department to component mapping
@@ -67,6 +73,13 @@ class MessageBroker:
             'departments_active': 0
         }
 
+        # Connection state
+        self._connection_state = {
+            "is_connected": False,
+            "last_ping": None,
+            "reconnect_attempts": 0
+        }
+
         # Async support
         self._lock = asyncio.Lock()
         self._message_queues: Dict[str, asyncio.Queue] = {}
@@ -76,94 +89,268 @@ class MessageBroker:
         self._cleanup_task = None
         self._start_background_tasks()
 
-        async def initialize(self) -> None:
-            """
-            Initialize the message broker with any startup tasks
-            Can be used to set up initial subscriptions, warm up caches, etc.
-            """
-            try:
-                logger.info("Initializing Message Broker")
-                
-                # Start background tasks
-                self._start_background_tasks()
-
-                # Optional: Add any initial setup tasks
-                # For example, registering default system-wide subscriptions
-                # or performing initial health checks
-
-                logger.info("Message Broker initialization completed")
-            except Exception as e:
-                logger.error(f"Message Broker initialization failed: {str(e)}")
-                raise
-
-        # Add a synchronous initialization method for compatibility
-        def initialize_sync(self) -> None:
-            """
-            Synchronous wrapper for initialization to support various startup scenarios
-            """
-            try:
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(self.initialize())
-            except Exception as e:
-                logger.error(f"Synchronous Message Broker initialization failed: {str(e)}")
-                raise
-
     async def subscribe(
             self,
             module_identifier: Union[str, ModuleIdentifier],
             message_patterns: Union[str, List[str]],
             callback: Union[Callable, Coroutine]
     ) -> None:
-        """Enhanced subscribe with support for both string and ModuleIdentifier"""
+        """
+        Subscribe to message patterns with automatic health monitoring.
+        """
         async with self._lock:
             try:
-                # Handle string component name
-                if isinstance(module_identifier, str):
-                    module_identifier = ModuleIdentifier(
-                        component_name=module_identifier,
-                        component_type=ComponentType.CORE,
-                        department="core",
-                        role="component"
-                    )
-
                 # Normalize patterns
                 patterns = [message_patterns] if isinstance(message_patterns, str) else message_patterns
+
+                # Generate subscription key
+                sub_key = f"{module_identifier}:{','.join(patterns)}"
+
+                # Check for existing subscription
+                if sub_key in self._active_subscriptions:
+                    logger.warning(f"Subscription already exists for {sub_key}")
+                    return
 
                 # Create subscription info
                 sub_info = SubscriptionInfo(
                     component_id=str(uuid.uuid4()),
                     module_identifier=module_identifier,
                     patterns=set(patterns),
-                    callback=callback
+                    callback=callback,
+                    created_at=datetime.now(),
+                    last_message_at=datetime.now()
                 )
 
-                # Store subscription
+                # Store in both dictionaries
+                self._active_subscriptions[sub_key] = sub_info
                 for pattern in patterns:
                     if pattern not in self.subscriptions:
                         self.subscriptions[pattern] = []
                     self.subscriptions[pattern].append(sub_info)
 
-                # Update department routes
-                if module_identifier.department:
+                # Update department routes if applicable
+                if isinstance(module_identifier, ModuleIdentifier) and module_identifier.department:
                     dept_routes = self.department_routes.setdefault(
                         module_identifier.department, set()
                     )
                     dept_routes.add(module_identifier.get_routing_key())
 
-                # Create message queue if needed
-                queue_key = module_identifier.get_routing_key()
-                if queue_key not in self._message_queues:
-                    self._message_queues[queue_key] = asyncio.Queue()
-
+                # Update stats
                 self.stats['active_subscriptions'] += 1
+
+                # Create monitoring task
+                monitor_task = asyncio.create_task(
+                    self._monitor_subscription_health(sub_key, sub_info)
+                )
+
                 logger.info(
-                    f"Component {module_identifier.component_name} "
+                    f"Component {getattr(module_identifier, 'component_name', module_identifier)} "
                     f"subscribed to patterns: {patterns}"
                 )
 
             except Exception as e:
                 logger.error(f"Subscription failed: {str(e)}")
                 raise
+
+    async def unsubscribe(
+            self,
+            module_identifier: ModuleIdentifier,
+            pattern: str
+    ) -> None:
+        """
+        Unsubscribe from message patterns.
+        """
+        async with self._lock:
+            try:
+                # Remove from active subscriptions
+                sub_key = f"{module_identifier}:{pattern}"
+                if sub_key in self._active_subscriptions:
+                    sub_info = self._active_subscriptions.pop(sub_key)
+
+                    # Remove from subscriptions
+                    for p in sub_info.patterns:
+                        if p in self.subscriptions:
+                            self.subscriptions[p] = [
+                                s for s in self.subscriptions[p]
+                                if s.component_id != sub_info.component_id
+                            ]
+                            if not self.subscriptions[p]:
+                                del self.subscriptions[p]
+
+                    # Update department routes
+                    if module_identifier.department:
+                        dept_routes = self.department_routes.get(module_identifier.department, set())
+                        dept_routes.discard(module_identifier.get_routing_key())
+                        if not dept_routes:
+                            self.department_routes.pop(module_identifier.department, None)
+
+                    # Update stats
+                    self.stats['active_subscriptions'] = max(0, self.stats['active_subscriptions'] - 1)
+
+                    logger.info(
+                        f"Component {module_identifier.component_name} "
+                        f"unsubscribed from pattern: {pattern}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Unsubscription failed: {str(e)}")
+                raise
+
+    async def _monitor_subscription_health(
+            self,
+            sub_key: str,
+            subscription: SubscriptionInfo
+    ) -> None:
+        """
+        Monitor subscription health and cleanup if necessary.
+        """
+        try:
+            while self._is_running and subscription.is_active:
+                if (datetime.now() - subscription.last_message_at) > timedelta(hours=1):
+                    async with self._lock:
+                        if sub_key in self._active_subscriptions:
+                            await self.unsubscribe(
+                                subscription.module_identifier,
+                                next(iter(subscription.patterns))
+                            )
+                            logger.info(f"Cleaned up inactive subscription: {sub_key}")
+                            break
+                await asyncio.sleep(300)  # Check every 5 minutes
+        except Exception as e:
+            logger.error(f"Subscription health monitoring failed: {str(e)}")
+
+    async def _cleanup_inactive_subscriptions(self) -> None:
+        """
+        Cleanup inactive subscriptions periodically.
+        """
+        try:
+            current_time = datetime.now()
+            inactive_threshold = timedelta(hours=1)
+
+            async with self._lock:
+                inactive_subs = [
+                    sub_key for sub_key, sub in self._active_subscriptions.items()
+                    if current_time - sub.last_message_at > inactive_threshold
+                ]
+
+                for sub_key in inactive_subs:
+                    sub_info = self._active_subscriptions[sub_key]
+                    await self.unsubscribe(
+                        sub_info.module_identifier,
+                        next(iter(sub_info.patterns))
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup inactive subscriptions: {str(e)}")
+
+    async def initialize(self) -> None:
+        """Initialize the message broker with any startup tasks."""
+        try:
+            logger.info("Initializing Message Broker")
+
+            # Start background tasks
+            self._start_background_tasks()
+
+            # Optional: Add any initial setup tasks
+            # For example, registering default system-wide subscriptions
+            # or performing initial health checks
+
+            logger.info("Message Broker initialization completed")
+        except Exception as e:
+            logger.error(f"Message Broker initialization failed: {str(e)}")
+            raise
+
+    def initialize_sync(self) -> None:
+        """Synchronous wrapper for initialization."""
+        try:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.initialize())
+        except Exception as e:
+            logger.error(f"Synchronous Message Broker initialization failed: {str(e)}")
+            raise
+
+    async def _handle_connection_failure(self) -> None:
+        """
+        Handle connection failures with retry logic.
+        """
+        self._connection_state["is_connected"] = False
+        self._connection_state["reconnect_attempts"] += 1
+
+        try:
+            backoff = min(2 ** self._connection_state["reconnect_attempts"], 60)  # Max 60s backoff
+            logger.warning(f"Connection lost, attempting reconnect in {backoff}s")
+
+            await asyncio.sleep(backoff)
+            await self._attempt_reconnect()
+
+        except Exception as e:
+            logger.error(f"Connection recovery failed: {str(e)}")
+            if self._connection_state["reconnect_attempts"] >= 5:
+                logger.critical("Max reconnection attempts reached")
+                await self._handle_fatal_connection_failure()
+
+    async def _attempt_reconnect(self) -> None:
+        """
+        Attempt to reestablish connection.
+        """
+        try:
+            # Attempt to reestablish connection
+            if await self.check_connection_health():
+                self._connection_state["is_connected"] = True
+                self._connection_state["reconnect_attempts"] = 0
+                self._connection_state["last_ping"] = datetime.now()
+                logger.info("Connection reestablished successfully")
+
+                # Resubscribe active subscriptions
+                await self._resubscribe_active_handlers()
+        except Exception as e:
+            logger.error(f"Reconnection attempt failed: {str(e)}")
+            raise
+
+    async def _resubscribe_active_handlers(self) -> None:
+        """
+        Resubscribe all active handlers after reconnection.
+        """
+        async with self._lock:
+            for sub_key, subscription in self._active_subscriptions.items():
+                try:
+                    await self.subscribe(
+                        subscription.module_identifier,
+                        list(subscription.patterns),
+                        subscription.callback
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to resubscribe {sub_key}: {str(e)}")
+
+    async def _handle_fatal_connection_failure(self) -> None:
+        """
+        Handle fatal connection failures.
+        """
+        logger.critical("Fatal connection failure occurred")
+        try:
+            # Notify all active subscribers
+            async with self._lock:
+                for sub_key, subscription in self._active_subscriptions.items():
+                    try:
+                        if asyncio.iscoroutinefunction(subscription.callback):
+                            await subscription.callback(
+                                ProcessingMessage(
+                                    message_type=MessageType.GLOBAL_ERROR_NOTIFY,
+                                    content={
+                                        'error': 'Fatal connection failure',
+                                        'timestamp': datetime.now().isoformat()
+                                    }
+                                )
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to notify subscriber {sub_key}: {str(e)}")
+
+            # Initiate cleanup
+            await self.cleanup()
+
+        except Exception as e:
+            logger.error(f"Fatal connection handling failed: {str(e)}")
+            raise
 
     async def publish(self, message: ProcessingMessage) -> None:
         """Enhanced publish with improved routing"""
@@ -316,6 +503,263 @@ class MessageBroker:
                 jitter = current_interval * 0.1  # Add 10% jitter
                 await asyncio.sleep(current_interval + random.uniform(-jitter, jitter))
 
+    async def request_response(
+            self,
+            message: ProcessingMessage,
+            timeout: Optional[int] = 10,
+            retry_count: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Send a request and wait for response with retry capability.
+
+        Args:
+            message: The message to send
+            timeout: Base timeout in seconds for each attempt
+            retry_count: Number of retry attempts before giving up
+
+        Returns:
+            Dict containing the response content
+
+        Raises:
+            TimeoutError: If no response is received within timeout
+            Exception: For other errors during request/response cycle
+        """
+        response_handler_id = None
+        response_patterns = None
+        handler_identifier = None
+        cleanup_required = False
+
+        try:
+            # Set up response handling
+            response_handler_id = f"temp_response_handler_{message.id}"
+            response_event = asyncio.Event()
+            response_container = {'response': None, 'error': None}
+
+            # Create handler identifier
+            handler_identifier = ModuleIdentifier(
+                component_name=response_handler_id,
+                component_type=ComponentType.CORE,
+                department=message.metadata.department or "core",
+                role="response_handler"
+            )
+
+            # Set up callback
+            async def response_callback(response_message: ProcessingMessage):
+                if response_message.metadata.correlation_id == message.metadata.correlation_id:
+                    response_container['response'] = response_message.content
+                    response_event.set()
+
+            # Subscribe temporary handler
+            response_patterns = ['monitoring.response', '*.response']
+            await self._setup_temporary_handler(
+                handler_identifier,
+                response_patterns,
+                response_callback
+            )
+            cleanup_required = True
+
+            # Attempt request with retries
+            for attempt in range(retry_count):
+                try:
+                    response = await self._attempt_request(
+                        message,
+                        response_event,
+                        response_container,
+                        timeout,
+                        attempt
+                    )
+                    return response
+
+                except TimeoutError as e:
+                    if attempt == retry_count - 1:
+                        raise TimeoutError(
+                            f"Final retry failed after {retry_count} attempts: {str(e)}"
+                        )
+                    backoff = self._calculate_backoff(attempt)
+                    await self._handle_retry(message, attempt, backoff)
+
+        except Exception as e:
+            await self._log_request_error(message, e)
+            raise
+
+        finally:
+            if cleanup_required:
+                await self._cleanup_temporary_handler(
+                    handler_identifier,
+                    response_patterns,
+                    response_handler_id
+                )
+
+    async def _setup_temporary_handler(
+            self,
+            handler_identifier: ModuleIdentifier,
+            patterns: List[str],
+            callback: Callable
+    ) -> None:
+        """
+        Set up a temporary message handler.
+
+        Args:
+            handler_identifier: Identifier for the handler
+            patterns: List of message patterns to subscribe to
+            callback: Callback function for handling responses
+        """
+        try:
+            await self.subscribe(
+                module_identifier=handler_identifier,
+                message_patterns=patterns,
+                callback=callback
+            )
+            logger.info(
+                f"Temporary handler {handler_identifier.component_name} "
+                f"subscribed to patterns: {patterns}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to set up temporary handler: {str(e)}")
+            raise
+
+    async def _attempt_request(
+            self,
+            message: ProcessingMessage,
+            response_event: asyncio.Event,
+            response_container: Dict[str, Any],
+            base_timeout: int,
+            attempt: int
+    ) -> Dict[str, Any]:
+        """
+        Attempt a single request-response cycle.
+
+        Args:
+            message: Message to send
+            response_event: Event to wait for response
+            response_container: Container for response data
+            base_timeout: Base timeout value
+            attempt: Current attempt number
+
+        Returns:
+            Dict containing response data
+
+        Raises:
+            TimeoutError: If response not received within timeout
+        """
+        # Log attempt details
+        logger.info(
+            f"Attempt {attempt + 1}: Sending request: "
+            f"ID={message.id}, "
+            f"Type={message.message_type}, "
+            f"Target={message.metadata.target_component}"
+        )
+
+        # Calculate timeout for this attempt
+        current_timeout = base_timeout + self._calculate_backoff(attempt)
+
+        # Clear event in case of retry
+        response_event.clear()
+        response_container['response'] = None
+
+        # Send message
+        await self.publish(message)
+
+        try:
+            # Wait for response
+            await asyncio.wait_for(response_event.wait(), timeout=current_timeout)
+
+            if response_container['response']:
+                logger.info(
+                    f"Received response for request {message.id} from "
+                    f"{message.metadata.target_component}"
+                )
+                return response_container['response']
+
+            raise TimeoutError("No response content received")
+
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Request timed out after {current_timeout}s: "
+                f"ID={message.id}, "
+                f"Target={message.metadata.target_component}"
+            )
+
+    def _calculate_backoff(self, attempt: int) -> float:
+        """
+        Calculate exponential backoff time with jitter.
+
+        Args:
+            attempt: Current attempt number
+
+        Returns:
+            Float representing backoff time in seconds
+        """
+        base_backoff = min(2 ** attempt, 10)  # Max 10 second backoff
+        jitter = random.uniform(0, 0.1 * base_backoff)  # 10% jitter
+        return base_backoff + jitter
+
+    async def _handle_retry(
+            self,
+            message: ProcessingMessage,
+            attempt: int,
+            backoff: float
+    ) -> None:
+        """
+        Handle retry logic between attempts.
+
+        Args:
+            message: The message being retried
+            attempt: Current attempt number
+            backoff: Calculated backoff time
+        """
+        logger.warning(
+            f"Attempt {attempt + 1} failed for message {message.id}, "
+            f"retrying after {backoff:.2f}s backoff"
+        )
+        await asyncio.sleep(backoff)
+
+    async def _log_request_error(
+            self,
+            message: ProcessingMessage,
+            error: Exception
+    ) -> None:
+        """
+        Log detailed error information for failed requests.
+
+        Args:
+            message: The message that failed
+            error: The exception that occurred
+        """
+        logger.error(
+            f"Request-response failed: {str(error)}\n"
+            f"Message details: ID={message.id}, "
+            f"Target={message.metadata.target_component}, "
+            f"Department={message.metadata.department}, "
+            f"Type={message.message_type}"
+        )
+
+    async def _cleanup_temporary_handler(
+            self,
+            handler_identifier: ModuleIdentifier,
+            patterns: List[str],
+            handler_id: str
+    ) -> None:
+        """
+        Clean up temporary handler resources.
+
+        Args:
+            handler_identifier: Handler's identifier
+            patterns: Subscribed patterns
+            handler_id: Handler's string ID
+        """
+        if all([handler_identifier, patterns, handler_id]):
+            try:
+                await self.unsubscribe(
+                    handler_identifier,
+                    patterns[0]
+                )
+                logger.info(f"Cleaned up temporary handler {handler_id}")
+            except Exception as cleanup_error:
+                logger.error(
+                    f"Failed to cleanup handler {handler_id}: {cleanup_error}"
+                )
+
     async def cleanup(self) -> None:
         """
         Enhanced asynchronous cleanup of message broker resources.
@@ -426,22 +870,6 @@ class MessageBroker:
         for msg_id in expired_messages:
             del self.active_messages[msg_id]
 
-    async def _cleanup_inactive_subscriptions(self):
-        """Clean up inactive subscriptions"""
-        current_time = datetime.now()
-        inactive_timeout = timedelta(hours=1)
-
-        for pattern in list(self.subscriptions.keys()):
-            self.subscriptions[pattern] = [
-                sub for sub in self.subscriptions[pattern]
-                if sub.is_active and
-                   current_time - sub.last_message_at <= inactive_timeout
-            ]
-
-            # Remove empty pattern
-            if not self.subscriptions[pattern]:
-                del self.subscriptions[pattern]
-
     def get_stats(self) -> Dict[str, Any]:
         """Get broker statistics"""
         return {
@@ -544,50 +972,6 @@ class MessageBroker:
         except Exception as e:
             logger.error(f"Error clearing subscriptions: {str(e)}")
 
-    async def unsubscribe(self, module_identifier: ModuleIdentifier, pattern: str) -> None:
-        """
-        Unsubscribe a module from a specific message pattern.
-
-        Args:
-            module_identifier: The identifier of the module unsubscribing
-            pattern: The message pattern to unsubscribe from
-        """
-        async with self._lock:
-            try:
-                # Check if pattern exists in subscriptions
-                if pattern not in self.subscriptions:
-                    logger.warning(f"Pattern {pattern} not found in subscriptions")
-                    return
-
-                # Filter out the specific module's subscription for this pattern
-                self.subscriptions[pattern] = [
-                    sub for sub in self.subscriptions[pattern]
-                    if sub.module_identifier.get_routing_key() != module_identifier.get_routing_key()
-                ]
-
-                # Remove pattern if no subscriptions remain
-                if not self.subscriptions[pattern]:
-                    del self.subscriptions[pattern]
-
-                # Update department routes if applicable
-                if module_identifier.department:
-                    dept_routes = self.department_routes.get(module_identifier.department, set())
-                    dept_routes.discard(module_identifier.get_routing_key())
-                    if not dept_routes:
-                        del self.department_routes[module_identifier.department]
-
-                # Decrement active subscriptions
-                self.stats['active_subscriptions'] = max(0, self.stats['active_subscriptions'] - 1)
-
-                logger.info(
-                    f"Module {module_identifier.component_name} "
-                    f"unsubscribed from pattern: {pattern}"
-                )
-
-            except Exception as e:
-                logger.error(f"Unsubscription failed: {str(e)}")
-                raise
-
     def _clear_storage(self) -> None:
         """Clear all internal storage structures."""
         try:
@@ -598,3 +982,76 @@ class MessageBroker:
 
         except Exception as e:
             logger.error(f"Error clearing storage: {str(e)}")
+
+    async def check_connection_health(self) -> bool:
+        try:
+            await self._ping()
+            return True
+        except Exception as e:
+            logger.error(f"Connection health check failed: {e}")
+            await self._handle_connection_failure()
+            return False
+
+    async def _ping(self) -> None:
+        ping_message = ProcessingMessage(
+            message_type=MessageType.GLOBAL_HEALTH_CHECK,
+            content={'timestamp': datetime.now().isoformat()}
+        )
+        try:
+            await asyncio.wait_for(self._send_ping(ping_message), timeout=5.0)
+        except asyncio.TimeoutError:
+            raise ConnectionError("Broker ping timed out")
+
+
+async def _send_ping(self, ping_message: ProcessingMessage) -> None:
+    """
+    Send a ping message and wait for acknowledgment.
+
+    Args:
+        ping_message: Ping message to send
+
+    Raises:
+        ConnectionError: If ping acknowledgment not received
+    """
+    ping_received = asyncio.Event()
+
+    async def ping_callback(response: ProcessingMessage):
+        if response.message_type == MessageType.GLOBAL_STATUS_RESPONSE:
+            ping_received.set()
+
+    try:
+        # Set up temporary ping handler
+        handler_id = f"ping_handler_{ping_message.id}"
+        handler_identifier = ModuleIdentifier(
+            component_name=handler_id,
+            component_type=ComponentType.CORE,
+            department="core",
+            role="ping_handler"
+        )
+
+        # Subscribe to status response
+        await self.subscribe(
+            module_identifier=handler_identifier,
+            message_patterns=["global.status.response"],
+            callback=ping_callback
+        )
+
+        # Send health check ping
+        ping_message.message_type = MessageType.GLOBAL_HEALTH_CHECK
+        await self.publish(ping_message)
+
+        # Wait for status response
+        try:
+            await asyncio.wait_for(ping_received.wait(), timeout=5.0)
+            self._connection_state["last_ping"] = datetime.now()
+            return
+
+        except asyncio.TimeoutError:
+            raise ConnectionError("Ping acknowledgment not received")
+
+    finally:
+        # Cleanup ping handler
+        try:
+            await self.unsubscribe(handler_identifier, "global.status.response")
+        except Exception as e:
+            logger.error(f"Failed to cleanup ping handler: {e}")

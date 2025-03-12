@@ -7,12 +7,12 @@ from uuid import UUID
 import logging
 from datetime import datetime
 
-from api.fastapi_app.dependencies.database import get_db_session
-from api.fastapi_app.dependencies.auth import get_current_user, require_permission
+from config.database import get_db_session
+from api.fastapi_app.middleware.auth_middleware import get_current_user, require_permission
 from api.fastapi_app.dependencies.services import get_pipeline_service, get_staging_manager
-from core.services.pipeline import PipelineService
-from core.managers.staging import StagingManager
-from api.fastapi_app.schemas.staging.pipeline import (
+from core.services.pipeline.pipeline_service import PipelineService
+from core.managers.staging_manager import StagingManager
+from api.fastapi_app.schemas.staging import (
     PipelineRequest,
     PipelineResponse,
     PipelineStatusResponse,
@@ -28,11 +28,11 @@ from core.messaging.event_types import (
 )
 
 from core.services.monitoring import MonitoringService
-from api.fastapi_app.schemas.staging.monitoring import (
-    MonitoringStagingRequest,
-    MonitoringStagingResponse,
-    AlertStagingRequest,
-    AlertStagingResponse
+from api.fastapi_app.schemas.staging import (
+    MonitoringStagingRequestSchema,
+    MonitoringStagingResponseSchema,
+    AlertStagingRequestSchema,
+    AlertStagingResponseSchema
 )
 from .data_sources import validate_source_access
 
@@ -328,7 +328,7 @@ def get_services(db: AsyncSession = Depends(get_db_session)):
 @router.post("/{pipeline_id}/metrics", response_model=Dict[str, Any])
 async def collect_metrics(
     pipeline_id: UUID,
-    data: MonitoringStagingRequest,
+    data: MonitoringStagingRequestSchema,
     current_user: dict = Depends(get_current_user),
     services: Dict[str, Any] = Depends(get_services)
 ):
@@ -363,7 +363,7 @@ async def collect_metrics(
         logger.error(f"Failed to collect metrics: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to collect metrics")
 
-@router.get("/{pipeline_id}/metrics/aggregated", response_model=MonitoringStagingResponse)
+@router.get("/{pipeline_id}/metrics/aggregated", response_model=MonitoringStagingResponseSchema)
 async def get_aggregated_metrics(
     pipeline_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -387,7 +387,7 @@ async def get_aggregated_metrics(
 @router.post("/{pipeline_id}/alerts/configure", response_model=Dict[str, Any])
 async def configure_alerts(
     pipeline_id: UUID,
-    config: AlertStagingRequest,
+    config: AlertStagingRequestSchema,
     current_user: dict = Depends(get_current_user),
     services: Dict[str, Any] = Depends(get_services)
 ):
@@ -421,7 +421,7 @@ async def configure_alerts(
         logger.error(f"Failed to configure alerts: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to configure alerts")
 
-@router.get("/{pipeline_id}/alerts", response_model=List[AlertStagingResponse])
+@router.get("/{pipeline_id}/alerts", response_model=List[AlertStagingResponseSchema])
 async def get_active_alerts(
     pipeline_id: UUID,
     current_user: dict = Depends(get_current_user),

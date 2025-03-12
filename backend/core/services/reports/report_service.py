@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from ..base.base_service import BaseService
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
@@ -19,7 +20,7 @@ from ...messaging.event_types import (
 
 logger = logging.getLogger(__name__)
 
-class ReportService:
+class ReportService(BaseService):
     """
     Report Service: Orchestrates report generation between Manager and Handler.
     - Handles business process orchestration
@@ -28,8 +29,8 @@ class ReportService:
     """
 
     def __init__(self, message_broker: MessageBroker):
-        self.message_broker = message_broker
-        
+        super().__init__(message_broker)
+
         # Service identification
         self.module_identifier = ModuleIdentifier(
             component_name="report_service",

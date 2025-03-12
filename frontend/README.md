@@ -1,8 +1,8 @@
-# Enterprise Pipeline Frontend
+# Analytix Flow Frontend
 
 ## 🎯 Overview
 
-The frontend application for the Enterprise Data Pipeline platform, built with React and TypeScript, providing a modern, feature-rich interface for data pipeline management, analysis, and monitoring.
+The frontend application for the Analytix Flow platform, built with React and TypeScript, providing a modern, feature-rich interface for data pipeline management, analysis, and monitoring.
 
 ## 🏗️ Architecture
 

@@ -3,15 +3,130 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
-from pydantic import BaseModel, Field, validator, root_validator, constr, confloat
+from pydantic import BaseModel, Field, validator, model_validator, constr, confloat, ConfigDict
 from enum import Enum
+from .base import BaseStagingSchema, ProcessingStatus, ComponentType
 
-# staging/quality.py
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from uuid import UUID
-from pydantic import BaseModel, Field, validator
-from .staging import BaseStagingSchema, ProcessingStatus, ComponentType
+class ReportStatus(str, Enum):
+    """Enum for report generation status"""
+    QUEUED = "queued"
+    GENERATING = "generating"
+    VALIDATING = "validating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class ReportGenerationStatus(BaseStagingSchema):
+    """Schema for report generation status tracking"""
+    status: ReportStatus
+    progress: float = Field(0.0, ge=0.0, le=100.0)
+    current_section: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    estimated_completion: Optional[datetime] = None
+    generation_metrics: Dict[str, Any] = Field(default_factory=dict)
+    error_details: Optional[Dict[str, Any]] = None
+    staging_details: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode='after')
+    def validate_progress(self) -> 'ReportGenerationStatus':
+        """Validates progress against status"""
+        if self.status == ReportStatus.COMPLETED and self.progress != 100.0:
+            self.progress = 100.0
+        if self.status == ReportStatus.FAILED and not self.error_details:
+            raise ValueError("Error details required for failed status")
+        return self
+
+class ReportTemplateRequest(BaseModel):
+    """Schema for report template creation"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    type: str = Field(..., pattern='^(standard|custom|automated)$')
+    sections: List[Dict[str, Any]]
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class ReportTemplateResponse(BaseModel):
+    """Schema for report template responses"""
+    template_id: UUID
+    name: str
+    type: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    is_active: bool = True
+    parameters: Dict[str, Any]
+    usage_count: int = 0
+
+class ReportSectionsResponse(BaseModel):
+    """Schema for report sections response"""
+    sections: List[Dict[str, Any]]
+    metrics: Optional[Dict[str, Any]] = None
+    section_order: List[str]
+    dependencies: Dict[str, List[str]] = Field(default_factory=dict)
+    validation_results: Optional[Dict[str, Any]] = None
+
+class StagedOutputRequest(BaseStagingSchema):
+    """Request schema for staged output operations"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    output_type: str
+    format: str
+    expires_at: Optional[datetime] = None
+    retention_policy: Optional[Dict[str, Any]] = None
+    processing_config: Dict[str, Any] = Field(default_factory=dict)
+
+class StagedOutputResponse(BaseStagingSchema):
+    """Response schema for staged output operations"""
+    name: str
+    description: Optional[str]
+    output_type: str
+    format: str
+    size: int = 0
+    processing_status: ProcessingStatus
+    processing_metrics: Dict[str, Any] = Field(default_factory=dict)
+    validation_results: Optional[Dict[str, Any]] = None
+    access_url: Optional[str] = None
+    expires_at: Optional[datetime] = None
+
+class StagedOutputSchemas:
+    """Registry for component-specific output schemas"""
+    _schemas = {}
+
+    @classmethod
+    def register_schema(cls, component_type: str, schema_type: str, schema_class: type):
+        """Register a schema for a specific component and type"""
+        if component_type not in cls._schemas:
+            cls._schemas[component_type] = {}
+        cls._schemas[component_type][schema_type] = schema_class
+
+    @classmethod
+    def get_schema(cls, component_type: str, schema_type: str) -> type:
+        """Get the registered schema for a component and type"""
+        return cls._schemas.get(component_type, {}).get(
+            schema_type,
+            StagedOutputResponse if schema_type == 'response' else StagedOutputRequest
+        )
+
+class ArchiveRequest(BaseModel):
+    """Request schema for archiving staged outputs"""
+    ttl_days: Optional[int] = Field(None, ge=1)
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class CleanupRequest(BaseModel):
+    """Request schema for cleanup operations"""
+    older_than_days: Optional[int] = Field(None, ge=1)
+    status_filter: Optional[List[ProcessingStatus]] = None
+    component_filter: Optional[List[ComponentType]] = None
+    metadata_filter: Optional[Dict[str, Any]] = None
+
+class MetricsResponse(BaseModel):
+    """Response schema for metrics endpoints"""
+    storage_metrics: Dict[str, Any] = Field(default_factory=dict)
+    performance_metrics: Dict[str, Any] = Field(default_factory=dict)
+    component_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    collection_time: datetime = Field(default_factory=datetime.utcnow)
+
 
 class QualityCheckRequest(BaseStagingSchema):
     """Request schema for quality checks"""
@@ -19,7 +134,7 @@ class QualityCheckRequest(BaseStagingSchema):
     rules: List[Dict[str, Any]]
     thresholds: Dict[str, float]
     sampling_config: Optional[Dict[str, Any]] = None
-    validation_level: str = Field(..., regex='^(basic|advanced|comprehensive)$')
+    validation_level: str = Field(..., pattern='^(basic|advanced|comprehensive)$')
     notification_settings: Optional[Dict[str, Any]] = None
 
 class QualityCheckResponse(BaseStagingSchema):
@@ -66,7 +181,7 @@ class QualityRemediationResponse(BaseStagingSchema):
 class ValidationRulesRequest(BaseStagingSchema):
     """Request schema for validation rules"""
     rules: List[Dict[str, Any]]
-    scope: str = Field(..., regex='^(column|table|database)$')
+    scope: str = Field(..., pattern='^(column|table|database)$')
     severity_levels: Dict[str, str]
     custom_validators: Optional[Dict[str, Any]] = None
 
@@ -96,7 +211,7 @@ class ReportStagingRequest(BaseStagingSchema):
     metrics: List[str]
     grouping: Optional[List[str]] = None
     filters: Dict[str, Any] = Field(default_factory=dict)
-    format: str = Field(..., regex='^(pdf|excel|html)$')
+    format: str = Field(..., pattern='^(pdf|excel|html)$')
 
 class ReportStagingResponse(BaseStagingSchema):
     """Response schema for report staging results"""
@@ -187,24 +302,105 @@ class DataSourceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-# pipeline/models.py
-class PipelineRequest(BaseStagingSchema):
-    """Request schema for pipeline operations"""
-    name: str
-    description: Optional[str] = None
+class PipelineStage(str, Enum):
+    """Pipeline processing stages"""
+    RECEPTION = "reception"
+    QUALITY_CHECK = "quality_check"
+    INSIGHT_GENERATION = "insight_generation"
+    ADVANCED_ANALYTICS = "advanced_analytics"
+    DECISION_MAKING = "decision_making"
+    RECOMMENDATION = "recommendation"
+    REPORT_GENERATION = "report_generation"
+
+class ProcessingStage(str, Enum):
+    INGESTION = "ingestion"
+    PROCESSING = "processing"
+    VALIDATION = "validation"
+    TRANSFORMATION = "transformation"
+    COMPLETION = "completion"
+
+
+class PipelineStatus(str, Enum):
+    """Pipeline status states"""
+    PENDING = "pending"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    IN_PROGRESS = "in_progress"
+
+class PipelineRequest(BaseModel):
+    """Schema for pipeline creation/update requests"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
     source_id: UUID
+    config: Dict[str, Any] = Field(default_factory=dict)
+    tags: List[str] = Field(default_factory=list)
+    enabled: bool = True
+    scheduling: Optional[Dict[str, Any]] = None
     target_id: UUID
     steps: List[Dict[str, Any]]
     schedule: Optional[Dict[str, Any]] = None
 
-class PipelineResponse(BaseStagingSchema):
-    """Response schema for pipeline details"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "Daily Data Processing",
+                "description": "Process daily data from source",
+                "source_id": "123e4567-e89b-12d3-a456-426614174000",
+                "config": {
+                    "batch_size": 1000,
+                    "timeout": 3600,
+                    "retries": 3
+                },
+                "tags": ["daily", "processing"],
+                "enabled": True,
+                "scheduling": {
+                    "frequency": "daily",
+                    "time": "00:00"
+                }
+            }
+        }
+    )
+
+class PipelineResponse(BaseModel):
+    """Schema for pipeline responses"""
     pipeline_id: UUID
     name: str
-    status: str
-    metrics: Dict[str, Any]
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
+    description: Optional[str]
+    source_id: UUID
+    config: Dict[str, Any]
+    tags: List[str]
+    enabled: bool
+    status: PipelineStatus
+    current_stage: Optional[PipelineStage]
+    progress: float = Field(0.0, ge=0.0, le=100.0)
+    created_at: datetime
+    updated_at: datetime
+    error_count: int = 0
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    owner_id: UUID
+    scheduling: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": "Daily Data Processing",
+                "description": "Process daily data from source",
+                "source_id": "123e4567-e89b-12d3-a456-426614174001",
+                "status": "running",
+                "current_stage": "quality_check",
+                "progress": 45.5,
+                "created_at": "2024-02-09T12:00:00Z",
+                "updated_at": "2024-02-09T12:30:00Z"
+            }
+        }
+    )
 
 class PipelineStatusResponse(BaseStagingSchema):
     """Response schema for pipeline status"""
@@ -235,29 +431,6 @@ class PipelineListResponse(BaseStagingSchema):
     total_count: int
     page: int
     page_size: int
-class ProcessingStage(str, Enum):
-    INGESTION = "ingestion"
-    PROCESSING = "processing"
-    VALIDATION = "validation"
-    TRANSFORMATION = "transformation"
-    COMPLETION = "completion"
-
-
-class ProcessingStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    PAUSED = "paused"
-
-
-class ComponentType(str, Enum):
-    ANALYTICS = "analytics"
-    DECISION = "decision"
-    INSIGHT = "insight"
-    MONITORING = "monitoring"
-    QUALITY = "quality"
-    PIPELINE = "pipeline"
 
 
 class DecisionMessageType(str, Enum):
@@ -268,21 +441,6 @@ class DecisionMessageType(str, Enum):
     CONTEXT_ANALYZE = "context_analyze"
     OPTIONS_GENERATE = "options_generate"
     VALIDATE = "validate"
-
-
-class BaseStagingSchema(BaseModel):
-    """Base schema for all staging operations"""
-    id: UUID
-    pipeline_id: UUID
-    component_type: ComponentType
-    status: ProcessingStatus = ProcessingStatus.PENDING
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        orm_mode = True
-
 
 # Analytics Schemas
 class AnalyticsStagingRequestSchema(BaseStagingSchema):
@@ -308,11 +466,11 @@ class DecisionItemSchema(BaseStagingSchema):
     options: List[Dict[str, Any]]
     deadline: Optional[datetime]
     assigned_to: Optional[str]
-    priority: str = Field(..., regex='^(LOW|MEDIUM|HIGH)$')
+    priority: str = Field(..., pattern='^(LOW|MEDIUM|HIGH)$')
     rationale: Optional[str]
 
 
-class DecisionStagingRequestSchema(BaseStagingSchema):
+class DecisionStagingRequest(BaseStagingSchema):
     decision_type: DecisionMessageType
     options: List[Dict[str, Any]]
     criteria: Dict[str, Any]
@@ -320,7 +478,7 @@ class DecisionStagingRequestSchema(BaseStagingSchema):
     deadline: Optional[datetime]
 
 
-class DecisionStagingResponseSchema(BaseStagingSchema):
+class DecisionStagingResponse(BaseStagingSchema):
     recommendation: Dict[str, Any]
     alternatives: List[Dict[str, Any]]
     impact_analysis: Dict[str, Any]
@@ -328,12 +486,108 @@ class DecisionStagingResponseSchema(BaseStagingSchema):
     rationale: Dict[str, Any]
 
 
+class DecisionListResponse(BaseStagingSchema):
+    """Schema for listing decisions with pagination"""
+    decisions: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of decision objects"
+    )
+    total_count: int = Field(
+        default=0,
+        description="Total number of decisions",
+        ge=0
+    )
+    page: int = Field(
+        default=1,
+        description="Current page number",
+        ge=1
+    )
+    page_size: int = Field(
+        default=10,
+        description="Number of items per page",
+        ge=1,
+        le=100
+    )
+
+class DecisionHistoryResponse(BaseStagingSchema):
+    """Schema for decision history responses"""
+    history: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of historical decision records"
+    )
+    summary_metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Summary metrics for the decision history"
+    )
+    time_range: Dict[str, datetime] = Field(
+        default_factory=dict,
+        description="Time range of the history records"
+    )
+    aggregated_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Aggregated statistics of decisions"
+    )
+
+class DecisionImpactResponse(BaseStagingSchema):
+    """Schema for decision impact analysis"""
+    impact_metrics: Dict[str, float] = Field(
+        ...,
+        description="Quantitative metrics of decision impact"
+    )
+    confidence_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score of the impact analysis"
+    )
+    historical_context: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Historical context and comparisons"
+    )
+    affected_components: List[str] = Field(
+        default_factory=list,
+        description="Components affected by the decision"
+    )
+    risk_assessment: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Risk assessment details"
+    )
+
+    @model_validator(mode='after')
+    def validate_impact_metrics(self) -> 'DecisionImpactResponse':
+        """Validate that impact metrics contain required fields"""
+        required_metrics = {'efficiency', 'cost', 'quality'}
+        if not all(metric in self.impact_metrics for metric in required_metrics):
+            raise ValueError(f"Impact metrics must contain all required metrics: {required_metrics}")
+        return self
+
+class DecisionFeedbackRequest(BaseStagingSchema):
+    """Schema for decision feedback requests"""
+    feedback_type: str = Field(
+        ...,
+        pattern='^(positive|negative|neutral)$',
+        description="Type of feedback"
+    )
+    comments: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Detailed feedback comments"
+    )
+    metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Quantitative feedback metrics"
+    )
+    suggestions: Optional[List[str]] = Field(
+        None,
+        description="Suggestions for improvement"
+    )
+
 # Insight Schemas
 class InsightStagingRequestSchema(BaseStagingSchema):
     analysis_config: Dict[str, Any]
     target_metrics: List[str]
     time_window: Dict[str, Any]
-    insight_types: List[str] = Field(..., regex='^(trend|anomaly|correlation|pattern)$')
+    insight_types: List[str] = Field(..., pattern='^(trend|anomaly|correlation|pattern)$')
 
 
 class InsightStagingResponseSchema(BaseStagingSchema):
@@ -346,7 +600,7 @@ class InsightStagingResponseSchema(BaseStagingSchema):
 # Monitoring Schemas
 class MonitoringStagingRequestSchema(BaseStagingSchema):
     metrics: List[str]
-    aggregation: str = Field(..., regex='^(sum|avg|min|max)$')
+    aggregation: str = Field(..., pattern='^(sum|avg|min|max)$')
     time_window: Dict[str, Any]
     filters: Dict[str, Any] = Field(default_factory=dict)
 
@@ -358,13 +612,13 @@ class MonitoringStagingResponseSchema(BaseStagingSchema):
 
 class AlertStagingRequestSchema(BaseStagingSchema):
     alert_type: str
-    severity: str = Field(..., regex='^(info|warning|critical)$')
+    severity: str = Field(..., pattern='^(info|warning|critical)$')
     conditions: Dict[str, Any]
     notification_config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertStagingResponseSchema(BaseStagingSchema):
-    alert_status: str = Field(..., regex='^(active|acknowledged|resolved)$')
+    alert_status: str = Field(..., pattern='^(active|acknowledged|resolved)$')
     triggered_at: datetime
     acknowledged_by: Optional[str]
     resolved_by: Optional[str]
@@ -375,9 +629,9 @@ class PipelineRequestSchema(BaseStagingSchema):
     source_configs: Dict[str, Any]
     destination_configs: Dict[str, Any]
     pipeline_type: str
-    execution_mode: str = Field(..., regex='^(sequential|parallel|distributed)$')
+    execution_mode: str = Field(..., pattern='^(sequential|parallel|distributed)$')
     max_retries: int = Field(3, ge=0, le=10)
-    retry_strategy: str = Field(..., regex='^(exponential|linear|fixed)$')
+    retry_strategy: str = Field(..., pattern='^(exponential|linear|fixed)$')
 
 
 class PipelineResponseSchema(BaseStagingSchema):
@@ -414,25 +668,125 @@ class QualityCheckResponseSchema(BaseStagingSchema):
 
 
 # Recommendation Schemas
-class RecommendationStagingRequestSchema(BaseStagingSchema):
+class RecommendationStagingRequest(BaseStagingSchema):
     type: str
     context: Dict[str, Any]
     constraints: Dict[str, Any] = Field(default_factory=dict)
-    priority: str = Field(..., regex='^(low|medium|high|critical)$')
+    priority: str = Field(..., pattern='^(low|medium|high|critical)$')
     target_metrics: List[str]
 
 
-class RecommendationStagingResponseSchema(BaseStagingSchema):
+class RecommendationStagingResponse(BaseStagingSchema):
     recommendations: List[Dict[str, Any]]
     confidence_scores: Dict[str, float]
     impact_analysis: Dict[str, Any]
     priority_ranking: Dict[str, Any]
 
 
+class RecommendationApplyRequest(BaseStagingSchema):
+    """Schema for applying recommendations"""
+    context: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Context for recommendation application"
+    )
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Parameters for applying the recommendation"
+    )
+    priority: str = Field(
+        ...,
+        pattern='^(high|medium|low)$',
+        description="Priority level for application"
+    )
+    schedule: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Schedule for recommendation application"
+    )
+
+
+class RecommendationDismissRequest(BaseStagingSchema):
+    """Schema for dismissing recommendations"""
+    reason: str = Field(
+        ...,
+        min_length=10,
+        max_length=500,
+        description="Reason for dismissing the recommendation"
+    )
+    feedback: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Additional feedback for improvement"
+    )
+    alternative_action: Optional[str] = Field(
+        None,
+        description="Alternative action taken instead"
+    )
+    dismissal_category: str = Field(
+        ...,
+        pattern='^(irrelevant|incorrect|already_implemented|other)$',
+        description="Category of dismissal"
+    )
+
+
+class RecommendationListResponse(BaseStagingSchema):
+    """Schema for listing recommendations"""
+    recommendations: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of recommendation objects"
+    )
+    total_count: int = Field(
+        default=0,
+        ge=0,
+        description="Total number of recommendations"
+    )
+    filter_summary: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Summary of applied filters"
+    )
+    priority_distribution: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Distribution of recommendations by priority"
+    )
+
+
+class RecommendationImpactResponse(BaseStagingSchema):
+    """Schema for recommendation impact analysis"""
+    metrics: Dict[str, float] = Field(
+        ...,
+        description="Impact metrics for the recommendation"
+    )
+    confidence_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in the impact assessment"
+    )
+    potential_risks: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Potential risks associated with implementation"
+    )
+    estimated_effort: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Estimated effort for implementation"
+    )
+    cost_benefit_analysis: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Cost-benefit analysis details"
+    )
+
+    @model_validator(mode='after')
+    def validate_metrics(self) -> 'RecommendationImpactResponse':
+        """Validate that required impact metrics are present"""
+        required_metrics = {'roi', 'time_savings', 'resource_impact'}
+        if not all(metric in self.metrics for metric in required_metrics):
+            raise ValueError(f"Impact metrics must contain all required metrics: {required_metrics}")
+        return self
+
+
 # Report Schemas
 class ReportStagingRequestSchema(BaseStagingSchema):
     report_type: str
-    format: str = Field(..., regex='^(pdf|excel|csv|json)$')
+    format: str = Field(..., pattern='^(pdf|excel|csv|json)$')
     sections: List[Dict[str, Any]]
     parameters: Dict[str, Any] = Field(default_factory=dict)
     template_id: Optional[UUID]
@@ -447,10 +801,10 @@ class ReportStagingResponseSchema(BaseStagingSchema):
 
 # Settings Schemas
 class SettingsStagingRequestSchema(BaseStagingSchema):
-    category: str = Field(..., regex='^(user|system|security|notifications|appearance|integrations)$')
+    category: str = Field(..., pattern='^(user|system|security|notifications|appearance|integrations)$')
     settings: Dict[str, Any]
     overrides: Dict[str, Any] = Field(default_factory=dict)
-    scope: str = Field(..., regex='^(global|user|pipeline)$')
+    scope: str = Field(..., pattern='^(global|user|pipeline)$')
 
 
 class SettingsStagingResponseSchema(BaseStagingSchema):
@@ -465,7 +819,7 @@ class ValidationRuleSchema(BaseModel):
     field: str
     condition: str
     value: Any
-    severity: str = Field(..., regex='^(critical|major|minor)$')
+    severity: str = Field(..., pattern='^(critical|major|minor)$')
     message: Optional[str]
 
 
@@ -477,14 +831,34 @@ class ValidationRequestSchema(BaseStagingSchema):
 
 
 class ValidationResponseSchema(BaseStagingSchema):
+    """Schema for validation response data.
+
+    Attributes:
+        validation_id: Unique identifier for the validation
+        passed: Boolean indicating if validation passed
+        results: List of validation results with detailed information
+        validation_time: Timestamp of validation
+        metrics: Dictionary containing validation metrics
+    """
     validation_id: UUID
     passed: bool
     results: List[Dict[str, Any]]
     validation_time: datetime
     metrics: Dict[str, Any]
 
-    @root_validator
-    def validate_results(cls, values):
-        if not values.get('passed') and not values.get('results'):
-            raise ValueError('Failed validation requires detailed results')
-        return values
+    @model_validator(mode='after')
+    def validate_results(self) -> 'ValidationResponseSchema':
+        """Validate that failed validations include detailed results.
+
+        Returns:
+            Self: The validated model instance
+
+        Raises:
+            ValueError: If validation failed but no results provided
+        """
+        if not self.passed and not self.results:
+            raise ValueError(
+                'Failed validation must include detailed results. '
+                'Please provide information about failure reasons.'
+            )
+        return self

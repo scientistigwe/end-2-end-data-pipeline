@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from uuid import uuid4
 
+from ..base.base_service import BaseService
 from ...messaging.broker import MessageBroker
 from ...messaging.event_types import (
     MessageType,
@@ -20,7 +21,7 @@ from ...messaging.event_types import (
 logger = logging.getLogger(__name__)
 
 
-class StagingService:
+class StagingService(BaseService):
     """
     Staging Service: Orchestrates staging workflows
 
@@ -33,7 +34,7 @@ class StagingService:
 
     def __init__(self, message_broker: MessageBroker):
         # Core dependency
-        self.message_broker = message_broker
+        super().__init__(message_broker)
 
         # Service identification
         self.module_identifier = ModuleIdentifier(

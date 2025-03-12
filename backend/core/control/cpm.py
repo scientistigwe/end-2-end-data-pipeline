@@ -73,6 +73,45 @@ class FrontendRequest:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+from enum import Enum
+from dataclasses import dataclass, field
+from datetime import datetime
+import uuid
+import asyncio
+import psutil
+import logging
+
+
+class AlertSeverity(Enum):
+    """Severity levels for monitoring alerts"""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+@dataclass
+class MonitoringAlert:
+    """Structure for monitoring alerts"""
+    alert_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    severity: AlertSeverity = AlertSeverity.INFO
+    source: str = "system_monitor"
+    message: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+    context: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert alert to dictionary representation"""
+        return {
+            'alert_id': self.alert_id,
+            'severity': self.severity.value,
+            'source': self.source,
+            'message': self.message,
+            'timestamp': self.timestamp.isoformat(),
+            'context': self.context
+        }
+
 class ControlPointManager:
     """
     Control Point Manager:
@@ -194,6 +233,597 @@ class ControlPointManager:
                 logger.error(f"Health monitoring failed: {str(e)}")
                 await asyncio.sleep(60)
 
+    async def _check_resource_metrics(self):
+        """
+        Monitor system resource usage and publish alerts if thresholds are exceeded.
+        """
+        try:
+            # Collect system resource metrics
+            cpu_usage = psutil.cpu_percent()
+            memory_usage = psutil.virtual_memory().percent
+            disk_usage = psutil.disk_usage('/').percent
+
+            # Create metrics object
+            metrics = {
+                'cpu_usage': cpu_usage,
+                'memory_usage': memory_usage,
+                'disk_usage': disk_usage
+            }
+
+            # Create alerts for critical thresholds
+            alerts = []
+            if cpu_usage > 90:
+                alerts.append(MonitoringAlert(
+                    severity=AlertSeverity.CRITICAL,
+                    source='system_monitor',
+                    message=f'High CPU usage detected: {cpu_usage}%',
+                    context={'cpu_usage': cpu_usage}
+                ))
+
+            if memory_usage > 90:
+                alerts.append(MonitoringAlert(
+                    severity=AlertSeverity.CRITICAL,
+                    source='system_monitor',
+                    message=f'High memory usage detected: {memory_usage}%',
+                    context={'memory_usage': memory_usage}
+                ))
+
+            if disk_usage > 90:
+                alerts.append(MonitoringAlert(
+                    severity=AlertSeverity.CRITICAL,
+                    source='system_monitor',
+                    message=f'High disk usage detected: {disk_usage}%',
+                    context={'disk_usage': disk_usage}
+                ))
+
+            # Publish alerts (assuming self.message_broker exists)
+            for alert in alerts:
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.MONITORING_ALERT_GENERATE,
+                        content={
+                            'alert': alert.to_dict(),
+                            'timestamp': datetime.utcnow().isoformat()
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+            # Log metrics
+            logger.info(f"System Resource Metrics: {metrics}")
+
+        except Exception as e:
+            logger.error(f"Resource metrics check failed: {str(e)}")
+
+    async def _check_component_health(self):
+        """
+        Check health of registered components across different departments.
+        """
+        try:
+            # Track health check results
+            health_status = {}
+
+            # Iterate through registered department chains
+            for dept, chain in self.department_chains.items():
+                # Prepare health check message
+                health_check_message = ProcessingMessage(
+                    message_type=MessageType.MONITORING_HEALTH_CHECK,
+                    content={
+                        'department': dept,
+                        'components': [
+                            chain['manager'].component_name,
+                            chain['handler'].component_name,
+                            chain['processor'].component_name
+                        ]
+                    },
+                    source_identifier=self.module_identifier,
+                    target_identifier=chain['manager']
+                )
+
+                try:
+                    # Send health check request
+                    response = await self.message_broker.request_response(health_check_message)
+
+                    # Interpret health status
+                    status = response.get('status', 'unknown')
+                    details = response.get('details', {})
+
+                    health_status[dept] = {
+                        'overall_status': status,
+                        'component_details': details
+                    }
+
+                except Exception as component_error:
+                    # Handle individual component health check failure
+                    health_status[dept] = {
+                        'overall_status': 'error',
+                        'error': str(component_error)
+                    }
+                    logger.error(f"Health check failed for {dept} department: {component_error}")
+
+            # Identify and log critical health issues
+            critical_components = [
+                dept for dept, status in health_status.items()
+                if status['overall_status'] != 'healthy'
+            ]
+
+            if critical_components:
+                # Publish system alert for critical health issues
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.MONITORING_HEALTH_ALERT,
+                        content={
+                            'critical_components': critical_components,
+                            'health_status': health_status,
+                            'timestamp': datetime.utcnow().isoformat()
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+            # Log overall health status
+            logger.info(f"Component Health Status: {health_status}")
+
+        except Exception as e:
+            logger.error(f"Component health check failed: {str(e)}")
+
+    async def _check_broker_connection(self):
+        """
+        Verify message broker connectivity and system communication channels.
+        """
+        try:
+            # Generate a unique correlation ID for tracking
+            correlation_id = str(uuid.uuid4())
+
+            # Create a ping message
+            ping_message = ProcessingMessage(
+                message_type=MessageType.GLOBAL_HEALTH_CHECK,
+                content={
+                    'correlation_id': correlation_id,
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'source': self.module_identifier.component_name
+                },
+                source_identifier=self.module_identifier,
+                metadata=MessageMetadata(
+                    correlation_id=correlation_id,
+                    requires_response=True,
+                    timeout_seconds=10  # 10-second timeout
+                )
+            )
+
+            try:
+                # Attempt to send and receive a response
+                response = await self.message_broker.request_response(
+                    ping_message,
+                    timeout=10  # 10-second timeout
+                )
+
+                # Verify response integrity
+                if (response and
+                        response.get('correlation_id') == correlation_id and
+                        response.get('status') == 'ok'):
+                    logger.info("Message broker connection verified successfully")
+                else:
+                    raise ValueError("Invalid broker response")
+
+            except asyncio.TimeoutError:
+                # Handle timeout scenario
+                await self._handle_broker_disconnection("Broker ping timed out")
+
+        except Exception as e:
+            # Handle connection verification failure
+            await self._handle_broker_disconnection(str(e))
+
+    async def _handle_broker_disconnection(self, error_message: str):
+        """
+        Handle message broker disconnection scenarios.
+        """
+        try:
+            # Create a critical alert
+            disconnection_alert = MonitoringAlert(
+                severity=AlertSeverity.CRITICAL,
+                source='broker_monitor',
+                message=f'Message broker connection lost: {error_message}',
+                context={'error': error_message}
+            )
+
+            # Publish disconnection alert
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_ALERT_GENERATE,
+                    content={
+                        'alert': disconnection_alert.to_dict(),
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Log the disconnection
+            logger.critical(f"Message broker disconnection detected: {error_message}")
+
+        except Exception as recovery_error:
+            logger.error(f"Broker disconnection handling failed: {recovery_error}")
+
+    async def _handle_process_timeout(self, control_point: ControlPoint) -> None:
+        """
+        Handle timeout for a specific control point in the processing pipeline
+
+        Args:
+            control_point (ControlPoint): The control point that has timed out
+        """
+        try:
+            # Update control point status to timeout
+            control_point.status = ProcessingStatus.DECISION_TIMEOUT
+            control_point.updated_at = datetime.utcnow()
+
+            # Find the associated pipeline
+            pipeline = self.active_pipelines.get(control_point.pipeline_id)
+            if not pipeline:
+                logger.warning(f"No pipeline found for timed-out control point: {control_point.id}")
+                return
+
+            # Create timeout alert
+            timeout_alert = ProcessingMessage(
+                message_type=MessageType.PIPELINE_STAGE_ERROR,
+                content={
+                    'pipeline_id': control_point.pipeline_id,
+                    'control_point_id': control_point.id,
+                    'stage': control_point.stage.value,
+                    'error_type': 'timeout',
+                    'timeout_duration': control_point.timeout_minutes,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier,
+                metadata=MessageMetadata(
+                    correlation_id=str(uuid.uuid4()),
+                    priority=3  # High priority
+                )
+            )
+
+            # Publish timeout alert
+            await self.message_broker.publish(timeout_alert)
+
+            # Determine next action based on stage and timeout
+            recovery_action = self._determine_timeout_recovery_action(control_point)
+
+            # Execute recovery action
+            if recovery_action == 'retry':
+                await self._retry_stage(
+                    control_point,
+                    control_point.stage,
+                    {
+                        'reason': 'stage_timeout',
+                        'original_timeout_duration': control_point.timeout_minutes
+                    }
+                )
+            elif recovery_action == 'escalate':
+                await self._escalate_timeout(control_point)
+            elif recovery_action == 'cancel':
+                await self._cancel_pipeline(control_point)
+
+            # Notify frontend about timeout
+            await self._notify_frontend(
+                pipeline_id=control_point.pipeline_id,
+                notification_type='stage_timeout',
+                data={
+                    'stage': control_point.stage.value,
+                    'timeout_duration': control_point.timeout_minutes,
+                    'recovery_action': recovery_action
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Process timeout handling failed: {str(e)}")
+            await self._handle_flow_error(
+                ProcessingMessage(content={'pipeline_id': control_point.pipeline_id}),
+                error=e
+            )
+
+    def _determine_timeout_recovery_action(self, control_point: ControlPoint) -> str:
+        """
+        Determine the appropriate recovery action for a timed-out control point
+
+        Args:
+            control_point (ControlPoint): The control point that has timed out
+
+        Returns:
+            str: Recovery action ('retry', 'escalate', or 'cancel')
+        """
+        # Define timeout recovery strategies for different stages
+        timeout_strategies = {
+            ProcessingStage.RECEPTION: 'retry',
+            ProcessingStage.VALIDATION: 'retry',
+            ProcessingStage.QUALITY_CHECK: 'escalate',
+            ProcessingStage.CONTEXT_ANALYSIS: 'retry',
+            ProcessingStage.INSIGHT_GENERATION: 'escalate',
+            ProcessingStage.ADVANCED_ANALYTICS: 'escalate',
+            ProcessingStage.DECISION_MAKING: 'escalate',
+            ProcessingStage.RECOMMENDATION: 'escalate',
+            ProcessingStage.REPORT_GENERATION: 'retry',
+            ProcessingStage.USER_REVIEW: 'escalate'
+        }
+
+        # Get retry count to prevent infinite retries
+        retry_count = sum(
+            1 for cp in self.control_point_history.get(control_point.pipeline_id, [])
+            if cp.stage == control_point.stage
+        )
+
+        # Determine action based on stage and retry count
+        action = timeout_strategies.get(control_point.stage, 'cancel')
+
+        # Limit retries to prevent infinite loops
+        if action == 'retry' and retry_count >= 3:
+            action = 'escalate'
+
+        # If escalation is not possible, default to cancel
+        if action == 'escalate' and retry_count >= 2:
+            action = 'cancel'
+
+        return action
+
+    async def _escalate_timeout(self, control_point: ControlPoint) -> None:
+        """
+        Escalate a timed-out control point
+
+        Args:
+            control_point (ControlPoint): The control point to escalate
+        """
+        try:
+            # Create escalation message
+            escalation_message = ProcessingMessage(
+                message_type=MessageType.USER_INTERVENTION_REQUEST,
+                content={
+                    'pipeline_id': control_point.pipeline_id,
+                    'control_point_id': control_point.id,
+                    'stage': control_point.stage.value,
+                    'escalation_type': 'timeout',
+                    'timeout_details': {
+                        'duration': control_point.timeout_minutes,
+                        'stage': control_point.stage.value
+                    },
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+
+            # Publish escalation request
+            await self.message_broker.publish(escalation_message)
+
+            # Log escalation
+            logger.warning(f"Timeout escalated for pipeline {control_point.pipeline_id} at stage {control_point.stage}")
+
+        except Exception as e:
+            logger.error(f"Timeout escalation failed: {str(e)}")
+
+    async def _cancel_pipeline(self, control_point: ControlPoint) -> None:
+        """
+        Cancel the entire pipeline due to repeated timeouts
+
+        Args:
+            control_point (ControlPoint): The control point that triggered cancellation
+        """
+        try:
+            # Update pipeline status
+            pipeline = self.active_pipelines.get(control_point.pipeline_id)
+            if pipeline:
+                pipeline.status = ProcessingStatus.CANCELLED
+
+            # Create cancellation message
+            cancellation_message = ProcessingMessage(
+                message_type=MessageType.PIPELINE_CANCEL_REQUEST,
+                content={
+                    'pipeline_id': control_point.pipeline_id,
+                    'reason': 'repeated_timeouts',
+                    'stage': control_point.stage.value,
+                    'timestamp': datetime.utcnow().isoformat()
+                },
+                source_identifier=self.module_identifier
+            )
+
+            # Publish cancellation request
+            await self.message_broker.publish(cancellation_message)
+
+            # Cleanup pipeline resources
+            await self._cleanup_pipeline(control_point.pipeline_id)
+
+            # Log cancellation
+            logger.error(f"Pipeline {control_point.pipeline_id} cancelled due to repeated timeouts")
+
+        except Exception as e:
+            logger.error(f"Pipeline cancellation failed: {str(e)}")
+
+    async def _check_processing_health(self):
+        """
+        Comprehensive health check for processing components and pipelines
+
+        Performs in-depth analysis of system processing health, tracking:
+        - Active pipeline status
+        - Component performance
+        - Resource utilization
+        - Processing bottlenecks
+        """
+        try:
+            # Initialize health metrics container
+            processing_health = {
+                'overall_status': 'healthy',
+                'active_pipelines': 0,
+                'pipeline_states': {},
+                'component_performance': {},
+                'bottlenecks': [],
+                'resource_constraints': {},
+                'processing_issues': []
+            }
+
+            # Analyze active pipelines
+            for pipeline_id, pipeline in self.active_pipelines.items():
+                processing_health['active_pipelines'] += 1
+
+                # Track pipeline state details
+                processing_health['pipeline_states'][pipeline_id] = {
+                    'current_stage': pipeline.current_stage.value if pipeline.current_stage else None,
+                    'status': pipeline.status.value,
+                    'progress': pipeline.progress.get('overall', 0),
+                    'duration': (datetime.now() - pipeline.created_at).total_seconds()
+                }
+
+                # Identify potential bottlenecks
+                if (pipeline.status == ProcessingStatus.IN_PROGRESS and
+                        pipeline.progress.get('overall', 0) < 0.1):
+                    processing_health['bottlenecks'].append({
+                        'pipeline_id': pipeline_id,
+                        'stage': pipeline.current_stage.value if pipeline.current_stage else 'unknown',
+                        'duration_seconds': processing_health['pipeline_states'][pipeline_id]['duration']
+                    })
+
+            # Check component health across different departments
+            for dept, chain in self.department_chains.items():
+                try:
+                    # Send health check request to each department
+                    health_check_message = ProcessingMessage(
+                        message_type=MessageType.MONITORING_HEALTH_CHECK,
+                        content={
+                            'department': dept,
+                            'components': [
+                                chain['manager'].component_name,
+                                chain['handler'].component_name,
+                                chain['processor'].component_name
+                            ]
+                        },
+                        source_identifier=self.module_identifier,
+                        target_identifier=chain['manager']
+                    )
+
+                    # Request component health details
+                    response = await self.message_broker.request_response(
+                        health_check_message,
+                        timeout=10  # 10-second timeout
+                    )
+
+                    # Parse component performance
+                    component_performance = response.get('performance', {})
+                    processing_health['component_performance'][dept] = {
+                        'status': response.get('status', 'unknown'),
+                        'processing_time': component_performance.get('avg_processing_time'),
+                        'error_rate': component_performance.get('error_rate', 0),
+                        'throughput': component_performance.get('throughput')
+                    }
+
+                    # Identify performance issues
+                    if (component_performance.get('error_rate', 0) > 0.1 or
+                            component_performance.get('avg_processing_time', 0) > 5):
+                        processing_health['processing_issues'].append({
+                            'department': dept,
+                            'issue_type': 'performance_degradation',
+                            'details': component_performance
+                        })
+
+                except Exception as component_error:
+                    processing_health['processing_issues'].append({
+                        'department': dept,
+                        'issue_type': 'health_check_failure',
+                        'error': str(component_error)
+                    })
+
+            # Assess overall system health
+            processing_health['overall_status'] = self._evaluate_processing_health(processing_health)
+
+            # Publish health assessment
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.MONITORING_PROCESS_PROGRESS,
+                    content={
+                        'processing_health': processing_health,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+
+            # Generate alerts for critical issues
+            await self._generate_processing_health_alerts(processing_health)
+
+            # Log processing health
+            logger.info(f"Processing Health Assessment: {processing_health}")
+
+        except Exception as e:
+            logger.error(f"Processing health check failed: {str(e)}")
+
+    def _evaluate_processing_health(self, health_data: Dict[str, Any]) -> str:
+        """
+        Evaluate overall system processing health
+
+        Args:
+            health_data (Dict[str, Any]): Comprehensive health check data
+
+        Returns:
+            str: Overall health status ('healthy', 'degraded', 'critical')
+        """
+        # Criteria for health assessment
+        if len(health_data.get('processing_issues', [])) > 3:
+            return 'critical'
+
+        if len(health_data.get('bottlenecks', [])) > 2:
+            return 'degraded'
+
+        # Check component performance
+        for dept_performance in health_data.get('component_performance', {}).values():
+            if (dept_performance.get('error_rate', 0) > 0.1 or
+                    dept_performance.get('avg_processing_time', 0) > 5):
+                return 'degraded'
+
+        return 'healthy'
+
+    async def _generate_processing_health_alerts(self, health_data: Dict[str, Any]) -> None:
+        """
+        Generate alerts based on processing health assessment
+
+        Args:
+            health_data (Dict[str, Any]): Comprehensive health check data
+        """
+        try:
+            # Generate alerts for critical issues
+            alerts = []
+
+            # Alert for processing bottlenecks
+            for bottleneck in health_data.get('bottlenecks', []):
+                alerts.append(MonitoringAlert(
+                    severity=AlertSeverity.HIGH,
+                    source='processing_monitor',
+                    message=f"Processing bottleneck detected in pipeline {bottleneck['pipeline_id']}",
+                    context=bottleneck
+                ))
+
+            # Alert for performance issues
+            for issue in health_data.get('processing_issues', []):
+                severity = (
+                    AlertSeverity.CRITICAL if issue['issue_type'] == 'health_check_failure'
+                    else AlertSeverity.HIGH
+                )
+                alerts.append(MonitoringAlert(
+                    severity=severity,
+                    source='processing_monitor',
+                    message=f"Performance issue in {issue.get('department', 'unknown')} department",
+                    context=issue
+                ))
+
+            # Publish alerts
+            for alert in alerts:
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.MONITORING_ALERT_GENERATE,
+                        content={
+                            'alert': alert.to_dict(),
+                            'timestamp': datetime.utcnow().isoformat()
+                        },
+                        source_identifier=self.module_identifier
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Processing health alert generation failed: {str(e)}")
+
     async def cleanup(self):
         """Cleanup CPM resources"""
         try:
@@ -217,6 +847,7 @@ class ControlPointManager:
 
         except Exception as e:
             logger.error(f"CPM cleanup failed: {str(e)}")
+
     # -------------------------------------------------------------------------
     # FRONTEND INTERFACE
     # -------------------------------------------------------------------------

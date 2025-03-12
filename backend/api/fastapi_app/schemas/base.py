@@ -1,8 +1,9 @@
 # # backend/api/fastapi_app/schemas/base.py
+# backend/api/fastapi_app/schemas/base.py
 from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from enum import Enum
 
 
@@ -39,9 +40,10 @@ class BaseSchema(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        orm_mode = True
-        allow_population_by_field_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
 
 
 class BaseAuthSchema(BaseSchema):
@@ -55,12 +57,11 @@ class BaseAuthSchema(BaseSchema):
     is_active: bool = True
     auth_metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    @root_validator
-    def validate_expiration(cls, values):
-        expires_at = values.get('expires_at')
-        if expires_at and expires_at < datetime.utcnow():
-            values['is_active'] = False
-        return values
+    @model_validator(mode='after')
+    def validate_expiration(self) -> 'BaseAuthSchema':
+        if self.expires_at and self.expires_at < datetime.utcnow():
+            self.is_active = False
+        return self
 
 
 class BaseDataSourceSchema(BaseSchema):
@@ -76,12 +77,12 @@ class BaseDataSourceSchema(BaseSchema):
     error_count: int = 0
     retry_count: int = 0
 
-    @root_validator
-    def validate_connection(cls, values):
-        if values.get('status') == ProcessingStatus.FAILED:
-            if values.get('retry_count', 0) >= values.get('configuration', {}).get('max_retries', 3):
-                values['status'] = ProcessingStatus.ARCHIVED
-        return values
+    @model_validator(mode='after')
+    def validate_connection(self) -> 'BaseDataSourceSchema':
+        if self.status == ProcessingStatus.FAILED:
+            if self.retry_count >= self.configuration.get('max_retries', 3):
+                self.status = ProcessingStatus.ARCHIVED
+        return self
 
 
 class BaseStagingSchema(BaseSchema):
@@ -98,11 +99,11 @@ class BaseStagingSchema(BaseSchema):
     expires_at: Optional[datetime] = None
     is_temporary: bool = True
 
-    @root_validator
-    def validate_storage(cls, values):
-        if values.get('data_size', 0) > 0 and not values.get('storage_path'):
+    @model_validator(mode='after')
+    def validate_storage(self) -> 'BaseStagingSchema':
+        if self.data_size > 0 and not self.storage_path:
             raise ValueError("Storage path is required when data size is greater than 0")
-        return values
+        return self
 
 
 class BaseRequestSchema(BaseModel):
@@ -113,6 +114,8 @@ class BaseRequestSchema(BaseModel):
     request_id: UUID
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     client_info: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BaseResponseSchema(BaseModel):
@@ -125,11 +128,13 @@ class BaseResponseSchema(BaseModel):
     error_details: Optional[Dict[str, Any]] = None
     processing_time: float = 0.0
 
-    @root_validator
-    def validate_error_details(cls, values):
-        if values.get('status') == ProcessingStatus.FAILED and not values.get('error_details'):
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode='after')
+    def validate_error_details(self) -> 'BaseResponseSchema':
+        if self.status == ProcessingStatus.FAILED and not self.error_details:
             raise ValueError("Error details required for failed status")
-        return values
+        return self
 
 
 # Utility Mixins for additional functionality
@@ -139,6 +144,8 @@ class TimestampMixin(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     deleted_at: Optional[datetime] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class AuditMixin(BaseModel):
     """Mixin to add audit fields to any schema"""
@@ -147,9 +154,30 @@ class AuditMixin(BaseModel):
     version: int = 1
     change_reason: Optional[str] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class MetadataMixin(BaseModel):
     """Mixin to add metadata fields to any schema"""
     metadata: Dict[str, Any] = Field(default_factory=dict)
     tags: Dict[str, str] = Field(default_factory=dict)
     labels: Dict[str, str] = Field(default_factory=dict)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BaseSchema(BaseModel):
+    """
+    Core base schema that all other schemas inherit from.
+    Provides common fields and functionality.
+    """
+    id: UUID
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        orm_mode = True
+        allow_population_by_field_name = True
+
+

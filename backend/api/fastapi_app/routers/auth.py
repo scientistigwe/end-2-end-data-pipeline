@@ -1,35 +1,45 @@
 # api/fastapi_app/routers/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
-from api.fastapi_app.dependencies.database import get_db_session
-from api.fastapi_app.dependencies.auth import get_current_user, get_optional_user
+from config.database import get_db_session
+from api.fastapi_app.middleware.auth_middleware import get_current_user, get_optional_user
 from api.fastapi_app.middleware.auth_middleware import auth_middleware
 from core.services.auth.auth_service import AuthService
 from api.fastapi_app.schemas.auth import (
-    LoginRequest, LoginResponse,
-    RegistrationRequest, RegistrationResponse,
-    TokenResponse,
-    PasswordResetRequest, PasswordResetResponse,
-    ChangePasswordRequest, ChangePasswordResponse,
-    UserProfile, UpdateProfileRequest, UpdateProfileResponse,
-    EmailVerificationRequest, EmailVerificationResponse,
-    MFASetupRequest, MFASetupResponse,
-    MFAVerifyRequest, MFAVerifyResponse,
-    SessionRequest, SessionResponse
+    LoginRequestSchema,
+    LoginResponseSchema,
+    RegistrationRequestSchema,
+    RegistrationResponseSchema,
+    TokenResponseSchema,
+    PasswordResetRequestSchema,
+    PasswordResetResponseSchema,
+    ChangePasswordRequestSchema,
+    ChangePasswordResponseSchema,
+    UserProfileSchema,
+    UpdateProfileRequestSchema,
+    UpdateProfileResponseSchema,
+    EmailVerificationRequestSchema,
+    EmailVerificationResponseSchema,
+    MFASetupRequestSchema,
+    MFASetupResponseSchema,
+    MFAVerifyRequestSchema,
+    MFAVerifyResponseSchema,
+    SessionRequestSchema,
+    SessionResponseSchema
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponseSchema)
 async def login(
         request: Request,
         response: Response,
-        credentials: LoginRequest,
+        credentials: LoginRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
     """Handle user login"""
@@ -60,7 +70,7 @@ async def login(
         # Set cookies
         response.set_cookie(
             'access_token',
-            tokens['access_token'],
+            tokens.access_token,
             httponly=True,
             secure=not request.app.debug,
             samesite='lax',
@@ -69,7 +79,7 @@ async def login(
 
         response.set_cookie(
             'refresh_token',
-            tokens['refresh_token'],
+            tokens.refresh_token,
             httponly=True,
             secure=not request.app.debug,
             samesite='lax',
@@ -77,23 +87,20 @@ async def login(
             max_age=86400 * 30  # 30 days
         )
 
-        return {
-            "user": {
-                "id": str(user.id),
-                "email": user.email,
-                "username": user.username,
-                "role": user.role,
-                "permissions": user_data['permissions']
-            },
-            "tokens": tokens
-        }
+        return LoginResponseSchema(
+            user=user,
+            tokens=tokens,
+            mfa_required=False,
+            session_expires=user_data.get('session_expires'),
+            permitted_actions=user_data.get('permissions', [])
+        )
 
     except Exception as e:
         logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Authentication failed")
 
 
-@router.get("/profile", response_model=UserProfile)
+@router.get("/profile", response_model=UserProfileSchema)
 async def get_profile(
         current_user: dict = Depends(get_current_user),
         db: AsyncSession = Depends(get_db_session)
@@ -106,25 +113,34 @@ async def get_profile(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        return {
-            "id": str(user.id),
-            "email": user.email,
-            "username": user.username,
-            "first_name": user.first_name or "",
-            "last_name": user.last_name or "",
-            "role": user.role,
-            "status": user.status,
-            "permissions": current_user.get('permissions', [])
-        }
+        return UserProfileSchema(
+            id=str(user.id),
+            email=user.email,
+            username=user.username,
+            first_name=user.first_name or "",
+            last_name=user.last_name or "",
+            full_name=f"{user.first_name} {user.last_name}".strip(),
+            role=user.role,
+            status=user.status,
+            permissions=current_user.get('permissions', []),
+            email_verified=user.email_verified,
+            profile_image=user.profile_image,
+            phone_number=user.phone_number,
+            department=user.department,
+            timezone=user.timezone,
+            locale=user.locale,
+            preferences=user.preferences or {},
+            metadata=user.metadata or {},
+            security_level=user.security_level
+        )
 
     except Exception as e:
         logger.error(f"Profile fetch error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch profile")
 
-
-@router.put("/profile", response_model=UpdateProfileResponse)
+@router.put("/profile", response_model=UpdateProfileResponseSchema)
 async def update_profile(
-        profile_data: UpdateProfileRequest,
+        profile_data: UpdateProfileRequestSchema,
         current_user: dict = Depends(get_current_user),
         db: AsyncSession = Depends(get_db_session)
 ):
@@ -135,16 +151,16 @@ async def update_profile(
             current_user['id'],
             profile_data.dict()
         )
-        return UpdateProfileResponse.from_orm(updated_user)
+        return UpdateProfileResponseSchema.from_orm(updated_user)
 
     except Exception as e:
         logger.error(f"Profile update error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
 
-@router.post("/register", response_model=RegistrationResponse)
+@router.post("/register", response_model=RegistrationResponseSchema)
 async def register(
-        registration_data: RegistrationRequest,
+        registration_data: RegistrationRequestSchema,
         response: Response,
         db: AsyncSession = Depends(get_db_session)
 ):
@@ -200,7 +216,7 @@ async def register(
 # Password Management Endpoints
 @router.post("/password/forgot", response_model=dict)
 async def forgot_password(
-        request: PasswordResetRequest,
+        request: PasswordResetRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
     """Initiate password reset process"""
@@ -213,9 +229,9 @@ async def forgot_password(
         raise HTTPException(status_code=500, detail="Failed to initiate password reset")
 
 
-@router.post("/password/reset", response_model=PasswordResetResponse)
+@router.post("/password/reset", response_model=PasswordResetResponseSchema)
 async def reset_password(
-        request: PasswordResetRequest,
+        request: PasswordResetRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
     """Reset password using reset token"""
@@ -231,9 +247,9 @@ async def reset_password(
         raise HTTPException(status_code=500, detail="Password reset failed")
 
 
-@router.post("/password/change", response_model=ChangePasswordResponse)
+@router.post("/password/change", response_model=ChangePasswordResponseSchema)
 async def change_password(
-        request: ChangePasswordRequest,
+        request: ChangePasswordRequestSchema,
         current_user: dict = Depends(get_current_user),
         db: AsyncSession = Depends(get_db_session)
 ):
@@ -252,9 +268,9 @@ async def change_password(
 
 
 # Email Verification Endpoints
-@router.post("/email/verify", response_model=EmailVerificationResponse)
+@router.post("/email/verify", response_model=EmailVerificationResponseSchema)
 async def verify_email(
-        request: EmailVerificationRequest,
+        request: EmailVerificationRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
     """Verify email address"""
@@ -283,9 +299,9 @@ async def resend_verification(
 
 
 # MFA Endpoints
-@router.post("/mfa/setup", response_model=MFASetupResponse)
+@router.post("/mfa/setup", response_model=MFASetupResponseSchema)
 async def setup_mfa(
-        request: MFASetupRequest,
+        request: MFASetupRequestSchema,
         current_user: dict = Depends(get_current_user),
         db: AsyncSession = Depends(get_db_session)
 ):
@@ -302,9 +318,9 @@ async def setup_mfa(
         raise HTTPException(status_code=500, detail="MFA setup failed")
 
 
-@router.post("/mfa/verify", response_model=MFAVerifyResponse)
+@router.post("/mfa/verify", response_model=MFAVerifyResponseSchema)
 async def verify_mfa(
-        request: MFAVerifyRequest,
+        request: MFAVerifyRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
     """Verify MFA code and complete authentication"""
@@ -364,7 +380,7 @@ async def get_permissions(
 
 
 # Refresh Token Endpoint
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh", response_model=TokenResponseSchema)
 async def refresh_token(
         request: Request,
         response: Response,
@@ -428,22 +444,26 @@ async def logout(
         logger.error(f"Logout error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Logout failed")
 
+def register_auth_exception_handlers(app: FastAPI):
+    """Register exception handlers for auth routes
 
-# Add exception handlers
-@router.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return {
-        "error": True,
-        "message": exc.detail,
-        "status_code": exc.status_code
-    }
+    Args:
+        app: FastAPI application instance
+    """
 
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        return {
+            "error": True,
+            "message": exc.detail,
+            "status_code": exc.status_code
+        }
 
-@router.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Internal server error: {str(exc)}", exc_info=True)
-    return {
-        "error": True,
-        "message": "Internal server error",
-        "status_code": 500
-    }
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger.error(f"Internal server error: {str(exc)}", exc_info=True)
+        return {
+            "error": True,
+            "message": "Internal server error",
+            "status_code": 500
+        }

@@ -17,8 +17,8 @@ from datetime import datetime
 import logging
 
 # Core Dependencies
-from api.fastapi_app.dependencies.database import get_db_session
-from api.fastapi_app.dependencies.auth import (
+from config.database import get_db_session
+from api.fastapi_app.middleware.auth_middleware import (
     get_current_user,
     require_permission
 )
@@ -32,12 +32,13 @@ from api.fastapi_app.dependencies.services import (
 
 # Services
 from core.services.quality import QualityService
-from core.services.analytics import AnalyticsService
-from core.services.insights import InsightService
+from core.services.advanced_analytics import AnalyticsService
+from core.services.insight import InsightService
 from core.services.reports import ReportService
-from core.services.decisions import DecisionService
-from core.services.recommendations import RecommendationService
-from core.managers.staging import StagingManager
+from core.services.decision import DecisionService
+from core.services.recommendation import RecommendationService
+from core.services.staging.staging_service import StagingService
+from core.managers.staging_manager import StagingManager
 
 # Schema Imports
 from api.fastapi_app.schemas.staging import (
@@ -71,8 +72,8 @@ from api.fastapi_app.schemas.staging import (
     ReportSectionsResponse,
 
     # Insight schemas
-    InsightStagingRequest,
-    InsightStagingResponse,
+    InsightStagingRequestSchema,
+    InsightStagingResponseSchema,
 
     # Decision schemas
     DecisionStagingRequest,
@@ -921,7 +922,7 @@ def get_services(db: AsyncSession = Depends(get_db_session)):
 
 @router.post("/generate", response_model=Dict[str, Any])
 async def generate_insights(
-    data: InsightStagingRequest,
+    data: InsightStagingRequestSchema,
     current_user: dict = Security(require_permission("insights:generate")),
     services: Dict[str, Any] = Depends(get_services)
 ):
@@ -982,7 +983,7 @@ async def get_generation_status(
         logger.error(f"Failed to get generation status: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get generation status")
 
-@router.get("/{generation_id}/results", response_model=InsightStagingResponse)
+@router.get("/{generation_id}/results", response_model=InsightStagingResponseSchema)
 async def get_insights(
     generation_id: UUID,
     current_user: dict = Security(require_permission("insights:read")),

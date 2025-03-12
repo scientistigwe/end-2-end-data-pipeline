@@ -1,0 +1,112 @@
+# backend/config/config.yaml
+
+# Broker Configuration
+broker:
+  max_workers: 4
+  message_retention_hours: 24
+  retry_delay_seconds: 300
+  max_retries: 3
+
+# Processing Configuration
+processing:
+  max_flows: 10
+  flow_retention_hours: 24
+  batch_size: 1000
+  timeout_seconds: 3600
+
+# Staging Area Configuration
+staging:
+  retention_days: 7
+  quality_threshold: 0.8
+  max_file_size_mb: 1024
+  compression_enabled: true
+
+# Performance Settings
+performance:
+  thread_pool_workers: 4
+  queue_size_limit: 100
+  cache_size_mb: 512
+  enable_monitoring: true
+
+# Security Settings
+security:
+  enable_encryption: true
+  key_rotation_days: 30
+  min_password_length: 12
+  require_mfa: true
+
+# API Settings
+api:
+  version: "v1"
+  prefix: "/api/v1"
+  timeout_seconds: 30
+  rate_limit:
+    requests_per_minute: 60
+    burst_size: 10
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/app.log"
+  max_file_size_mb: 100
+  backup_count: 5
+  enable_console: true
+
+# Database Configuration
+database:
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout: 30
+  echo: false
+  isolation_level: "READ_COMMITTED"
+
+# Cache Configuration
+cache:
+  type: "redis"
+  ttl_seconds: 3600
+  max_size_mb: 1024
+  enable_compression: true
+
+# File Storage Configuration
+storage:
+  type: "local"
+  base_path: "data"
+  backup_enabled: true
+  backup_frequency_hours: 24
+  cleanup_enabled: true
+  retention_days: 30
+
+# Email Configuration
+email:
+  smtp_host: "smtp.example.com"
+  smtp_port: 587
+  use_tls: true
+  sender: "noreply@example.com"
+  template_dir: "templates/email"
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  metrics_interval_seconds: 60
+  health_check_interval_seconds: 30
+  alert_threshold:
+    cpu_percent: 80
+    memory_percent: 85
+    disk_percent: 90
+
+# Development Settings
+development:
+  debug: true
+  auto_reload: true
+  mock_external_services: false
+  test_data_path: "tests/data"
+
+# Production Settings
+production:
+  debug: false
+  auto_reload: false
+  mock_external_services: false
+  ssl_enabled: true
+  ssl_cert_path: "/path/to/cert"
+  ssl_key_path: "/path/to/key"

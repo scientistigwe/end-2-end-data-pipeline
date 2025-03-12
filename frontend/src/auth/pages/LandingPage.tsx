@@ -87,7 +87,7 @@ const LandingPage = () => {
             >
               <PipelineLogo className="h-8 w-8 group-hover:rotate-6 transition-transform" />
               <span className="font-bold text-xl text-foreground group-hover:text-primary transition-colors">
-                Enterprise Pipeline
+                Analytix Flow
               </span>
             </Link>
             <div className="flex items-center space-x-4">
@@ -255,7 +255,7 @@ const LandingPage = () => {
             <div className="flex items-center space-x-2">
               <PipelineLogo className="h-6 w-6" />
               <span className="text-muted-foreground text-sm">
-                © {new Date().getFullYear()} Enterprise Pipeline. All rights reserved.
+                © {new Date().getFullYear()} Analytix Flow. All rights reserved.
               </span>
             </div>
           </div>

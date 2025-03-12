@@ -39,8 +39,8 @@ async def create_app(config_name: str = 'development') -> FastAPI:
 
         # Create FastAPI app with lifespan management
         app = FastAPI(
-            title="Data Pipeline API",
-            description="End-to-end data pipeline API service",
+            title="Analytix Flow API",
+            description="End-to-end Analytix Flow API service",
             version="1.0.0",
             lifespan=lambda app: lifespan_context(app, factory)
         )

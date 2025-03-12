@@ -7,29 +7,29 @@ from typing import Dict, Any, Optional, List
 import logging
 from uuid import UUID
 
-from api.fastapi_app.dependencies.database import get_db_session
-from api.fastapi_app.dependencies.auth import get_current_user
+from config.database import get_db_session
+from api.fastapi_app.middleware.auth_middleware import get_current_user
 from api.fastapi_app.schemas.data_sources import (
-    FileUploadRequest,
-    FileUploadResponse,
-    FileSourceResponse,
-    DatabaseSourceResponse,
-    S3SourceResponse,
-    APISourceResponse,
-    StreamSourceResponse,
-    DatabaseSourceConfig,
-    S3SourceConfig,
-    APISourceConfig,
-    StreamSourceConfig,
-    DataSourceRequest,
-    DataSourceResponse
+    FileUploadRequestSchema,
+    FileUploadResponseSchema,
+    FileSourceResponseSchema,
+    DatabaseSourceResponseSchema,
+    S3SourceResponseSchema,
+    APISourceResponseSchema,
+    StreamSourceResponseSchema,
+    DatabaseSourceConfigSchema,
+    S3SourceConfigSchema,
+    APISourceConfigSchema,
+    StreamSourceConfigSchema,
+    DataSourceRequestSchema,
+    DataSourceResponseSchema
 )
 
-from data.source.file import FileService
-from data.source.database import DatabaseService
-from data.source.cloud import S3Service
-from data.source.api import APIService
-from data.source.stream import StreamService
+from data.source.file.file_service import FileService
+from data.source.database.db_service import DatabaseService
+from data.source.cloud.cloud_service import S3Service
+from data.source.api.api_service import APIService
+from data.source.stream.stream_service import StreamService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,7 +75,7 @@ async def validate_source_access(
     raise HTTPException(status_code=404, detail="Source not found")
 
 
-@router.get("/", response_model=Dict[str, List[DataSourceResponse]])
+@router.get("/", response_model=Dict[str, List[DataSourceResponseSchema]])
 async def list_sources(
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
@@ -95,9 +95,9 @@ async def list_sources(
         raise HTTPException(status_code=500, detail="Failed to list sources")
 
 
-@router.post("/", response_model=DataSourceResponse)
+@router.post("/", response_model=DataSourceResponseSchema)
 async def create_source(
-        data: DataSourceRequest,
+        data: DataSourceRequestSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):
@@ -124,7 +124,7 @@ async def create_source(
         raise HTTPException(status_code=500, detail="Failed to create source")
 
 
-@router.get("/{source_id}", response_model=DataSourceResponse)
+@router.get("/{source_id}", response_model=DataSourceResponseSchema)
 async def get_source(
         source_id: UUID,
         current_user: dict = Depends(get_current_user),
@@ -143,10 +143,10 @@ async def get_source(
         raise HTTPException(status_code=500, detail="Failed to get source")
 
 
-@router.put("/{source_id}", response_model=DataSourceResponse)
+@router.put("/{source_id}", response_model=DataSourceResponseSchema)
 async def update_source(
         source_id: UUID,
-        data: DataSourceRequest,
+        data: DataSourceRequestSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):
@@ -186,7 +186,7 @@ async def delete_source(
         raise HTTPException(status_code=500, detail="Failed to delete source")
 
 
-@router.post("/file/upload", response_model=FileUploadResponse)
+@router.post("/file/upload", response_model=FileUploadResponseSchema)
 async def upload_file(
         file: UploadFile = File(...),
         metadata: str = Form(...),
@@ -216,9 +216,9 @@ async def upload_file(
 
 
 # Database connections
-@router.post("/db/connect", response_model=DatabaseSourceResponse)
+@router.post("/db/connect", response_model=DatabaseSourceResponseSchema)
 async def connect_database(
-        config: DatabaseSourceConfig,
+        config: DatabaseSourceConfigSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):
@@ -234,9 +234,9 @@ async def connect_database(
         raise HTTPException(status_code=500, detail="Connection failed")
 
 
-@router.post("/s3/connect", response_model=S3SourceResponse)
+@router.post("/s3/connect", response_model=S3SourceResponseSchema)
 async def connect_s3(
-        config: S3SourceConfig,
+        config: S3SourceConfigSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):
@@ -252,9 +252,9 @@ async def connect_s3(
         raise HTTPException(status_code=500, detail="Connection failed")
 
 
-@router.post("/api/connect", response_model=APISourceResponse)
+@router.post("/api/connect", response_model=APISourceResponseSchema)
 async def connect_api(
-        config: APISourceConfig,
+        config: APISourceConfigSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):
@@ -270,9 +270,9 @@ async def connect_api(
         raise HTTPException(status_code=500, detail="Connection failed")
 
 
-@router.post("/stream/connect", response_model=StreamSourceResponse)
+@router.post("/stream/connect", response_model=StreamSourceResponseSchema)
 async def connect_stream(
-        config: StreamSourceConfig,
+        config: StreamSourceConfigSchema,
         current_user: dict = Depends(get_current_user),
         services: Dict[str, Any] = Depends(get_services)
 ):

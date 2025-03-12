@@ -1,19 +1,12 @@
 from fastapi import FastAPI, APIRouter
 from typing import Dict, Any, Optional
-from api.fastapi_app.auth.jwt_manager import JWTTokenManager
+from ..auth.jwt_manager import JWTTokenManager
 
 # Import routers
-from api.fastapi_app.routers import (
+from ..routers import (
     auth,
     data_sources,
     pipeline,
-    analytics,
-    quality,
-    insight,
-    recommendations,
-    decisions,
-    monitoring,
-    reports,
     staging
 )
 
@@ -25,7 +18,7 @@ class RouterManager:
             self,
             app: FastAPI,
             services: Dict[str, Any],
-            jwt_manager: JWTManager
+            jwt_manager: JWTTokenManager
     ):
         self.app = app
         self.services = services
@@ -110,13 +103,6 @@ class RouterManager:
             'auth': auth.router,
             'data-sources': data_sources.router,
             'pipeline': pipeline.router,
-            'analytics': analytics.router,
-            'quality': quality.router,
-            'insight': insight.router,
-            'recommendations': recommendations.router,
-            'decisions': decisions.router,
-            'monitoring': monitoring.router,
-            'reports': reports.router,
             'staging': staging.router
         }
 
@@ -158,7 +144,7 @@ class RouterManager:
 def setup_routers(
         app: FastAPI,
         services: Dict[str, Any],
-        jwt_manager: JWTManager
+        jwt_manager: JWTTokenManager
 ) -> None:
     """
     Register all application routers with their required service dependencies.

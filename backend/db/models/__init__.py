@@ -35,18 +35,14 @@ from .staging.base import (
     StagingControlPoint
 )
 
-# Staging Models - Analytics
-from .staging.analytics import (
-    StagedAnalyticsOutput,
-    StagedInsightOutput,
-    StagedDecisionOutput
-)
-
 # Staging Models - Processing
 from .staging.processing import (
     StagedMonitoringOutput,
     StagedQualityOutput,
-    StagedRecommendationOutput
+    StagedRecommendationOutput,
+    StagedAnalyticsOutput,
+    StagedInsightOutput,
+    StagedDecisionOutput
 )
 
 # Staging Models - Reporting

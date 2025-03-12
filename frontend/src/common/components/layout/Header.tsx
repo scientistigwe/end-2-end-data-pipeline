@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({ user }) => {
             <div className="flex items-center space-x-2">
               <PipelineLogo className="h-8 w-8 transition-transform hover:rotate-6" />
               <span className="text-lg font-semibold text-foreground">
-                Data Pipeline Manager
+                Analytix Flow
               </span>
             </div>
           </div>

@@ -7,15 +7,13 @@ from sqlalchemy.orm import selectinload
 
 from .base import BaseRepository
 from ..models.staging.base import BaseStagedOutput
-from ..models.staging.analytics import (
-    StagedAnalyticsOutput,
-    StagedInsightOutput,
-    StagedDecisionOutput
-)
 from ..models.staging.processing import (
     StagedMonitoringOutput,
     StagedQualityOutput,
-    StagedRecommendationOutput
+    StagedRecommendationOutput,
+    StagedAnalyticsOutput,
+    StagedInsightOutput,
+    StagedDecisionOutput
 )
 from ..models.staging.reporting import (
     StagedReportOutput,

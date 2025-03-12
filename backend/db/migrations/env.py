@@ -1,4 +1,3 @@
-# db/migrations/env.py
 import asyncio
 import os
 from logging.config import fileConfig
@@ -13,11 +12,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import your models
-from db.models.base import Base
-from db.models.auth import User
-from db.models.data_source import DataSource
-from db.models.pipeline import Pipeline
-# ... import other models ...
+from db.models.core.base import BaseModel
+from db.models.auth.user import User
+from db.models.data.sources import DataSource
+from db.models.data.pipeline import Pipeline
+from db.models.staging.base import BaseStagedOutput
+from db.models.staging.processing import (
+    StagedAnalyticsOutput,
+    StagedInsightOutput,
+    StagedQualityOutput,
+    StagedMonitoringOutput,
+    StagedRecommendationOutput
+)
+from db.models.staging.reporting import (
+    StagedReportOutput,
+    StagedMetricsOutput,
+    StagedComplianceReport
+)
+
+# Add imports for other key models in your project
+from db.models.auth.session import UserSession
+from db.models.auth.team import Team, TeamMember
 
 # Load the Alembic Config object
 config = context.config
@@ -26,7 +41,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+# Use BaseModel's metadata to capture all model metadata
+target_metadata = BaseModel.metadata
 
 def get_url():
     return f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"

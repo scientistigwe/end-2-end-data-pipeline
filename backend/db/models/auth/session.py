@@ -51,12 +51,14 @@ class UserSession(BaseModel):
     user = relationship(
         "User",
         back_populates="sessions",
-        foreign_keys=[user_id]
+        foreign_keys=[user_id],
+        primaryjoin="User.id == UserSession.user_id"
     )
     activity_logs = relationship(
         "UserActivityLog",
         back_populates="session",
-        cascade="all, delete-orphan"
+        foreign_keys="[UserActivityLog.session_id]",
+        primaryjoin="UserSession.id == UserActivityLog.session_id"
     )
 
     __table_args__ = (

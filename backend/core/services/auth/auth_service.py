@@ -1,6 +1,8 @@
 # backend/api/fastapi_app/pipeline/auth/auth_service.py
 
 import logging
+import os
+from jose import jwt
 import secrets
 from typing import Dict, Any, Optional
 from uuid import UUID
@@ -26,6 +28,59 @@ class AuthService:
     def _hash_password(self, password: str) -> str:
         """Hash a password using passlib."""
         return pwd_context.hash(password)
+
+    async def create_tokens(self, user_data):
+        """Create access and refresh tokens for a user"""
+        try:
+            # Get settings from config or environment
+            secret_key = os.environ.get("JWT_SECRET_KEY")
+            algorithm = os.environ.get("JWT_ALGORITHM", "HS256")
+            access_token_expiry = int(os.environ.get("JWT_ACCESS_TOKEN_EXPIRES", 3600))
+            refresh_token_expiry = int(os.environ.get("JWT_REFRESH_TOKEN_EXPIRES", 2592000))
+
+            # Create token expiry times
+            access_token_expires = datetime.utcnow() + timedelta(seconds=access_token_expiry)
+            refresh_token_expires = datetime.utcnow() + timedelta(seconds=refresh_token_expiry)
+
+            # Create access token
+            access_token_payload = {
+                "sub": user_data["id"],
+                "exp": access_token_expires,
+                "type": "access",
+                "roles": user_data.get("roles", []),
+                "permissions": user_data.get("permissions", [])
+            }
+
+            # Create refresh token
+            refresh_token_payload = {
+                "sub": user_data["id"],
+                "exp": refresh_token_expires,
+                "type": "refresh"
+            }
+
+            # Encode tokens
+            access_token = jwt.encode(
+                access_token_payload,
+                secret_key,
+                algorithm=algorithm
+            )
+
+            refresh_token = jwt.encode(
+                refresh_token_payload,
+                secret_key,
+                algorithm=algorithm
+            )
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": access_token_expiry
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error creating tokens: {str(e)}")
+            raise
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash using passlib."""
@@ -438,3 +493,69 @@ class AuthService:
         permissions = base_permissions + role_permissions.get(user_role, [])
 
         return sorted(list(set(permissions)))  # Remove duplicates and sort
+
+
+    async def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
+        """
+        Refresh access token using a valid refresh token.
+
+        Args:
+            refresh_token (str): The refresh token provided by the user
+
+        Returns:
+            Dict[str, Any]: New tokens including access_token and refresh_token
+
+        Raises:
+            ValueError: If token is invalid, expired, or user not found
+        """
+        try:
+            # Get settings from config
+            secret_key = os.environ.get("JWT_SECRET_KEY")
+            algorithm = os.environ.get("JWT_ALGORITHM", "HS256")
+
+            # Decode and validate the refresh token
+            try:
+                payload = jwt.decode(
+                    refresh_token,
+                    secret_key,
+                    algorithms=[algorithm]
+                )
+
+                # Verify this is a refresh token
+                if payload.get("type") != "refresh":
+                    raise ValueError("Invalid token type")
+
+                user_id = payload.get("sub")
+                if not user_id:
+                    raise ValueError("Invalid token: missing user ID")
+
+            except Exception as e:
+                self.logger.error(f"JWT decode error: {str(e)}")
+                raise ValueError("Invalid or expired token")
+
+            # Get the user
+            user = await self.get_user_by_id(user_id)
+            if not user:
+                raise ValueError("User not found")
+
+            if not user.is_active:
+                raise ValueError("User account is inactive")
+
+            # Create user data for token generation
+            user_data = {
+                "id": str(user.id),
+                "email": user.email,
+                "role": user.role,
+                "roles": [user.role],
+                "permissions": self.get_user_permissions(user)
+            }
+
+            # Generate new tokens
+            return await self.create_tokens(user_data)
+
+        except ValueError as e:
+            self.logger.error(f"Token refresh error: {str(e)}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error in token refresh: {str(e)}")
+            raise ValueError("Error processing token refresh")

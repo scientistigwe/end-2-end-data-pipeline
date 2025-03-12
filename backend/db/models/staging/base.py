@@ -6,7 +6,7 @@ from enum import Enum as PyEnum
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship, column_property, validates
+from sqlalchemy.orm import relationship, column_property, validates, foreign, remote
 from ..core.base import BaseModel
 
 
@@ -20,6 +20,26 @@ class ComponentType(str, PyEnum):
     RECOMMENDATION = "recommendation"
     REPORT = "report"
     CONTROL = "control"
+    METRICS = "metrics"
+    COMPLIANCE ="compliance"
+
+class SourceRelationshipMixin:
+    """Mixin to standardize source relationship in staged output models."""
+
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id', ondelete='SET NULL'),
+        nullable=True
+    )
+
+    @classmethod
+    def _create_source_relationship(cls, back_populates, source_column='source_id'):
+        return relationship(
+            "DataSource",
+            back_populates=back_populates,
+            foreign_keys=[getattr(cls, source_column)],
+            primaryjoin=f"DataSource.id == {cls.__name__}.{source_column}"
+        )
 
 
 class ProcessingStage(str, PyEnum):
@@ -244,7 +264,7 @@ class StagingProcessingHistory(BaseModel):
     )
 
 
-class StagingControlPoint(BaseStagedOutput):
+class StagingControlPoint(BaseStagedOutput, SourceRelationshipMixin):
     """Model for managing control points in the staging process."""
     __tablename__ = 'staging_control_points'
 
@@ -254,7 +274,11 @@ class StagingControlPoint(BaseStagedOutput):
         ForeignKey('staged_outputs.id'),
         primary_key=True
     )
-
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id', ondelete='SET NULL'),
+        nullable=True
+    )
     # Control configuration
     control_type = Column(String(100), nullable=False)
     validation_rules = Column(JSONB)
@@ -280,9 +304,9 @@ class StagingControlPoint(BaseStagedOutput):
     control_source = relationship(
         "DataSource",
         back_populates="control_points",
-        foreign_keys=[BaseStagedOutput.base_source_id]
+        foreign_keys=[source_id],
+        primaryjoin="and_(foreign(StagingControlPoint.source_id) == remote(DataSource.id))"
     )
-
     __mapper_args__ = {
         "polymorphic_identity": ComponentType.CONTROL,
         "inherit_condition": base_id == BaseStagedOutput.id
@@ -299,10 +323,10 @@ class StagingControlPoint(BaseStagedOutput):
             'failure_count >= 0',
             name='ck_failure_count_non_negative'
         ),
-        CheckConstraint(
-            'decision_made_at IS NULL OR decision_made_at >= created_at',
-            name='ck_decision_time_valid'
-        ),
+        # CheckConstraint(
+        #     'decision_made_at IS NULL OR decision_made_at >= created_at',
+        #     name='ck_decision_time_valid'
+        # ),
         {'extend_existing': True}
     )
 

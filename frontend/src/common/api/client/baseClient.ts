@@ -304,20 +304,24 @@ export class BaseClient {
         if (!axios.isAxiosError(error) || !error.config) {
           return Promise.reject(error);
         }
-
+  
         const config = error.config as RetryableRequestConfig;
         
+        // Check if this is a refresh request or if we've already tried to retry
         if (this.isRefreshRequest(config.url) || config._retry) {
-          if (error.response?.status === HTTP_STATUS.UNAUTHORIZED) {
-            this.handleAuthenticationFailure();
-          }
           return Promise.reject(error);
         }
-
-        if (error.response?.status === HTTP_STATUS.UNAUTHORIZED) {
+  
+        // Handle both 401 Unauthorized and 403 Forbidden as auth issues
+        if (error.response?.status === HTTP_STATUS.UNAUTHORIZED || 
+            error.response?.status === HTTP_STATUS.FORBIDDEN) {
+          
+          // Mark that we're attempting a retry
+          config._retry = true;
+          
           return this.handleUnauthorizedError(config);
         }
-
+  
         return Promise.reject(error);
       }
     );
@@ -350,19 +354,22 @@ export class BaseClient {
 
   private async refreshAuthentication(): Promise<void> {
     try {
-      await this.post(
-        'AUTH',
-        'REFRESH',
-        undefined,
-        undefined,
-        {
-          withCredentials: true,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
+      // Try to get a new token
+      const response = await this.client.post('/auth/refresh', null, {
+        withCredentials: true,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
         }
-      );
+      });
+      
+      // Log successful refresh for debugging
+      logger.info('Authentication refreshed successfully');
+      
+      // If the API returns a token directly, you might want to store it here
+      // localStorage.setItem('auth_token', response.data.token);
+      
+      return response.data;
     } catch (error) {
       logger.error('Refresh authentication failed:', error);
       throw error;

@@ -16,15 +16,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
   const [credentials, setCredentials] = useState<LoginCredentials>({
     email: "",
     password: "",
-    rememberMe: false,
+    remember_me: false, // Changed from rememberMe
+    mfa_code: "", // Added mfa_code with empty string
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [touched, setTouched] = useState<{ email: boolean; password: boolean }>({
-    email: false,
-    password: false,
-  });
+  const [touched, setTouched] = useState<{ email: boolean; password: boolean }>(
+    {
+      email: false,
+      password: false,
+    }
+  );
 
   // Validate email format
   const isValidEmail = (email: string) => {
@@ -58,21 +61,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
     }
   };
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setCredentials((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { name, value, type, checked } = e.target;
+      setCredentials((prev) => ({
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      }));
 
-    // Track touched state for validation
-    if (name === "email" || name === "password") {
-      setTouched((prev) => ({ ...prev, [name]: true }));
-    }
+      // Track touched state for validation
+      if (name === "email" || name === "password") {
+        setTouched((prev) => ({ ...prev, [name]: true }));
+      }
 
-    // Clear any previous errors when user starts typing
-    if (error) setError(null);
-  }, [error]);
+      // Clear any previous errors when user starts typing
+      if (error) setError(null);
+    },
+    [error]
+  );
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
@@ -126,10 +132,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
           aria-describedby="email-error"
         />
         {touched.email && !isValidEmail(credentials.email) && (
-          <p
-            id="email-error"
-            className="text-xs text-red-600 mt-1"
-          >
+          <p id="email-error" className="text-xs text-red-600 mt-1">
             Please enter a valid email address
           </p>
         )}
@@ -172,7 +175,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
               initial={false}
               animate={{
                 rotate: showPassword ? 180 : 0,
-                scale: showPassword ? 1.1 : 1
+                scale: showPassword ? 1.1 : 1,
               }}
             >
               {showPassword ? (
@@ -184,10 +187,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
           </button>
         </div>
         {touched.password && credentials.password.length < 6 && (
-          <p
-            id="password-error"
-            className="text-xs text-red-600 mt-1"
-          >
+          <p id="password-error" className="text-xs text-red-600 mt-1">
             Password must be at least 6 characters long
           </p>
         )}
@@ -197,19 +197,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center">
           <input
-            id="rememberMe"
-            name="rememberMe"
+            id="remember_me"
+            name="remember_me"
             type="checkbox"
-            checked={credentials.rememberMe}
+            checked={credentials.remember_me}
             onChange={handleChange}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
           />
           <label
-            htmlFor="rememberMe"
+            htmlFor="remember_me"
             className="ml-2 block text-sm text-gray-900 dark:text-gray-200"
           >
             Remember me
-          </label>
+          </label>{" "}
         </div>
 
         <div className="text-sm">
@@ -223,11 +223,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
       </div>
 
       {/* Submit Button with Loading State */}
-      <Button
-        type="submit"
-        disabled={isLoading}
-        className="w-full group"
-      >
+      <Button type="submit" disabled={isLoading} className="w-full group">
         <motion.span
           initial={{ scale: 1 }}
           whileTap={{ scale: 0.95 }}

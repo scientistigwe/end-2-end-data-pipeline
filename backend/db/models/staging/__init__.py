@@ -1,8 +1,8 @@
 # backend/db/models/staging/__init__.py
 
 from .base import BaseStagedOutput, StagingProcessingHistory, StagingControlPoint
-from .analytics import StagedAnalyticsOutput, StagedInsightOutput, StagedDecisionOutput
 from .processing import (
+StagedAnalyticsOutput, StagedInsightOutput, StagedDecisionOutput,
     StagedMonitoringOutput,
     StagedQualityOutput,
     StagedRecommendationOutput
@@ -19,12 +19,10 @@ __all__ = [
     'StagingProcessingHistory',
     'StagingControlPoint',
 
-    # Analytics
+    # Processing
     'StagedAnalyticsOutput',
     'StagedInsightOutput',
     'StagedDecisionOutput',
-
-    # Processing
     'StagedMonitoringOutput',
     'StagedQualityOutput',
     'StagedRecommendationOutput',

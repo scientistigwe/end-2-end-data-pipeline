@@ -18,16 +18,13 @@ export const AuthLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             {/* Logo and Title */}
-            <Link
-              to="/"
-              className="flex items-center space-x-2 group"
-            >
-              <PipelineLogo
-                className="h-8 w-8 transition-transform group-hover:rotate-6"
-              />
-              <span className="text-xl font-semibold text-foreground
-                transition-colors group-hover:text-primary">
-                Data Pipeline Manager
+            <Link to="/" className="flex items-center space-x-2 group">
+              <PipelineLogo className="h-8 w-8 transition-transform group-hover:rotate-6" />
+              <span
+                className="text-xl font-semibold text-foreground
+                transition-colors group-hover:text-primary"
+              >
+                Analytix Flow
               </span>
             </Link>
 
@@ -76,7 +73,7 @@ export const AuthLayout: React.FC = () => {
               type: "spring",
               stiffness: 300,
               damping: 20,
-              delay: 0.3
+              delay: 0.3,
             }}
           >
             <Outlet />
@@ -93,8 +90,8 @@ export const AuthLayout: React.FC = () => {
       >
         <div className="container mx-auto px-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Data Pipeline Manager.
-            All rights reserved.
+            © {new Date().getFullYear()} Data Pipeline Manager. All rights
+            reserved.
           </p>
           <div className="mt-2 space-x-4">
             <Link

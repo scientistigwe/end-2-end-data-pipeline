@@ -113,16 +113,19 @@ class TeamMember(BaseModel):
     user = relationship(
         "User",
         foreign_keys=[user_id],
-        back_populates="team_memberships"
+        back_populates="team_memberships",
+        primaryjoin="User.id == TeamMember.user_id"
     )
     team = relationship(
         "Team",
         foreign_keys=[team_id],
-        back_populates="members"
+        back_populates="members",
+        primaryjoin="Team.id == TeamMember.team_id"
     )
     inviter = relationship(
         "User",
-        foreign_keys=[invited_by]
+        foreign_keys=[invited_by],
+        primaryjoin="User.id == TeamMember.invited_by"
     )
 
     __table_args__ = (

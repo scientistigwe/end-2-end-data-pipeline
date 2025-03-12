@@ -1,4 +1,4 @@
-// src/pipeline/api/interceptors.ts
+// src\common\api\client\interceptors.ts
 import { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { ApiErrorResponse } from '@/common/types/api';
 

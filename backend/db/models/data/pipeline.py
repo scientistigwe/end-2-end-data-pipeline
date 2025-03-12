@@ -41,7 +41,11 @@ class Pipeline(BaseModel):
              name='pipeline_mode'),
         default='development'
     )
-
+    versions = relationship(
+        'PipelineVersion',
+        back_populates='pipeline',
+        cascade='all, delete-orphan'
+    )
     # Configuration
     config = Column(JSONB)
     version = Column(Integer, default=1)
@@ -584,7 +588,7 @@ class PipelineVersion(BaseModel):
 
     # Relationships
     pipeline = relationship('Pipeline', back_populates='versions')
-    creator = relationship('User')
+    creator = relationship('User', foreign_keys=[created_by])
     dependencies = relationship(
         'PipelineDependency',
         back_populates='dependent_version',

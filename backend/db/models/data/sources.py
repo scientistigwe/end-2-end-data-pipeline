@@ -9,7 +9,6 @@ from sqlalchemy.orm import relationship, validates
 from ..core.base import BaseModel
 
 
-
 class DataSource(BaseModel):
     """Base model for managing data sources and their configurations."""
     __tablename__ = 'data_sources'
@@ -58,6 +57,12 @@ class DataSource(BaseModel):
         uselist=False,
         cascade='all, delete-orphan'
     )
+    control_points = relationship(
+        'StagingControlPoint',
+        back_populates='control_source',
+        foreign_keys='[StagingControlPoint.source_id]',
+        cascade='all, delete-orphan'
+    )
     db_config = relationship(
         'DatabaseSourceConfig',
         back_populates='source',
@@ -98,20 +103,56 @@ class DataSource(BaseModel):
     # Staged output relationships
     insight_outputs = relationship(
         'StagedInsightOutput',
-        back_populates='source',
-        foreign_keys='[StagedInsightOutput.insight_source_id]',
+        back_populates='insight_source',
+        foreign_keys='[StagedInsightOutput.source_id]',
         cascade='all, delete-orphan'
     )
     analytics_outputs = relationship(
         'StagedAnalyticsOutput',
-        back_populates='source',
-        foreign_keys='[StagedAnalyticsOutput.analytics_source_id]',
+        back_populates='analytics_source',
+        foreign_keys='[StagedAnalyticsOutput.source_id]',
         cascade='all, delete-orphan'
     )
     quality_outputs = relationship(
         'StagedQualityOutput',
-        back_populates='source',
-        foreign_keys='[StagedQualityOutput.quality_source_id]',
+        back_populates='quality_source',
+        foreign_keys='[StagedQualityOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    monitoring_outputs = relationship(
+        'StagedMonitoringOutput',
+        back_populates='monitoring_source',
+        foreign_keys='[StagedMonitoringOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    recommendation_outputs = relationship(
+        'StagedRecommendationOutput',
+        back_populates='recommendation_source',
+        foreign_keys='[StagedRecommendationOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    decision_outputs = relationship(
+        'StagedDecisionOutput',
+        back_populates='decision_source',
+        foreign_keys='[StagedDecisionOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    report_outputs = relationship(
+        'StagedReportOutput',
+        back_populates='report_source',
+        foreign_keys='[StagedReportOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    metrics_outputs = relationship(
+        'StagedMetricsOutput',
+        back_populates='source',  # Update this based on how you name the relationship
+        foreign_keys='[StagedMetricsOutput.source_id]',
+        cascade='all, delete-orphan'
+    )
+    compliance_outputs = relationship(
+        'StagedComplianceReport',
+        back_populates='source',  # Update this based on how you name the relationship
+        foreign_keys='[StagedComplianceReport.source_id]',
         cascade='all, delete-orphan'
     )
 

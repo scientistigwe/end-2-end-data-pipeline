@@ -185,7 +185,6 @@ class ValidationRulesRequest(BaseStagingSchema):
     severity_levels: Dict[str, str]
     custom_validators: Optional[Dict[str, Any]] = None
 
-# staging/analytics.py
 class AnalyticsStagingRequest(BaseStagingSchema):
     """Request schema for analytics staging"""
     model_type: str

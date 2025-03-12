@@ -8,7 +8,6 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from .base import BaseStagedOutput, ComponentType
 
-
 class StagedReportOutput(BaseStagedOutput):
     """Model for managing comprehensive report generation and delivery."""
     __tablename__ = 'staged_report_outputs'
@@ -17,6 +16,13 @@ class StagedReportOutput(BaseStagedOutput):
         UUID(as_uuid=True),
         ForeignKey('staged_outputs.id'),
         primary_key=True
+    )
+
+    # Add source_id column
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id', ondelete='SET NULL'),
+        nullable=True
     )
 
     # Report identification
@@ -55,7 +61,8 @@ class StagedReportOutput(BaseStagedOutput):
     report_source = relationship(
         "DataSource",
         back_populates="report_outputs",
-        foreign_keys=[BaseStagedOutput.base_source_id]
+        foreign_keys=[source_id],
+        primaryjoin="DataSource.id == StagedReportOutput.source_id"
     )
 
     __mapper_args__ = {
@@ -82,6 +89,13 @@ class StagedMetricsOutput(BaseStagedOutput):
         UUID(as_uuid=True),
         ForeignKey('staged_outputs.id'),
         primary_key=True
+    )
+
+    # Add source_id column
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id', ondelete='SET NULL'),
+        nullable=True
     )
 
     # Metric categorization
@@ -114,8 +128,16 @@ class StagedMetricsOutput(BaseStagedOutput):
     alert_configuration = Column(JSONB)
     notification_rules = Column(JSONB)
 
+    # Source relationship
+    metrics_source = relationship(
+        "DataSource",
+        back_populates="metrics_outputs",
+        foreign_keys=[source_id],
+        primaryjoin="DataSource.id == StagedMetricsOutput.source_id"
+    )
+
     __mapper_args__ = {
-        "polymorphic_identity": "metrics",
+        "polymorphic_identity": ComponentType.METRICS,
         "inherit_condition": base_id == BaseStagedOutput.id
     }
 
@@ -134,6 +156,13 @@ class StagedComplianceReport(BaseStagedOutput):
         UUID(as_uuid=True),
         ForeignKey('staged_outputs.id'),
         primary_key=True
+    )
+
+    # Add source_id column
+    source_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('data_sources.id', ondelete='SET NULL'),
+        nullable=True
     )
 
     # Compliance context
@@ -172,8 +201,16 @@ class StagedComplianceReport(BaseStagedOutput):
     regulatory_responses = Column(JSONB)
     follow_up_actions = Column(JSONB)
 
+    # Source relationship
+    compliance_source = relationship(
+        "DataSource",
+        back_populates="compliance_outputs",
+        foreign_keys=[source_id],
+        primaryjoin="DataSource.id == StagedComplianceReport.source_id"
+    )
+
     __mapper_args__ = {
-        "polymorphic_identity": "compliance",
+        "polymorphic_identity": ComponentType.COMPLIANCE,
         "inherit_condition": base_id == BaseStagedOutput.id
     }
 

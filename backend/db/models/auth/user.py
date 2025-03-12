@@ -61,16 +61,44 @@ class User(BaseModel):
     sessions = relationship(
         "UserSession",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        foreign_keys="[UserSession.user_id]",
+        primaryjoin="User.id == UserSession.user_id"
     )
+
     activity_logs = relationship(
         "UserActivityLog",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        foreign_keys="[UserActivityLog.user_id]",
+        primaryjoin="User.id == UserActivityLog.user_id"
     )
+
     reset_tokens = relationship(
         'PasswordResetToken',
         back_populates='user',
+        cascade='all, delete-orphan',
+        foreign_keys="[PasswordResetToken.user_id]",
+        primaryjoin="User.id == PasswordResetToken.user_id"
+    )
+    service_accounts = relationship(
+        "ServiceAccount",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[ServiceAccount.user_id]",
+        primaryjoin="User.id == ServiceAccount.user_id"
+    )
+    team_memberships = relationship(
+        "TeamMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[TeamMember.user_id]",
+        primaryjoin="User.id == TeamMember.user_id"
+    )
+    pipelines = relationship(
+        'Pipeline',
+        back_populates='owner',
+        foreign_keys='[Pipeline.owner_id]',
         cascade='all, delete-orphan'
     )
 
@@ -142,8 +170,18 @@ class UserActivityLog(BaseModel):
     error_details = Column(JSONB)
 
     # Relationships
-    user = relationship("User", back_populates="activity_logs")
-    session = relationship("UserSession", back_populates="activity_logs")
+    user = relationship(
+        "User",
+        back_populates="activity_logs",
+        foreign_keys=[user_id],
+        primaryjoin="User.id == UserActivityLog.user_id"
+    )
+    session = relationship(
+        "UserSession",
+        back_populates="activity_logs",
+        foreign_keys=[session_id],
+        primaryjoin="UserSession.id == UserActivityLog.session_id"
+    )
 
     __table_args__ = (
         Index('ix_user_activity_logs_type', 'activity_type'),
@@ -169,7 +207,12 @@ class PasswordResetToken(BaseModel):
     created_by_ip = Column(String(45))
 
     # Relationships
-    user = relationship('User', back_populates='reset_tokens')
+    user = relationship(
+        'User',
+        back_populates='reset_tokens',
+        foreign_keys=[user_id],
+        primaryjoin="User.id == PasswordResetToken.user_id"
+    )
 
     __table_args__ = (
         Index('ix_password_reset_tokens_user', 'user_id'),
@@ -203,7 +246,11 @@ class ServiceAccount(BaseModel):
     restrictions = Column(JSONB)
 
     # Relationship to user who created/owns the service account
-    user = relationship("User", foreign_keys=[user_id])
+    user = relationship(
+        "User",
+        foreign_keys=[user_id],
+        primaryjoin="User.id == ServiceAccount.user_id"
+    )
 
     __table_args__ = (
         Index('ix_service_accounts_status', 'status'),

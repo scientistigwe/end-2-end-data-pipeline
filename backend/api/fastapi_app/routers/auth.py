@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+from fastapi.responses import JSONResponse
+from datetime import datetime, timedelta
 
 from config.database import get_db_session
 from api.fastapi_app.middleware.auth_middleware import get_current_user, get_optional_user
@@ -42,7 +44,6 @@ async def login(
         credentials: LoginRequestSchema,
         db: AsyncSession = Depends(get_db_session)
 ):
-    """Handle user login"""
     try:
         auth_service = AuthService(db)
         user = await auth_service.authenticate_user(
@@ -65,12 +66,12 @@ async def login(
         }
 
         # Create tokens
-        tokens = await auth_middleware.create_tokens(user_data)
+        tokens = await auth_service.create_tokens(user_data)
 
         # Set cookies
         response.set_cookie(
             'access_token',
-            tokens.access_token,
+            tokens["access_token"],
             httponly=True,
             secure=not request.app.debug,
             samesite='lax',
@@ -79,7 +80,7 @@ async def login(
 
         response.set_cookie(
             'refresh_token',
-            tokens.refresh_token,
+            tokens["refresh_token"],
             httponly=True,
             secure=not request.app.debug,
             samesite='lax',
@@ -87,18 +88,43 @@ async def login(
             max_age=86400 * 30  # 30 days
         )
 
+        # Set a valid datetime for session_expires
+        session_expires = datetime.utcnow() + timedelta(seconds=3600)  # 1 hour
+
+        # Create complete user object with all required fields
+        user_obj = {
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
+            "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
+            "role": user.role,
+            "status": getattr(user, 'status', 'active'),
+            "permissions": user_data.get('permissions', []),
+            "timezone": getattr(user, 'timezone', 'UTC'),
+            "locale": getattr(user, 'locale', 'en-US'),
+            # Add other required fields, with defaults for missing ones
+            "email_verified": getattr(user, 'email_verified', False),
+            "profile_image": getattr(user, 'profile_image', None),
+            "phone_number": getattr(user, 'phone_number', None),
+            "department": getattr(user, 'department', None),
+            "preferences": getattr(user, 'preferences', {}),
+            "metadata": getattr(user, 'metadata', {}),
+            "security_level": getattr(user, 'security_level', 'standard')
+        }
+
         return LoginResponseSchema(
-            user=user,
+            user=user_obj,
             tokens=tokens,
             mfa_required=False,
-            session_expires=user_data.get('session_expires'),
+            session_expires=session_expires,
             permitted_actions=user_data.get('permissions', [])
         )
 
     except Exception as e:
         logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Authentication failed")
-
 
 @router.get("/profile", response_model=UserProfileSchema)
 async def get_profile(
@@ -183,7 +209,7 @@ async def register(
             'permissions': getattr(user, 'permissions', [])
         }
 
-        tokens = await auth_middleware.create_tokens(user_data)
+        tokens = await auth_service.create_tokens(user_data)
 
         # Set cookies
         response.set_cookie(
@@ -393,7 +419,7 @@ async def refresh_token(
             raise HTTPException(status_code=401, detail="No refresh token provided")
 
         auth_service = AuthService(db)
-        tokens = await auth_middleware.refresh_token(refresh_token)
+        tokens = await auth_service.refresh_token(refresh_token)
 
         # Set new cookies
         response.set_cookie(
@@ -453,11 +479,26 @@ def register_auth_exception_handlers(app: FastAPI):
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        return {
-            "error": True,
-            "message": exc.detail,
-            "status_code": exc.status_code
-        }
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": True,
+                "message": exc.detail,
+                "status_code": exc.status_code
+            }
+        )
+
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger.error(f"Internal server error: {str(exc)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": True,
+                "message": "Internal server error",
+                "status_code": 500
+            }
+        )
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):

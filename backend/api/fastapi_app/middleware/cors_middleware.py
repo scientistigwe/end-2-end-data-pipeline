@@ -33,6 +33,8 @@ def get_cors_config() -> Dict[str, Any]:
         "allowed_origins": [
             "http://localhost:3000",
             "http://localhost:8000",
+            "http://localhost:5174",  # Add your frontend URL
+            "http://127.0.0.1:5174"   # Also include the IP version
         ],
         "allowed_methods": ["*"],
         "allowed_headers": ["*"],

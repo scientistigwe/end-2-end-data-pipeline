@@ -1,4 +1,4 @@
-# The Analyst PA: Versatile ETL & Analytics System
+# CogniPipe: A Versatile ETL & Analytics System
 ## Complete Interview Presentation Guide
 
 ---

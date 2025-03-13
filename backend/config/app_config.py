@@ -1,26 +1,7 @@
-"""
-Application Configuration Module
-
-This module provides the main application configuration, combining all other
-configuration components and providing a unified interface for application settings.
-
-Features:
-    - Environment-based configuration
-    - Security settings
-    - API configuration
-    - Path management
-    - Cross-Origin Resource Sharing (CORS)
-    - JWT configuration
-
-Usage:
-    from config.app_config import app_config
-
-    debug_mode = app_config.DEBUG
-    api_prefix = app_config.API_V1_PREFIX
-"""
+# config/app_config.py
 
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union, Set
+from typing import Dict, Any, List, Optional
 import os
 import logging
 from functools import lru_cache
@@ -65,13 +46,17 @@ class CORSSettings(BaseModel):
     allow_origins: List[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
-            "http://localhost:5173"
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174"
         ],
         description="Allowed CORS origins"
     )
     allow_credentials: bool = Field(default=True)
     allow_methods: List[str] = Field(default_factory=lambda: ["*"])
     allow_headers: List[str] = Field(default_factory=lambda: ["*"])
+    expose_headers: List[str] = Field(default_factory=lambda: ["Set-Cookie"])
+    max_age: int = Field(default=3600)
 
     def get_settings(self) -> Dict[str, Any]:
         """Get CORS settings as a dictionary."""
@@ -80,6 +65,8 @@ class CORSSettings(BaseModel):
             'allow_credentials': self.allow_credentials,
             'allow_methods': self.allow_methods,
             'allow_headers': self.allow_headers,
+            'expose_headers': self.expose_headers,
+            'max_age': self.max_age
         }
 
 
@@ -149,9 +136,9 @@ class Config:
 
             # JWT Configuration
             self.jwt = JWTSettings(
-                secret_key=os.getenv('JWT_SECRET_KEY'),
-                private_key=os.getenv('JWT_PRIVATE_KEY'),
-                public_key=os.getenv('JWT_PUBLIC_KEY'),
+                secret_key=os.getenv('JWT_SECRET_KEY', 'default_secret'),
+                private_key=os.getenv('JWT_PRIVATE_KEY', 'default_private_key'),
+                public_key=os.getenv('JWT_PUBLIC_KEY', 'default_public_key'),
                 access_token_expires=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', '3600')),
                 refresh_token_expires=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES', '2592000'))
             )
@@ -224,6 +211,7 @@ class Config:
         missing_attrs = [attr for attr in required_attrs if not hasattr(self, attr)]
         if missing_attrs:
             raise ValueError(f"Missing required database attributes: {', '.join(missing_attrs)}")
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""

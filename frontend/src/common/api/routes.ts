@@ -69,13 +69,13 @@ export const APIRoutes = {
     },
 
     PIPELINE: {
-        LIST: '/pipeline',                       // GET: List pipelines
-        CREATE: '/pipeline',                     // POST: Create pipeline
-        GET: '/pipeline/{pipeline_id}',          // GET: Get pipeline details
-        START: '/pipeline/{pipeline_id}/start',  // POST: Start pipeline
-        STATUS: '/pipeline/{pipeline_id}/status', // GET: Get pipeline status
-        LOGS: '/pipeline/{pipeline_id}/logs',    // GET: Get pipeline logs
-        METRICS: '/pipeline/{pipeline_id}/metrics' // GET: Get pipeline metrics
+        LIST: '/',                       // GET: List pipelines
+        CREATE: '/',                     // POST: Create pipeline
+        GET: '/{pipeline_id}',          // GET: Get pipeline details
+        START: '/{pipeline_id}/start',  // POST: Start pipeline
+        STATUS: '/{pipeline_id}/status', // GET: Get pipeline status
+        LOGS: '/{pipeline_id}/logs',    // GET: Get pipeline logs
+        METRICS: '/{pipeline_id}/metrics' // GET: Get pipeline metrics
     },
 
     QUALITY: {

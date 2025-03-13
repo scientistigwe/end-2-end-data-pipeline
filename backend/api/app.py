@@ -1,4 +1,7 @@
 # backend/api/app.py
+
+import logging.handlers
+from .fastapi_app.routers.auth import register_auth_exception_handlers
 from fastapi.responses import JSONResponse
 from api.fastapi_app.routers.auth import register_auth_exception_handlers
 from fastapi import FastAPI, Request, Depends
@@ -68,6 +71,266 @@ class ApplicationFactory:
         self.logger = logging.getLogger(__name__)
         self.config = None
         self.db_config = None
+
+    def create_app(self, config_name: str = 'development') -> FastAPI:
+        """Create and configure FastAPI application"""
+        try:
+            # Create FastAPI app
+            self.app = FastAPI(
+                title="Analytix Flow API",
+                description="End-to-end Analytix Flow API",
+                version="1.0.0",
+                lifespan=self.lifespan
+            )
+
+            # Load config using the single source of truth
+            self.config = get_config(config_name)
+
+            # Initialize database config
+            self.db_config = DatabaseConfig()
+            self.db_config.configure(self.config)
+
+            # Configure components in order
+            self._configure_middleware()
+            self._configure_exception_handlers()
+            self._configure_routes()
+            self._configure_health_check()
+
+            self.logger.info(f"Application created successfully in {config_name} mode")
+            return self.app
+
+        except Exception as e:
+            self.logger.error(f"Application creation failed: {e}")
+            raise
+
+    def _configure_middleware(self):
+        """Configure application middleware"""
+        try:
+            # Setup CORS using the middleware that reads from app_config
+            setup_cors(self.app)
+
+            # Add logging middleware
+            self.app.add_middleware(RequestLoggingMiddleware)
+
+            # Add error handling middleware
+            self.app.add_middleware(ErrorHandlingMiddleware)
+
+            # Add security headers for production
+            if self.config.ENV == 'production':
+                @self.app.middleware("http")
+                async def add_security_headers(request, call_next):
+                    response = await call_next(request)
+                    security_headers = self.config.security_header_settings
+                    for header, value in security_headers.items():
+                        response.headers[header] = value
+                    return response
+
+            self.logger.info("Middleware configured successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to configure middleware: {e}")
+            raise
+
+    def _configure_routes(self):
+        """Configure application routes"""
+        try:
+            # Updated router configuration to match new structure
+            routers = [
+                (auth.router, "/api/v1/auth", "Authentication"),
+                (data_sources.router, "/api/v1/data-sources", "Data Sources"),
+                (pipeline.router, "/api/v1/pipeline", "Pipeline"),
+                (staging.router, "/api/v1/staging", "Staging")  # Now includes analytics, quality, insight, etc.
+            ]
+
+            for router, prefix, tag in routers:
+                self.app.include_router(router, prefix=prefix, tags=[tag])
+
+            self.logger.info("Routes configured successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to configure routes: {e}")
+            raise
+
+    def _configure_health_check(self):
+        """Configure health check and root endpoints"""
+
+        @self.app.get("/", tags=["Root"])
+        async def root():
+            """
+            Root endpoint providing basic system information
+            """
+            return {
+                "application": "Analytix Flow API",
+                "version": "1.0.0",
+                "status": "running",
+                "environment": self.config.ENV,
+                "documentation": {
+                    "swagger": "/docs",
+                    "redoc": "/redoc"
+                },
+                "health_check": "/api/v1/health"
+            }
+
+        @self.app.get("/api/v1/health", tags=["Health"])
+        async def health_check():
+            try:
+                async with self.components['db_session']() as session:
+                    await session.execute("SELECT 1")
+
+                return {
+                    'status': 'healthy',
+                    'db': 'connected',
+                    'environment': self.config.ENV,
+                    'components': {
+                        name: 'healthy'
+                        for name, component in self.components.items()
+                        if hasattr(component, 'is_healthy') and component.is_healthy()
+                    }
+                }
+            except Exception as e:
+                self.logger.error(f"Health check failed: {e}")
+                return {
+                    'status': 'unhealthy',
+                    'error': str(e)
+                }
+
+    def _configure_exception_handlers(self):
+        """Configure global exception handlers"""
+        try:
+            # Register auth exception handlers
+            register_auth_exception_handlers(self.app)
+
+            # Global exception handler for uncaught exceptions
+            @self.app.exception_handler(Exception)
+            async def global_exception_handler(request: Request, exc: Exception):
+                self.logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": True,
+                        "message": "Internal server error",
+                        "status_code": 500
+                    }
+                )
+
+            self.logger.info("Exception handlers configured successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to configure exception handlers: {e}")
+            raise
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        """Application lifespan for managing async resources"""
+        try:
+            # Configure basic necessities
+            self._configure_paths()
+            self._configure_logging()
+
+            # Initialize database
+            await self._setup_database()
+
+            # Initialize async resources
+            await self._init_async_resources()
+
+            yield
+        finally:
+            await self._cleanup_async_resources()
+            if self.db_config:
+                await self.db_config.cleanup()
+
+    def _configure_paths(self) -> None:
+        """Configure application paths."""
+        try:
+            required_paths = {
+                'uploads': self.config.UPLOAD_FOLDER,
+                'logs': self.config.LOG_FOLDER,
+                'staging': self.config.STAGING_FOLDER,
+                'temp': self.config.TEMP_FOLDER,
+                'cache': self.config.CACHE_FOLDER,
+            }
+
+            for path_name, path in required_paths.items():
+                path_obj = Path(path)
+                path_obj.mkdir(parents=True, exist_ok=True)
+                # Ensure proper permissions
+                path_obj.chmod(0o755)
+                self.logger.info(f"Created {path_name} directory at: {path}")
+
+            # Store paths in components for later use
+            self.components['paths'] = required_paths
+            self.logger.info("All application paths configured successfully")
+
+        except PermissionError as e:
+            self.logger.error(f"Permission denied while creating directories: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Failed to configure paths: {e}")
+            raise
+
+    def _configure_logging(self) -> None:
+        """Configure application logging."""
+        try:
+            log_dir = Path(self.config.LOG_FOLDER)
+            log_file = log_dir / self.config.LOG_FILENAME
+
+            # Create formatters for different handlers
+            file_formatter = logging.Formatter(self.config.LOG_FORMAT)
+            console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+
+            # Create file handler with rotation
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file,
+                maxBytes=self.config.LOG_MAX_BYTES,
+                backupCount=self.config.LOG_BACKUP_COUNT,
+                encoding='utf-8'
+            )
+            file_handler.setFormatter(file_formatter)
+            file_handler.setLevel(self.config.LOG_LEVEL)
+
+            # Create console handler
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(console_formatter)
+            console_handler.setLevel(logging.DEBUG if self.config.DEBUG else logging.INFO)
+
+            # Configure root logger
+            root_logger = logging.getLogger()
+            root_logger.setLevel(self.config.LOG_LEVEL)
+
+            # Remove existing handlers to avoid duplicates
+            root_logger.handlers.clear()
+
+            # Add handlers
+            root_logger.addHandler(file_handler)
+            root_logger.addHandler(console_handler)
+
+            # Store logger configuration in components
+            self.components['logging'] = {
+                'file_handler': file_handler,
+                'console_handler': console_handler,
+                'log_file': log_file
+            }
+
+            self.logger.info("Logging configured successfully")
+
+        except Exception as e:
+            print(f"Critical error configuring logging: {e}")  # Fallback to print
+            raise
+
+    async def _setup_database(self) -> None:
+        """Initialize database connection and session factory."""
+        try:
+            if not self.db_config:
+                raise ValueError("Database configuration not initialized")
+
+            # Initialize the database
+            await self.db_config.init_db()
+
+            # Store session factory in components
+            self.components['db_session'] = self.db_config.session_factory()
+
+            self.logger.info("Database setup completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"Database setup failed: {e}")
+            raise
 
     async def configure(self, app: FastAPI, config_name: str = 'development'):
         """
@@ -158,43 +421,6 @@ class ApplicationFactory:
             self.logger.error(f"Failed to initialize async resources: {e}")
             raise
 
-    def _configure_middleware(self):
-        """Configure application middleware"""
-        try:
-            # Setup CORS
-            cors_config = get_cors_config()
-            setup_cors(self.app, cors_config)
-
-            # Add logging middleware
-            self.app.add_middleware(RequestLoggingMiddleware)
-
-            # Add error handling middleware
-            self.app.add_middleware(ErrorHandlingMiddleware)
-
-            self.logger.info("Middleware configured successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to configure middleware: {e}")
-            raise
-
-    def _configure_routes(self):
-        """Configure application routes"""
-        try:
-            # Updated router configuration to match new structure
-            routers = [
-                (auth.router, "/api/v1/auth", "Authentication"),
-                (data_sources.router, "/api/v1/data-sources", "Data Sources"),
-                (pipeline.router, "/api/v1/pipeline", "Pipeline"),
-                (staging.router, "/api/v1/staging", "Staging")  # Now includes analytics, quality, insight, etc.
-            ]
-
-            for router, prefix, tag in routers:
-                self.app.include_router(router, prefix=prefix, tags=[tag])
-
-            self.logger.info("Routes configured successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to configure routes: {e}")
-            raise
-
     async def _initialize_services(self):
         """Initialize database-dependent services"""
         try:
@@ -242,123 +468,6 @@ class ApplicationFactory:
             self.logger.error(f"Failed to initialize services: {e}")
             raise
 
-    def _configure_health_check(self):
-        """Configure health check and root endpoints"""
-
-        @self.app.get("/", tags=["Root"])
-        async def root():
-            """
-            Root endpoint providing basic system information
-            """
-            return {
-                "application": "Analytix Flow API",
-                "version": "1.0.0",
-                "status": "running",
-                "environment": self.config.ENV,
-                "documentation": {
-                    "swagger": "/docs",
-                    "redoc": "/redoc"
-                },
-                "health_check": "/api/v1/health"
-            }
-
-        @self.app.get("/api/v1/health", tags=["Health"])
-        async def health_check():
-            try:
-                async with self.components['db_session']() as session:
-                    await session.execute("SELECT 1")
-
-                return {
-                    'status': 'healthy',
-                    'db': 'connected',
-                    'environment': self.config.ENV,
-                    'components': {
-                        name: 'healthy'
-                        for name, component in self.components.items()
-                        if hasattr(component, 'is_healthy') and component.is_healthy()
-                    }
-                }
-            except Exception as e:
-                self.logger.error(f"Health check failed: {e}")
-                return {
-                    'status': 'unhealthy',
-                    'error': str(e)
-                }
-
-    def _configure_exception_handlers(self):
-        """Configure global exception handlers"""
-        try:
-            # Register auth exception handlers
-            register_auth_exception_handlers(self.app)
-
-            # Global exception handler for uncaught exceptions
-            @self.app.exception_handler(Exception)
-            async def global_exception_handler(request: Request, exc: Exception):
-                self.logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-                return JSONResponse(
-                    status_code=500,
-                    content={
-                        "error": True,
-                        "message": "Internal server error",
-                        "status_code": 500
-                    }
-                )
-
-            self.logger.info("Exception handlers configured successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to configure exception handlers: {e}")
-            raise
-
-    def create_app(self, config_name: str = 'development') -> FastAPI:
-        """Create and configure FastAPI application"""
-        try:
-            # Create FastAPI app
-            self.app = FastAPI(
-                title="Analytix Flow API",
-                description="End-to-end Analytix Flow API",
-                version="1.0.0",
-                lifespan=self.lifespan
-            )
-
-            # Load config
-            self.config = get_config(config_name)
-
-            # Initialize database config
-            # Create instance first, then configure it
-            self.db_config = DatabaseConfig()
-            self.db_config.configure(self.config)
-
-            # Configure components in order
-            self._configure_middleware()
-            self._configure_exception_handlers()
-            self._configure_routes()
-            self._configure_health_check()
-
-            self.logger.info(f"Application created successfully in {config_name} mode")
-            return self.app
-
-        except Exception as e:
-            self.logger.error(f"Application creation failed: {e}")
-            raise
-
-    async def _setup_database(self) -> None:
-        """Initialize database connection and session factory."""
-        try:
-            if not self.db_config:
-                raise ValueError("Database configuration not initialized")
-
-            # Initialize the database
-            await self.db_config.init_db()
-
-            # Store session factory in components
-            self.components['db_session'] = self.db_config.session_factory()
-
-            self.logger.info("Database setup completed successfully")
-
-        except Exception as e:
-            self.logger.error(f"Database setup failed: {e}")
-            raise
-
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         """Application lifespan for managing async resources"""
@@ -381,103 +490,6 @@ class ApplicationFactory:
             await self._cleanup_async_resources()
             if self.db_config:
                 await self.db_config.cleanup()
-
-    def _configure_paths(self) -> None:
-        """Configure application paths.
-
-        Creates necessary directories for:
-        - File uploads
-        - Logs
-        - Staging area
-        - Temporary files
-        - Cache
-        """
-        try:
-            required_paths = {
-                'uploads': self.config.UPLOAD_FOLDER,
-                'logs': self.config.LOG_FOLDER,
-                'staging': self.config.STAGING_FOLDER,
-                'temp': self.config.TEMP_FOLDER,
-                'cache': self.config.CACHE_FOLDER,
-            }
-
-            for path_name, path in required_paths.items():
-                path_obj = Path(path)
-                path_obj.mkdir(parents=True, exist_ok=True)
-                # Ensure proper permissions
-                path_obj.chmod(0o755)
-                self.logger.info(f"Created {path_name} directory at: {path}")
-
-            # Store paths in components for later use
-            self.components['paths'] = required_paths
-            self.logger.info("All application paths configured successfully")
-
-        except PermissionError as e:
-            self.logger.error(f"Permission denied while creating directories: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Failed to configure paths: {e}")
-            raise
-
-    def _configure_logging(self) -> None:
-        """Configure application logging.
-
-        Sets up logging with:
-        - File handler for persistent logs
-        - Console handler for development
-        - Proper formatting
-        - Log rotation
-        """
-        try:
-            log_dir = Path(self.config.LOG_FOLDER)
-            log_file = log_dir / self.config.LOG_FILENAME
-
-            # Create formatters for different handlers
-            file_formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            console_formatter = logging.Formatter(
-                '%(levelname)s: %(message)s'
-            )
-
-            # Create file handler with rotation
-            file_handler = logging.handlers.RotatingFileHandler(
-                log_file,
-                maxBytes=10485760,  # 10MB
-                backupCount=5,
-                encoding='utf-8'
-            )
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(self.config.LOG_LEVEL)
-
-            # Create console handler
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(console_formatter)
-            console_handler.setLevel(logging.DEBUG if self.config.DEBUG else logging.INFO)
-
-            # Configure root logger
-            root_logger = logging.getLogger()
-            root_logger.setLevel(self.config.LOG_LEVEL)
-
-            # Remove existing handlers to avoid duplicates
-            root_logger.handlers.clear()
-
-            # Add handlers
-            root_logger.addHandler(file_handler)
-            root_logger.addHandler(console_handler)
-
-            # Store logger configuration in components
-            self.components['logging'] = {
-                'file_handler': file_handler,
-                'console_handler': console_handler,
-                'log_file': log_file
-            }
-
-            self.logger.info("Logging configured successfully")
-
-        except Exception as e:
-            print(f"Critical error configuring logging: {e}")  # Fallback to print
-            raise
 
     async def _cleanup_async_resources(self) -> None:
         """Cleanup async components in reverse initialization order.

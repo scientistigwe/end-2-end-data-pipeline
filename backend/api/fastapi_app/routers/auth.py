@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
-
+from jose import jwt
 from config.database import get_db_session
 from api.fastapi_app.middleware.auth_middleware import get_current_user, get_optional_user
 from api.fastapi_app.middleware.auth_middleware import auth_middleware
@@ -32,6 +32,8 @@ from api.fastapi_app.schemas.auth import (
     SessionRequestSchema,
     SessionResponseSchema
 )
+
+from ..middleware.auth_middleware import auth_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -73,7 +75,7 @@ async def login(
             'access_token',
             tokens["access_token"],
             httponly=True,
-            secure=not request.app.debug,
+            secure=False, # Set to True in production
             samesite='lax',
             max_age=3600  # 1 hour
         )
@@ -82,11 +84,14 @@ async def login(
             'refresh_token',
             tokens["refresh_token"],
             httponly=True,
-            secure=not request.app.debug,
+            secure=False, # Set to True in production
             samesite='lax',
             path='/api/v1/auth/refresh',
             max_age=86400 * 30  # 30 days
         )
+
+        # Add a debug header to indicate cookies were set
+        response.headers['X-Auth-Cookie-Set'] = 'true'
 
         # Set a valid datetime for session_expires
         session_expires = datetime.utcnow() + timedelta(seconds=3600)  # 1 hour
@@ -126,6 +131,7 @@ async def login(
         logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Authentication failed")
 
+
 @router.get("/profile", response_model=UserProfileSchema)
 async def get_profile(
         current_user: dict = Depends(get_current_user),
@@ -139,26 +145,50 @@ async def get_profile(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        return UserProfileSchema(
-            id=str(user.id),
-            email=user.email,
-            username=user.username,
-            first_name=user.first_name or "",
-            last_name=user.last_name or "",
-            full_name=f"{user.first_name} {user.last_name}".strip(),
-            role=user.role,
-            status=user.status,
-            permissions=current_user.get('permissions', []),
-            email_verified=user.email_verified,
-            profile_image=user.profile_image,
-            phone_number=user.phone_number,
-            department=user.department,
-            timezone=user.timezone,
-            locale=user.locale,
-            preferences=user.preferences or {},
-            metadata=user.metadata or {},
-            security_level=user.security_level
-        )
+        # Handle metadata properly - convert to dict if it's not already
+        metadata = getattr(user, 'meta_data', {})
+        if metadata and not isinstance(metadata, dict):
+            # If it's a MetaData object or something else, convert to dict
+            # This handles the case where metadata might be an ORM object
+            try:
+                metadata = dict(metadata)
+            except (TypeError, ValueError):
+                metadata = {}
+
+        # Get security_level as an integer with default value 1
+        security_level = 1  # Default security level
+        try:
+            if hasattr(user, 'security_level'):
+                if isinstance(user.security_level, int):
+                    security_level = user.security_level
+                elif isinstance(user.security_level, str) and user.security_level.isdigit():
+                    security_level = int(user.security_level)
+        except (TypeError, ValueError):
+            pass  # Keep the default if conversion fails
+
+        # Create the user profile dictionary
+        user_profile = {
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
+            "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
+            "role": user.role,
+            "status": getattr(user, 'status', 'active'),
+            "permissions": current_user.get('permissions', []),
+            "email_verified": getattr(user, 'email_verified', False),
+            "profile_image": getattr(user, 'profile_image', None),
+            "phone_number": getattr(user, 'phone_number', None),
+            "department": getattr(user, 'department', None),
+            "timezone": getattr(user, 'timezone', 'UTC'),
+            "locale": getattr(user, 'locale', 'en-US'),
+            "preferences": getattr(user, 'preferences', {}) or {},
+            "metadata": metadata,
+            "security_level": security_level  # Now this is an integer
+        }
+
+        return UserProfileSchema(**user_profile)
 
     except Exception as e:
         logger.error(f"Profile fetch error: {str(e)}", exc_info=True)
@@ -238,6 +268,48 @@ async def register(
         logger.error(f"Registration error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Registration failed")
 
+
+@router.get("/cookie-check")
+async def cookie_check(request: Request):
+    """Check if cookies are being properly sent by the client"""
+    cookies = request.cookies
+    headers = dict(request.headers)
+
+    return {
+        "cookies_received": cookies,
+        "has_access_token": "access_token" in cookies,
+        "auth_header": headers.get("authorization"),
+        "origin": headers.get("origin"),
+        "referer": headers.get("referer")
+    }
+
+
+@router.get("/debug-auth", response_model=dict)
+async def debug_auth(request: Request):
+    """Debug endpoint to check authentication state"""
+    access_token = request.cookies.get("access_token")
+    refresh_token = request.cookies.get("refresh_token")
+    auth_header = request.headers.get("authorization")
+
+    # Try to decode token if present
+    token_content = None
+    if access_token:
+        try:
+            token_content = jwt.decode(
+                access_token,
+                auth_settings.JWT_SECRET_KEY,
+                algorithms=[auth_settings.JWT_ALGORITHM]
+            )
+        except Exception as e:
+            token_content = {"error": str(e)}
+
+    return {
+        "has_access_token": bool(access_token),
+        "has_refresh_token": bool(refresh_token),
+        "has_auth_header": bool(auth_header),
+        "cookies": dict(request.cookies),
+        "token_content": token_content
+    }
 
 # Password Management Endpoints
 @router.post("/password/forgot", response_model=dict)

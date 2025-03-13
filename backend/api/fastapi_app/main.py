@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from ..app import ApplicationFactory
+from config.app_config import app_config  # Import shared configuration
 
 # Declare the global app variable
 app: Optional[FastAPI] = None
@@ -21,7 +22,7 @@ def configure_logging() -> logging.Logger:
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format=app_config.LOG_FORMAT,  # Use format from shared config
         handlers=[
             logging.FileHandler(log_dir / 'fastapi_app.log'),
             logging.StreamHandler()
@@ -36,7 +37,8 @@ def load_environment() -> Tuple[str, int, str]:
     env_path = Path(__file__).parent.parent.parent / '.env'
     load_dotenv(env_path)
 
-    env = os.getenv('ENVIRONMENT', 'development').lower()
+    # Use environment from shared config
+    env = app_config.ENV
     try:
         port = int(os.getenv('PORT', '8000'))
     except ValueError:
@@ -59,22 +61,16 @@ def create_application(env: str) -> FastAPI:
 
     # Add security middleware for production
     if env == 'production':
-        application.add_middleware(HTTPSRedirectMiddleware)
+        # Add HTTPSRedirect only if SSL is enabled in the config
+        if app_config.ENABLE_SSL:
+            application.add_middleware(HTTPSRedirectMiddleware)
 
+        # Add TrustedHost middleware with hosts from environment
         allowed_hosts = os.getenv('ALLOWED_HOSTS', '*').split(',')
         application.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=allowed_hosts
         )
-
-        @application.middleware("http")
-        async def add_security_headers(request, call_next):
-            response = await call_next(request)
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-            response.headers['X-XSS-Protection'] = '1; mode=block'
-            return response
 
     return application
 
@@ -97,7 +93,7 @@ def main():
     try:
         # Load environment configuration
         env, port, host = load_environment()
-        debug = env == 'development'
+        debug = app_config.DEBUG  # Use debug setting from shared config
 
         logger.info(f"Starting server in {env} mode")
         logger.info(f"Host: {host}, Port: {port}, Debug: {debug}")

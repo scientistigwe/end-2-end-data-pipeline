@@ -2,6 +2,7 @@ import axios from 'axios';
 import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { HTTP_STATUS, ApiErrorResponse } from '@/common/types/api';
 import { APIRoutes } from '@/common/api/routes';
+import { AuthError } from '@/auth/types/errors';
 import type {
     LoginResponseData,
     RegisterResponseData,
@@ -42,21 +43,6 @@ const AUTH_EVENTS = {
     MFA_SETUP_COMPLETE: 'auth:mfa_setup_complete',
     PROFILE_UPDATED: 'auth:profile_updated'
 } as const;
-
-/**
- * Custom error class for authentication errors
- */
-class AuthError extends Error {
-    constructor(
-        message: string,
-        public readonly code?: string,
-        public readonly status?: number,
-        public readonly details?: Record<string, any>
-    ) {
-        super(message);
-        this.name = 'AuthError';
-    }
-}
 
 /**
  * Main AuthApi class that handles all authentication-related API calls
@@ -107,142 +93,161 @@ class AuthApi {
      * Generic request handler with proper error handling
      */
     private async request<T>(
-      method: 'get' | 'post' | 'put' | 'delete',
-      mainRoute: keyof typeof APIRoutes.AUTH,
-      nestedRoute?: string,
-      data?: unknown,
-      config: { withCredentials?: boolean; headers?: Record<string, string> } = {}
-  ): Promise<T> {
-      const finalConfig = {
-          ...this.defaultConfig,
-          ...config,
-          headers: {
-              ...this.defaultConfig.headers,
-              ...config.headers
-          }
-      };
-  
-      console.log('Making request with:', {
-          method,
-          mainRoute,
-          nestedRoute,
-          config: finalConfig
-      });
-  
-      try {
-          let response;
-          if (nestedRoute) {
-              response = await this.client.postToNested<T>(
-                  'AUTH',
-                  mainRoute,
-                  nestedRoute,
-                  data,
-                  undefined,
-                  finalConfig
-              );
-          } else {
-              response = await this.client[method]<T>(
-                  'AUTH',
-                  mainRoute,
-                  data,
-                  undefined,
-                  finalConfig
-              );
-          }
-          
-          console.log('Request successful, response:', response);
-          return response;
-      } catch (error) {
-          console.error('Request failed:', { 
-              method, 
-              mainRoute, 
-              nestedRoute, 
-              error,
-              errorType: error.constructor.name
-          });
-          throw this.handleAuthError(error);
-      }
-  }
-
+        method: 'get' | 'post' | 'put' | 'delete',
+        mainRoute: keyof typeof APIRoutes.AUTH,
+        nestedRoute?: string,
+        data?: unknown,
+        config: { withCredentials?: boolean; headers?: Record<string, string> } = {}
+    ): Promise<T> {
+        const finalConfig = { ...this.defaultConfig, ...config };
+        
+        console.log('Making request with:', {
+            method,
+            mainRoute,
+            nestedRoute,
+            config: finalConfig
+        });
+        
+        try {
+            let response;
+            
+            // Check if this is a nested route (like PROFILE.GET)
+            const routeObject = APIRoutes.AUTH[mainRoute];
+            const isNestedRoute = typeof routeObject === 'object' && nestedRoute;
+            
+            if (isNestedRoute) {
+                // Use the correct method for nested routes
+                if (method === 'get') {
+                    response = await this.client.getFromNested<T>(
+                        'AUTH',
+                        mainRoute as any, // Type assertion needed due to complex types
+                        nestedRoute as any,
+                        undefined,
+                        finalConfig
+                    );
+                } else if (method === 'post') {
+                    response = await this.client.postToNested<T>(
+                        'AUTH',
+                        mainRoute as any,
+                        nestedRoute as any,
+                        data,
+                        undefined,
+                        finalConfig
+                    );
+                } else if (method === 'put') {
+                    // Add similar for put if needed
+                    // This would need a putToNested method in your client
+                } else if (method === 'delete') {
+                    // Add similar for delete if needed
+                }
+            } else {
+                // Regular non-nested route
+                response = await this.client[method]<T>(
+                    'AUTH',
+                    mainRoute,
+                    method === 'get' ? undefined : data,
+                    undefined,
+                    finalConfig
+                );
+            }
+            
+            console.log('Request successful, response:', response);
+            return response;
+        } catch (error) {
+            console.error('Request failed:', { 
+                method, 
+                mainRoute, 
+                nestedRoute, 
+                error,
+                errorType: error.constructor.name
+            });
+            throw this.handleAuthError(error);
+        }
+    }
     /**
      * Authentication Methods
      */
     async login(credentials: LoginCredentials): Promise<LoginResponseData> {
-      try {
-          const response = await this.request<LoginApiResponse>(
-              'post',
-              'LOGIN',
-              undefined,
-              credentials
-          );
-  
-          // The response itself is the data we need
-          const responseData = response;  // Changed from response?.data?.data
-          
-          if (!responseData || !responseData.tokens || !responseData.user) {
-              console.error('Response validation failed:', {
-                  hasResponseData: !!responseData,
-                  hasUser: !!responseData?.user,
-                  hasTokens: !!responseData?.tokens,
-                  fullResponse: responseData
-              });
-              throw new AuthError(
-                  'Invalid login response format', 
-                  'INVALID_RESPONSE',
-                  undefined,
-                  { received: responseData }
-              );
-          }
-  
-          this.emitAuthEvent('LOGIN', { userId: responseData.user.id });
-          return responseData;
-      } catch (error) {
-          console.error('Login failed:', error);
-          throw this.handleAuthError(error);
-      }
-  }
-
-  async register(data: RegisterData): Promise<RegisterResponseData> {
-    try {
-        this.validateRegistrationData(data);
-        const requestData = this.prepareRegistrationData(data);
-
-        const response = await this.request<RegisterResponseData>(
-            'post',
-            'REGISTER',
-            undefined,
-            requestData
-        );
-
-        // Access response directly like we did with login
-        if (!response || !response.user) {
-            console.error('Registration validation failed:', {
-                hasResponse: !!response,
-                hasUser: !!response?.user,
-                fullResponse: response
-            });
-            throw new AuthError(
-                'Registration failed', 
-                'REGISTRATION_FAILED',
+        try {
+            const response = await this.request<LoginApiResponse>(
+                'post',
+                'LOGIN',
                 undefined,
-                { received: response }
+                credentials
             );
+
+            // The response itself is the data we need
+            const responseData = response;
+            
+            if (!responseData || !responseData.tokens || !responseData.user) {
+                console.error('Response validation failed:', {
+                    hasResponseData: !!responseData,
+                    hasUser: !!responseData?.user,
+                    hasTokens: !!responseData?.tokens,
+                    fullResponse: responseData
+                });
+                throw new AuthError(
+                    'Invalid login response format', 
+                    'INVALID_RESPONSE',
+                    undefined,
+                    { received: responseData }
+                );
+            }
+
+            // Log all cookies for debugging
+            console.log('Cookies after login:', document.cookie);
+            
+            // Important: Store user in Redux immediately
+            this.emitAuthEvent('LOGIN', { user: responseData.user });
+            
+            return responseData;
+        } catch (error) {
+            console.error('Login failed:', error);
+            throw this.handleAuthError(error);
         }
-
-        // Emit register event
-        this.emitAuthEvent('REGISTER', { userId: response.user.id });
-
-        // Navigate to dashboard
-        if (this.navigate) {
-            this.navigate(ROUTES.DASHBOARD);
         }
+    
+    async register(data: RegisterData): Promise<RegisterResponseData> {
+        try {
+            this.validateRegistrationData(data);
+            const requestData = this.prepareRegistrationData(data);
 
-        return response;
-    } catch (error) {
-        console.error('Registration failed:', error);
-        throw this.handleAuthError(error);
+            const response = await this.request<RegisterResponseData>(
+                'post',
+                'REGISTER',
+                undefined,
+                requestData
+            );
+
+            // Access response directly like we did with login
+            if (!response || !response.user) {
+                console.error('Registration validation failed:', {
+                    hasResponse: !!response,
+                    hasUser: !!response?.user,
+                    fullResponse: response
+                });
+                throw new AuthError(
+                    'Registration failed', 
+                    'REGISTRATION_FAILED',
+                    undefined,
+                    { received: response }
+                );
+            }
+
+            // Emit register event
+            this.emitAuthEvent('REGISTER', { userId: response.user.id });
+
+            // Navigate to dashboard
+            if (this.navigate) {
+                this.navigate(ROUTES.DASHBOARD);
+            }
+
+            return response;
+        } catch (error) {
+            console.error('Registration failed:', error);
+            throw this.handleAuthError(error);
+        }
     }
-}
   
     async logout(): Promise<void> {
         try {
@@ -256,24 +261,92 @@ class AuthApi {
         }
     }
 
+    // Add this method to your authApi.ts file
+    async refreshToken(): Promise<void> {
+        try {
+        await this.request<void>('post', 'REFRESH');
+        this.emitAuthEvent('REFRESH');
+        } catch (error) {
+        console.error('Token refresh error:', error);
+        throw error;
+        }
+    }
+
     /**
      * Profile Methods
      */
     async getProfile(): Promise<User> {
         try {
-            const response = await this.request<AuthBaseResponse<User>>(
-                'get',
-                'PROFILE',
-                'GET'
+            // Use direct executeGet for simplicity
+            const response = await this.client.executeGet(
+                '/auth/profile',
+                {
+                    withCredentials: true,
+                    headers: {
+                        ...DEFAULT_HEADERS,
+                        'Cache-Control': 'no-cache'
+                    }
+                }
             );
-
-            if (!response.data?.user) {
+    
+            console.log('Profile response:', response);
+            
+            // Check for error response
+            if (response?.error === true) {
+                throw new AuthError(response?.message || 'Authentication failed');
+            }
+            
+            // From the logs, the response data is directly in response.data
+            // It's not nested inside a user property
+            const userData = response.data;
+                    
+            if (!userData || !userData.id) {
                 throw new AuthError('Invalid profile response format');
             }
-            return response.data.user;
+            
+            // Make sure we have all expected User properties
+            return {
+                id: userData.id,
+                email: userData.email,
+                username: userData.username,
+                first_name: userData.first_name || '',
+                last_name: userData.last_name || '',
+                full_name: userData.full_name || `${userData.first_name || ''} ${userData.last_name || ''}`.trim(),
+                role: userData.role || 'user',
+                status: userData.status || 'active',
+                permissions: userData.permissions || [],
+                email_verified: userData.email_verified || false,
+                profile_image: userData.profile_image || null,
+                phone_number: userData.phone_number || null,
+                department: userData.department || null,
+                timezone: userData.timezone || 'UTC',
+                locale: userData.locale || 'en-US',
+                preferences: userData.preferences || {},
+                metadata: userData.metadata || {},
+                security_level: userData.security_level || 1
+            };
         } catch (error) {
             console.error('Get profile failed:', error);
-            throw error;
+            
+            // Transform any axios errors to AuthError
+            if (axios.isAxiosError(error)) {
+                const status = error.response?.status;
+                const message = error.response?.data?.message || error.message;
+                
+                if (status === 401 || status === 403) {
+                    throw new AuthError(message || 'Not authenticated', 'AUTH_FAILED', status);
+                }
+                
+                throw new AuthError(message, 'API_ERROR', status);
+            }
+            
+            // Re-throw AuthErrors
+            if (error instanceof AuthError) {
+                throw error;
+            }
+            
+            // For any other errors
+            throw new AuthError(error.message || 'Unknown error');
         }
     }
 

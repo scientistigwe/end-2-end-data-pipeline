@@ -5,28 +5,31 @@ import type { User } from '@/common/types/user';
 
 // Check for persisted auth data
 function getPersistedAuth(): Partial<AuthState> {
-  try {
-    // Check for cookie-based authentication
-    const hasAuthCookie = document.cookie.includes('refresh_token') || 
-                        document.cookie.includes('access_token');
-    
-    // Check for user data in sessionStorage (optional)
-    const persistedUser = sessionStorage.getItem('authUser');
-    
-    if (hasAuthCookie) {
-      return {
-        status: 'authenticated' as AuthStatus,
-        isLoading: false,
-        initialized: true,
-        user: persistedUser ? JSON.parse(persistedUser) : null
-      };
+    try {
+      // Check for user data in sessionStorage
+      const persistedUser = sessionStorage.getItem('authUser');
+      const user = persistedUser ? JSON.parse(persistedUser) : null;
+      
+      // Only consider authenticated if we have actual user data
+      if (user && user.id) {
+        return {
+          status: 'authenticated' as AuthStatus,
+          isLoading: false,
+          initialized: false, // Start as uninitialized - let the app verify
+          user
+        };
+      }
+    } catch (error) {
+      console.error('Error checking persisted auth:', error);
     }
-  } catch (error) {
-    console.error('Error checking persisted auth:', error);
+    
+    return {
+      status: 'unauthenticated', 
+      isLoading: false,
+      initialized: false,
+      user: null
+    };
   }
-  
-  return {};
-}
 
 const initialState: AuthState = {
     user: null,

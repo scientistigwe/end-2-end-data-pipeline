@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
+import { useDispatch } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
-import { Provider, useDispatch, useSelector } from "react-redux";
+import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { Toaster } from "react-hot-toast";
 
@@ -17,11 +18,7 @@ import { ReportProvider } from "./reports/providers/ReportProvider";
 // Routes
 import { AppRoutes } from "./routes";
 import { store } from "./store/store";
-
-// Auth actions and selectors
-import { setInitialized, setLoading } from "./auth/store/authSlice";
-import { selectAuthStatus } from "./auth/store/selectors";
-import { authApi } from "./auth/api/authApi";
+import { setUser, clearAuth } from "./auth/store/authSlice";
 
 // Styles
 import "./styles/global/base.css";
@@ -36,74 +33,76 @@ const queryClient = new QueryClient({
   },
 });
 
-// Auth initialization component to prevent unnecessary API calls
-const AuthInitializer: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+// Create an AuthEventListener component
+const AuthEventListener: React.FC = () => {
   const dispatch = useDispatch();
-  const authStatus = useSelector(selectAuthStatus);
 
   useEffect(() => {
-    // Check if we need to validate our authentication
-    const validateAuth = async () => {
-      // Only validate if we think we're authenticated based on persisted state
-      if (authStatus === "authenticated") {
-        try {
-          dispatch(setLoading(true));
-          // Silently refresh the token (will update state if successful)
-          await authApi.refreshToken();
-        } catch (error) {
-          console.error("Auth validation failed:", error);
-          // The error will be handled by the API call
-        } finally {
-          dispatch(setLoading(false));
-          dispatch(setInitialized(true));
+    const handleAuthEvent = (event: Event) => {
+      const customEvent = event as CustomEvent;
+
+      if (event.type === "auth:login" || event.type === "auth:refresh") {
+        if (customEvent.detail?.user) {
+          dispatch(setUser(customEvent.detail.user));
         }
-      } else {
-        // If we're not authenticated, just mark as initialized
-        dispatch(setInitialized(true));
+      } else if (
+        event.type === "auth:logout" ||
+        event.type === "auth:token_expired"
+      ) {
+        dispatch(clearAuth());
       }
     };
 
-    validateAuth();
-  }, [dispatch, authStatus]);
+    window.addEventListener("auth:login", handleAuthEvent);
+    window.addEventListener("auth:logout", handleAuthEvent);
+    window.addEventListener("auth:refresh", handleAuthEvent);
+    window.addEventListener("auth:token_expired", handleAuthEvent);
 
-  return <>{children}</>;
+    return () => {
+      window.removeEventListener("auth:login", handleAuthEvent);
+      window.removeEventListener("auth:logout", handleAuthEvent);
+      window.removeEventListener("auth:refresh", handleAuthEvent);
+      window.removeEventListener("auth:token_expired", handleAuthEvent);
+    };
+  }, [dispatch]);
+
+  // This component doesn't render anything
+  return null;
 };
 
 const AppWithProviders: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AuthInitializer>
-          <DataSourceProvider>
-            <PipelineProvider>
-              <AnalysisProvider>
-                <DecisionsProvider>
-                  <MonitoringProvider>
-                    <RecommendationsProvider>
-                      <ReportProvider>
-                        <React.Suspense fallback={<div>Loading...</div>}>
-                          <AppRoutes />
-                        </React.Suspense>
-                        <Toaster
-                          position="top-right"
-                          toastOptions={{
-                            duration: 4000,
-                            style: {
-                              background: "#333",
-                              color: "#fff",
-                            },
-                          }}
-                        />
-                      </ReportProvider>
-                    </RecommendationsProvider>
-                  </MonitoringProvider>
-                </DecisionsProvider>
-              </AnalysisProvider>
-            </PipelineProvider>
-          </DataSourceProvider>
-        </AuthInitializer>
+        {/* Add the event listener component inside the provider tree */}
+        <AuthEventListener />
+        <DataSourceProvider>
+          <PipelineProvider>
+            <AnalysisProvider>
+              <DecisionsProvider>
+                <MonitoringProvider>
+                  <RecommendationsProvider>
+                    <ReportProvider>
+                      <React.Suspense fallback={<div>Loading...</div>}>
+                        <AppRoutes />
+                      </React.Suspense>
+                      <Toaster
+                        position="top-right"
+                        toastOptions={{
+                          duration: 4000,
+                          style: {
+                            background: "#333",
+                            color: "#fff",
+                          },
+                        }}
+                      />
+                    </ReportProvider>
+                  </RecommendationsProvider>
+                </MonitoringProvider>
+              </DecisionsProvider>
+            </AnalysisProvider>
+          </PipelineProvider>
+        </DataSourceProvider>
       </AuthProvider>
     </BrowserRouter>
   );

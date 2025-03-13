@@ -19,6 +19,7 @@ import {
   deleteDataSource,
   createDataSource,
 } from "../store/dataSourceSlice";
+import { useAuth } from "@/auth/hooks/useAuth";
 import type { AppDispatch } from "@/store/store";
 import type { RootState } from "@/store/rootReducer";
 import type { BaseDataSourceConfig, BaseMetadata } from "../types/base";
@@ -86,6 +87,7 @@ const DataSourcesPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { type } = useParams<{ type?: string }>();
   const [isCreating, setIsCreating] = useState(false);
+  const { isAuthenticated, isLoading: authLoading, isInitialized } = useAuth();
 
   const sources = useSelector((state: RootState) => state.dataSources.sources);
   const isLoading = useSelector(
@@ -95,16 +97,21 @@ const DataSourcesPage: React.FC = () => {
 
   const currentType = type as DataSourceType | undefined;
 
+  // Redirect to first source type if none is selected
   useEffect(() => {
     if (!currentType && SOURCE_TYPES.length > 0) {
       navigate(`/data-sources/${SOURCE_TYPES[0].id}`);
     }
   }, [currentType, navigate]);
 
+  // Fetch data sources only when authenticated and initialized
   useEffect(() => {
-    console.log("Fetching data sources");
-    dispatch(fetchDataSources());
-  }, [dispatch]);
+    // Only fetch when authentication is confirmed AND initialization is complete
+    if (isAuthenticated && isInitialized && !authLoading) {
+      console.log("Authenticated and initialized, fetching data sources");
+      dispatch(fetchDataSources());
+    }
+  }, [dispatch, isAuthenticated, authLoading, isInitialized]);
 
   const handleTypeChange = (newType: DataSourceType) => {
     navigate(`/data-sources/${newType}`);
@@ -121,7 +128,7 @@ const DataSourcesPage: React.FC = () => {
 
   const handleSourceSubmit = async (config: BaseDataSourceConfig) => {
     try {
-      console.log('Submitting data source config:', config);
+      console.log("Submitting data source config:", config);
       await dispatch(createDataSource(config)).unwrap();
       setIsCreating(false);
       showNotification({
@@ -130,7 +137,7 @@ const DataSourcesPage: React.FC = () => {
         type: "success",
       });
     } catch (err) {
-      console.error('Failed to create data source', err);
+      console.error("Failed to create data source", err);
       showNotification({
         title: "Error",
         message: "Failed to create data source",
@@ -202,7 +209,8 @@ const DataSourcesPage: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  // Show loading spinner when auth is still loading or data is loading
+  if (authLoading || (isLoading && !isCreating)) {
     return (
       <div className="flex h-screen items-center justify-center">
         <LoadingSpinner size="lg" />

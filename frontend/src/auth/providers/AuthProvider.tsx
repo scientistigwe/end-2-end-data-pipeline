@@ -1,5 +1,5 @@
-// auth/providers/AuthProvider.tsx
-import React, { useEffect, useMemo, useRef } from "react";
+// AuthProvider.tsx
+import React, { useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { AuthContext } from "../context/AuthContext";
 import { useAuth } from "../hooks/useAuth";
@@ -10,8 +10,8 @@ import {
   setInitialized,
 } from "../store/authSlice";
 import { authApi } from "../api/authApi";
+import { AuthError } from "../types/errors";
 import type { AuthContextValue } from "../types/auth";
-import { HTTP_STATUS, isApiError } from "@/common/types/api";
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -31,20 +31,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isChecking.current = true;
         dispatch(setLoading(true));
 
-        const userData = await authApi.getProfile();
-        if (userData) {
-          dispatch(setUser(userData));
-        }
-      } catch (error) {
-        if (isApiError(error)) {
-          const status = (error as any).response?.status;
-          if (status === HTTP_STATUS.UNAUTHORIZED) {
-            dispatch(clearAuth());
-          } else {
-            console.error("Authentication error:", error.message);
+        try {
+          const userData = await authApi.getProfile();
+          if (userData) {
+            dispatch(setUser(userData));
           }
-        } else {
-          console.error("Unexpected authentication error:", error);
+        } catch (error) {
+          console.error("Authentication check failed:", error);
+
+          // Clear auth state for authentication errors
+          if (
+            error instanceof AuthError ||
+            (error.response &&
+              (error.response.status === 401 || error.response.status === 403))
+          ) {
+            console.log("Auth check failed - clearing auth state");
+            dispatch(clearAuth());
+          }
         }
       } finally {
         dispatch(setLoading(false));

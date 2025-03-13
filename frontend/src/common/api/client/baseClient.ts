@@ -65,8 +65,10 @@ export class BaseClient {
   private refreshQueue: RefreshQueueItem[] = [];
   protected client: AxiosInstance;
   private serviceConfigs: Map<ServiceType, ServiceConfig> = new Map();
-  private cache: Map<string, CacheEntry<any>>;
+  private cache: Map<string, CacheEntry<any>> = new Map();
   private retryConfig = RETRY_CONFIG;
+  private static requestCounter = 0;
+  private inFlightRequests = new Map<string, Promise<any>>();
 
   private constructor(config?: CreateAxiosDefaults) {
     this.cache = new Map();
@@ -153,7 +155,7 @@ export class BaseClient {
   }
 
   // Base request execution methods
-  private async executeGet<T>(
+  public async executeGet<T>(
     endpoint: string,
     config?: ApiRequestConfig & { cacheDuration?: number }
   ): Promise<ApiResponse<T>> {
@@ -185,7 +187,7 @@ export class BaseClient {
     }
   }
 
-  private async executePost<T>(
+  public async executePost<T>(
     endpoint: string,
     data?: unknown,
     config?: ApiRequestConfig
@@ -193,7 +195,7 @@ export class BaseClient {
     return this.request<T>('POST', endpoint, config, data);
   }
 
-  private async executePut<T>(
+  public async executePut<T>(
     endpoint: string,
     data?: unknown,
     config?: ApiRequestConfig
@@ -201,7 +203,7 @@ export class BaseClient {
     return this.request<T>('PUT', endpoint, config, data);
   }
 
-  private async executeDelete<T>(
+  public async executeDelete<T>(
     endpoint: string,
     config?: ApiRequestConfig
   ): Promise<T> {
@@ -274,6 +276,7 @@ export class BaseClient {
   private setupInterceptors(): void {
     this.setupRequestInterceptor();
     this.setupResponseInterceptor();
+    this.client.defaults.withCredentials = true;
   }
 
   private setupRequestInterceptor(): void {
@@ -316,7 +319,18 @@ export class BaseClient {
         if (error.response?.status === HTTP_STATUS.UNAUTHORIZED || 
             error.response?.status === HTTP_STATUS.FORBIDDEN) {
           
-          // Mark that we're attempting a retry
+          // If we're already unauthenticated, don't try to refresh - just notify UI
+          if (error.response?.data?.message === 'Not authenticated') {
+            window.dispatchEvent(new Event('auth:logout'));
+            return Promise.reject(error);
+          }
+
+          // If this is an auth API, don't trigger token refresh - let the auth components handle it
+          if (config.url?.includes('/auth/')) {
+            return Promise.reject(error);
+          }
+          
+          // Otherwise, try to refresh
           config._retry = true;
           
           return this.handleUnauthorizedError(config);
@@ -416,7 +430,6 @@ export class BaseClient {
     this.cache.clear();
     window.dispatchEvent(new Event('auth:logout'));
   }
-  
 
   // Base request method
   private async request<T>(
@@ -424,79 +437,93 @@ export class BaseClient {
     endpoint: string,
     config?: ApiRequestConfig,
     data?: unknown
-): Promise<T> {
-    try {
-        const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
-        
-        // Log the complete request configuration
-        console.log('Request Configuration:', {
-            method,
-            endpoint,
-            data,
-            config: axiosConfig
-        });
-
-        const cleanEndpoint = endpoint.replace(/^\/+/, '');
-        const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
-
-        const requestConfig: AxiosRequestConfig = {
-            method: method.toLowerCase(),
-            url: normalizedEndpoint,
-            data,
-            withCredentials: true,
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                ...(axiosConfig?.headers || {})
-            },
-            validateStatus: (status) => true, // Accept all status codes to handle them manually
-            ...axiosConfig,
-            onUploadProgress
-        };
-
-        const response = await this.client.request(requestConfig);
-        
-        // Log the complete response
-        console.log('Response:', {
-            status: response.status,
-            statusText: response.statusText,
-            data: response.data,
-            headers: response.headers
-        });
-
-        // Handle non-2xx status codes
-        if (response.status >= 400) {
-            throw {
-                response: response,
-                isAxiosError: true,
-                message: response.data?.message || 'Request failed'
-            };
-        }
-
-        return response.data?.data ?? response.data;
-    } catch (error) {
-        console.error('Request failed:', {
-            method,
-            endpoint,
-            error: error instanceof Error ? {
-                message: error.message,
-                stack: error.stack
-            } : error
-        });
-
-        if (axios.isAxiosError(error) && error.response) {
-            console.error('Detailed error response:', {
-                status: error.response.status,
-                statusText: error.response.statusText,
-                data: error.response.data,
-                headers: error.response.headers,
-                config: error.config
-            });
-        }
-
-        throw this.handleApiError(error);
+  ): Promise<T> {
+    const requestId = ++BaseClient.requestCounter;
+    console.log(`[${requestId}] Request started: ${method} ${endpoint}`);
+    
+    // Create cache key for deduplicating in-flight requests
+    const cacheKey = `${method}:${endpoint}:${JSON.stringify(config)}`;
+    
+    // Check if we already have an in-flight request for this exact request
+    if (this.inFlightRequests.has(cacheKey)) {
+        console.log(`[${requestId}] Reusing in-flight request for: ${method} ${endpoint}`);
+        return this.inFlightRequests.get(cacheKey) as Promise<T>;
     }
-}
+    
+    // Actual request execution logic
+    const executeRequest = async (): Promise<T> => {
+        try {
+            const { routeParams, onUploadProgress, ...axiosConfig } = config ?? {};
+            
+            console.log(`[${requestId}] Request config:`, {
+                method,
+                endpoint,
+                config: axiosConfig
+            });
+
+            const cleanEndpoint = endpoint.replace(/^\/+/, '');
+            const normalizedEndpoint = cleanEndpoint.replace(/^api\/v1\//, '');
+
+            const requestConfig: AxiosRequestConfig = {
+                method: method.toLowerCase(),
+                url: normalizedEndpoint,
+                data,
+                withCredentials: true, // Critical for cookies
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    ...(axiosConfig?.headers || {})
+                },
+                validateStatus: (status) => true, // Handle all status codes manually
+                ...axiosConfig,
+                onUploadProgress
+            };
+
+            const response = await this.client.request(requestConfig);
+            
+            console.log(`[${requestId}] Response received:`, {
+                status: response.status,
+                statusText: response.statusText
+            });
+
+            // Handle non-2xx status codes
+            if (response.status >= 400) {
+                throw {
+                    response: response,
+                    isAxiosError: true,
+                    message: response.data?.message || 'Request failed'
+                };
+            }
+
+            console.log(`[${requestId}] Request complete: ${method} ${endpoint}`);
+            return response.data;
+        } catch (error) {
+            console.error(`[${requestId}] Request failed: ${method} ${endpoint}`, error);
+
+            if (axios.isAxiosError(error) && error.response) {
+                console.error(`[${requestId}] Error details:`, {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data
+                });
+            }
+
+            throw this.handleApiError(error);
+        }
+    };
+    
+    // Create the promise and store it
+    const promise = executeRequest();
+    this.inFlightRequests.set(cacheKey, promise);
+    
+    try {
+        return await promise;
+    } finally {
+        // Clean up the in-flight request
+        this.inFlightRequests.delete(cacheKey);
+    }
+  }
 
   // Error handling
   private handleApiError(error: unknown): Error {

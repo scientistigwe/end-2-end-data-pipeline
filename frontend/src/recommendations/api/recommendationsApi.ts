@@ -1,4 +1,5 @@
 // src/recommendations/api/recommendationsApi.ts
+import axios from 'axios';
 import { RouteHelper } from '@/common/api/routes';
 import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { 
@@ -29,6 +30,9 @@ interface RecommendationErrorMetadata {
 
 class RecommendationsApi {
   private client = baseAxiosClient;
+  // Create private instance for recommendation-specific operations
+  private recommendationAxios: AxiosInstance;
+  
   private static readonly ERROR_METADATA: Record<number, RecommendationErrorMetadata> = {
     [HTTP_STATUS.CONFLICT]: {
       retryable: false,
@@ -43,6 +47,7 @@ class RecommendationsApi {
   };
 
   constructor() {
+    // Configure shared client
     this.client.setServiceConfig({
       service: ServiceType.RECOMMENDATIONS,
       headers: {
@@ -50,19 +55,31 @@ class RecommendationsApi {
         'Content-Type': 'application/json',
       }
     });
-    this.setupRecommendationInterceptors();  // Keep your existing interceptors
+    
+    // Create a dedicated axios instance to isolate interceptors
+    const baseInstance = this.client.getAxiosInstance();
+    this.recommendationAxios = axios.create({
+      baseURL: baseInstance.defaults.baseURL,
+      timeout: baseInstance.defaults.timeout,
+      withCredentials: true,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    // Set up interceptors only on this instance
+    this.setupRecommendationInterceptors();
   }
 
   private setupRecommendationInterceptors(): void {
-    const instance = this.client.getAxiosInstance();
-    if (!instance) return;
-
-    instance.interceptors.request.use(
+    // Only apply to the dedicated instance, not the shared client
+    this.recommendationAxios.interceptors.request.use(
       this.handleRequestInterceptor,
       this.handleRequestError
     );
 
-    instance.interceptors.response.use(
+    this.recommendationAxios.interceptors.response.use(
       this.handleResponseInterceptor,
       this.handleResponseError
     );
@@ -200,7 +217,7 @@ class RecommendationsApi {
     );
   }
 
-  // Core Recommendation Methods
+  // Core Recommendation Methods - these remain unchanged
   async getRecommendations(
     pipelineId: string,
     filters?: RecommendationFilters
@@ -319,15 +336,14 @@ class RecommendationsApi {
   }
 
   // Event Subscription
- // Event Subscription
- subscribeToEvents<E extends keyof RecommendationEventMap>(
-  event: E,
-  callback: (event: RecommendationEventMap[E]) => void
-): () => void {
-  const handler = (e: Event) => callback(e as RecommendationEventMap[E]);
-  window.addEventListener(event, handler);
-  return () => window.removeEventListener(event, handler);
-}
+  subscribeToEvents<E extends keyof RecommendationEventMap>(
+    event: E,
+    callback: (event: RecommendationEventMap[E]) => void
+  ): () => void {
+    const handler = (e: Event) => callback(e as RecommendationEventMap[E]);
+    window.addEventListener(event, handler);
+    return () => window.removeEventListener(event, handler);
+  }
 }
 
 export const recommendationsApi = new RecommendationsApi();

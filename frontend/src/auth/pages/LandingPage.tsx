@@ -87,7 +87,7 @@ const LandingPage = () => {
             >
               <PipelineLogo className="h-8 w-8 group-hover:rotate-6 transition-transform" />
               <span className="font-bold text-xl text-foreground group-hover:text-primary transition-colors">
-                Analytix Flow
+              My Assistant Data Pipeline
               </span>
             </Link>
             <div className="flex items-center space-x-4">

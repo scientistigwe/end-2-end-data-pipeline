@@ -1,10 +1,6 @@
-// src/dataSource/components/FileSourceForm/FileSourceForm.tsx
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { v4 as uuidv4 } from "uuid";
 import { Upload } from "lucide-react";
-import axios from "axios";
-import { RouteHelper } from "../../../common/api/routes";
 import {
   Card,
   CardHeader,
@@ -19,7 +15,6 @@ import {
 } from "../../../common/components/ui/alert";
 import { Progress } from "../../../common/components/ui/progress";
 import { useFileSource } from "../../hooks/useFileSource";
-import { DataSourceType } from "../../types/base";
 import { dataSourceApi } from "@/dataSource/api";
 import type {
   FileSourceConfig,
@@ -29,12 +24,19 @@ import type {
 import { FILE_SOURCE_CONSTANTS } from "../../constants";
 import { DATASOURCE_MESSAGES } from "../../constants";
 
+import Papa from "papaparse";
+import * as chardet from "chardet";
+
 export const FileSourceForm: React.FC<FileSourceFormProps> = ({
   onSubmit,
   onCancel,
 }) => {
   const { uploadProgress, isUploading } = useFileSource();
   const [error, setError] = React.useState<Error | null>(null);
+  const [uploadedMetadata, setUploadedMetadata] =
+    useState<Partial<FileSourceConfig> | null>(null);
+  const [autoDetectedMetadata, setAutoDetectedMetadata] =
+    useState<Partial<FileSourceConfig> | null>(null);
 
   const {
     register,
@@ -50,6 +52,126 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
 
   const selectedFiles = watch("files");
 
+  // Automatically detect file metadata when a file is selected
+  useEffect(() => {
+    const detectFileMetadata = async (file: File) => {
+      try {
+        // Detect file encoding using chardet
+        const fileBuffer = await file.arrayBuffer();
+        const encoding = await new Promise<string>((resolve) => {
+          const result = chardet.detect(new Uint8Array(fileBuffer));
+          resolve(result || "utf-8");
+        });
+
+        const fileExtension = file.name.split(".").pop()?.toLowerCase() || "";
+
+        // This mapping matches exactly what the backend expects
+        const fileTypeMap: Record<string, string> = {
+          csv: "csv",
+          json: "json",
+          xlsx: "excel",
+          xls: "excel",
+          parquet: "parquet",
+          txt: "csv", // Default txt files to CSV format
+        };
+
+        // Use the extension to determine file type or default to csv
+        const fileType = fileTypeMap[fileExtension] || "csv";
+
+        let autoMetadata: Partial<FileSourceConfig> = {
+          // Default values for all file types
+          type: fileType,
+          encoding: encoding,
+          skipRows: 0,
+          hasHeader: true,
+          parseOptions: {
+            dateFormat: "YYYY-MM-DD",
+            nullValues: ["", "null", "NA", "N/A"],
+          },
+        };
+
+        // Add type-specific metadata
+        switch (fileType) {
+          case "csv":
+            // Sample the file to detect delimiter and headers
+            const text = new TextDecoder(encoding).decode(
+              fileBuffer.slice(0, 4096)
+            );
+            const parseResult = Papa.parse(text, {
+              preview: 5,
+              skipEmptyLines: true,
+            });
+
+            // Detection logic for delimiter
+            const delimiters = [",", "\t", ";", "|"];
+            let detectedDelimiter = ","; // Default
+
+            for (const delimiter of delimiters) {
+              if (text.includes(delimiter)) {
+                // Check if using this delimiter creates multiple columns
+                const testParse = Papa.parse(text, {
+                  delimiter,
+                  preview: 3,
+                  skipEmptyLines: true,
+                });
+
+                // If we have rows with multiple columns, this is likely the right delimiter
+                if (testParse.data.some((row) => row.length > 1)) {
+                  detectedDelimiter = delimiter;
+                  break;
+                }
+              }
+            }
+
+            // Check if first row looks like a header
+            const hasHeader =
+              parseResult.data.length > 0 &&
+              parseResult.data[0].some(
+                (cell) =>
+                  typeof cell === "string" &&
+                  isNaN(Number(cell)) &&
+                  cell.trim().length > 0
+              );
+
+            autoMetadata = {
+              ...autoMetadata,
+              type: "csv",
+              delimiter: detectedDelimiter,
+              hasHeader: hasHeader,
+            };
+            break;
+
+          case "excel":
+            autoMetadata = {
+              ...autoMetadata,
+              type: "excel",
+              sheet: "Sheet1",
+            };
+            break;
+
+          case "json":
+          case "parquet":
+            // No additional metadata needed beyond the defaults
+            break;
+        }
+
+        console.log("Detected Metadata:", {
+          fileType,
+          encoding,
+          ...autoMetadata,
+        });
+
+        setAutoDetectedMetadata(autoMetadata);
+      } catch (err) {
+        console.error("Metadata detection error:", err);
+      }
+    };
+
+    if (selectedFiles?.[0]) {
+      detectFileMetadata(selectedFiles[0]);
+    }
+  }, [selectedFiles]);
+
   const handleFormSubmit = useCallback(
     async (data: FileUploadFormData) => {
       try {
@@ -60,45 +182,68 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
           throw new Error(DATASOURCE_MESSAGES.ERRORS.VALIDATION_FAILED);
         }
 
-        // File size validation
-        if (file.size > FILE_SOURCE_CONSTANTS.maxFileSize) {
-          throw new Error(
-            `File size exceeds maximum limit of ${
-              FILE_SOURCE_CONSTANTS.maxFileSize / (1024 * 1024)
-            }MB`
-          );
+        const fileExtension = file.name.split(".").pop()?.toLowerCase() || "";
+
+        // Create a mapping that matches the backend's expected values
+        const fileTypeMap: Record<string, string> = {
+          csv: "csv",
+          json: "json",
+          xlsx: "excel",
+          xls: "excel",
+          parquet: "parquet",
+          txt: "csv", // Default txt files to CSV format
+        };
+
+        // Use the detected file type or determine it from extension
+        const fileType =
+          autoDetectedMetadata?.type || fileTypeMap[fileExtension] || "csv";
+
+        // Prepare metadata in a format that matches backend expectations
+        const metadata = {
+          file_type: fileType,
+          encoding: autoDetectedMetadata?.encoding || "utf-8",
+          skip_rows: Number(autoDetectedMetadata?.skipRows) || 0,
+          tags: ["data"],
+          parse_options: {
+            date_format:
+              autoDetectedMetadata?.parseOptions?.dateFormat || "YYYY-MM-DD",
+            null_values: autoDetectedMetadata?.parseOptions?.nullValues || [
+              "",
+              "null",
+              "NA",
+              "N/A",
+            ],
+          },
+        };
+
+        // Add file-type specific fields
+        if (fileType === "excel") {
+          Object.assign(metadata, {
+            sheet_name: autoDetectedMetadata?.sheet || "Sheet1",
+            has_header: autoDetectedMetadata?.hasHeader ?? true,
+          });
         }
 
-        // Create FormData for proper multipart/form-data handling
-        const formData = new FormData();
-        formData.append("file", file);
+        if (fileType === "csv") {
+          Object.assign(metadata, {
+            delimiter: autoDetectedMetadata?.delimiter || ",",
+            has_header: autoDetectedMetadata?.hasHeader ?? true,
+          });
+        }
 
-        // Add metadata as a JSON string
-        const metadata = {
-          type: data.config.type,
-          delimiter: data.config.delimiter,
-          encoding: data.config.encoding,
-          hasHeader: Boolean(data.config.hasHeader),
-          sheet: data.config.sheet,
-          skipRows: Number(data.config.skipRows) || 0,
-          parseOptions: data.config.parseOptions,
-        };
-        formData.append("metadata", JSON.stringify(metadata));
+        console.log("File Extension:", fileExtension);
+        console.log("File Type:", fileType);
+        console.log("Prepared Metadata:", metadata);
 
-        // Log what we're sending (for debugging)
-        console.log("Sending file:", file.name, "size:", file.size);
-        console.log("Metadata:", metadata);
-
-        // Use dataSourceApi.uploadFile with proper content type
         const result = await dataSourceApi.uploadFile(
-          file, // Send the file directly, not formData
-          metadata, // Send the metadata object
+          file,
+          metadata,
           (progress) => {
             console.log("Upload progress:", progress);
           }
         );
 
-        console.log("Upload result:", result);
+        setUploadedMetadata(metadata);
         onSubmit(result.data);
         reset();
       } catch (err) {
@@ -110,9 +255,18 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
         );
       }
     },
-    [onSubmit, reset]
+    [onSubmit, reset, autoDetectedMetadata]
   );
 
+  // Memoized supported formats text
+  const supportedFormatsText = useMemo(() => {
+    return Object.values(FILE_SOURCE_CONSTANTS.supportedFormats)
+      .flat()
+      .map((format) => format.toUpperCase().slice(1))
+      .join(", ");
+  }, []);
+
+  // Memoized file preview
   const renderFilePreview = useMemo(() => {
     if (!selectedFiles?.length) return null;
 
@@ -128,13 +282,6 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
     );
   }, [selectedFiles]);
 
-  const supportedFormatsText = useMemo(() => {
-    return Object.values(FILE_SOURCE_CONSTANTS.supportedFormats)
-      .flat()
-      .map((format) => format.toUpperCase().slice(1))
-      .join(", ");
-  }, []);
-
   return (
     <Card>
       <CardHeader>
@@ -148,6 +295,63 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
               <AlertTitle>Upload Error</AlertTitle>
               <AlertDescription>{error.message}</AlertDescription>
             </Alert>
+          )}
+
+          {/* Pre-Upload Metadata Detection Preview */}
+          {autoDetectedMetadata && !uploadedMetadata && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+              <h4 className="text-sm font-semibold mb-2">Detected Metadata</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <p>File Type: {autoDetectedMetadata.type}</p>
+                {autoDetectedMetadata.delimiter && (
+                  <p>
+                    Delimiter:{" "}
+                    {autoDetectedMetadata.delimiter === "\t"
+                      ? "Tab"
+                      : autoDetectedMetadata.delimiter}
+                  </p>
+                )}
+                <p>Encoding: {autoDetectedMetadata.encoding}</p>
+                <p>
+                  Has Header: {autoDetectedMetadata.hasHeader ? "Yes" : "No"}
+                </p>
+                {autoDetectedMetadata.sheet && (
+                  <p>Sheet: {autoDetectedMetadata.sheet}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Post-Upload Metadata Display */}
+          {uploadedMetadata && (
+            <div className="mt-4 p-4 bg-green-50 rounded-lg">
+              <h4 className="text-sm font-semibold mb-2">Uploaded Metadata</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <p>File Type: {uploadedMetadata.file_type}</p>
+                {uploadedMetadata.delimiter && (
+                  <p>
+                    Delimiter:{" "}
+                    {uploadedMetadata.delimiter === "\t"
+                      ? "Tab"
+                      : uploadedMetadata.delimiter}
+                  </p>
+                )}
+                <p>Encoding: {uploadedMetadata.encoding}</p>
+                <p>Has Header: {uploadedMetadata.has_header ? "Yes" : "No"}</p>
+                <p>Skip Rows: {uploadedMetadata.skip_rows}</p>
+                {uploadedMetadata.parse_options && (
+                  <>
+                    <p>
+                      Date Format: {uploadedMetadata.parse_options.date_format}
+                    </p>
+                    <p>
+                      Null Values:{" "}
+                      {uploadedMetadata.parse_options.null_values.join(", ")}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
           )}
 
           <div className="space-y-4">
@@ -180,64 +384,6 @@ export const FileSourceForm: React.FC<FileSourceFormProps> = ({
             )}
 
             {renderFilePreview}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  File Type
-                </label>
-                <select
-                  {...register("config.type")}
-                  className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                >
-                  <option value="csv">CSV</option>
-                  <option value="json">JSON</option>
-                  <option value="parquet">Parquet</option>
-                  <option value="excel">Excel</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Delimiter
-                </label>
-                <input
-                  type="text"
-                  {...register("config.delimiter", {
-                    required: "Delimiter is required",
-                  })}
-                  className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                />
-                {errors.config?.delimiter && (
-                  <p className="text-sm text-red-600">
-                    {errors.config.delimiter.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Encoding
-                </label>
-                <input
-                  type="text"
-                  {...register("config.encoding")}
-                  className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Skip Rows
-                </label>
-                <input
-                  type="number"
-                  {...register("config.skipRows")}
-                  className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  min="0"
-                />
-              </div>
-            </div>
           </div>
 
           {uploadProgress > 0 && (

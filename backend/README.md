@@ -763,3 +763,34 @@ Secure data handling
 Flexible processing pipeline
 Controlled workflow
 Quality assurance at each step
+
+
+"""
+File Upload API Documentation
+
+Endpoint: POST /api/v1/data-sources/file/upload
+
+Expected Request Format:
+- file: The file to upload (multipart/form-data)
+- metadata: A JSON string with the following structure:
+  {
+    "file_type": "csv",       // Required: Type of file (csv, excel, etc.)
+    "encoding": "utf-8",      // Optional: File encoding (default: utf-8)
+    "delimiter": ",",         // Optional: Delimiter for CSV (default: ,)
+    "has_header": true,       // Optional: Whether file has header (default: true)
+    "skip_rows": 0,           // Optional: Rows to skip (default: 0)
+    "sheet_name": "",         // Optional: Excel sheet name (default: "")
+    "tags": ["data", "sales"] // Optional: Tags for categorization
+  }
+
+Response Format:
+{
+  "status": "success",        // Status: success or error
+  "staged_id": "uuid",        // ID of the staged file
+  "control_point_id": "uuid", // ID of the control point
+  "tracking_url": "/url",     // URL to track processing status
+  "upload_status": "completed", // Status of the upload
+  "error": null,              // Error message if failed
+  "message": "Success"        // Human-readable message
+}
+"""

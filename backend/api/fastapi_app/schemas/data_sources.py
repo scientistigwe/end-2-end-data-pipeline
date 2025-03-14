@@ -220,13 +220,16 @@ class DBMetadataResponseSchema(StagingResponseSchema):
 
 # File Source Schemas
 class FileUploadRequestSchema(StagingRequestSchema):
-    filename: str
-    content_type: str
-    chunk_number: int
-    total_chunks: int
-    chunk_size: int
-    total_size: int
-    identifier: str
+    """Schema for file upload request"""
+    # This schema represents what should be sent alongside the file
+    file_type: str = Field(..., description="Type of file (csv, excel, etc.)")
+    encoding: str = Field("utf-8", description="File encoding")
+    delimiter: Optional[str] = Field(",", description="Delimiter for CSV files")
+    has_header: bool = Field(True, description="Whether file has a header row")
+    skip_rows: int = Field(0, description="Number of rows to skip")
+    sheet_name: Optional[str] = Field("", description="Sheet name for Excel files")
+    tags: List[str] = Field(default_factory=list, description="Tags for categorization")
+    description: Optional[str] = Field(None, description="File description")
 
 
 class FileUploadResponseSchema(StagingResponseSchema):

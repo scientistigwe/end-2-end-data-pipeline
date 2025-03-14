@@ -24,7 +24,7 @@ export const AuthLayout: React.FC = () => {
                 className="text-xl font-semibold text-foreground
                 transition-colors group-hover:text-primary"
               >
-                Analytix Flow
+                My Assistant Data Pipeline
               </span>
             </Link>
 

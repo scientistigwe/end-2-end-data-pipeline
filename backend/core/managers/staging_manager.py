@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timedelta
 import aiofiles
+import uuid
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -14,10 +15,19 @@ from ..messaging.event_types import (
     MessageMetadata,
     StagingContext,
     StagingState,
-    ManagerState
+    ManagerState,
+    ComponentType
 )
 from .base.base_manager import BaseManager
 from db.repository.staging import StagingRepository
+from db.models.staging.processing import (
+    StagedAnalyticsOutput,
+    StagedInsightOutput,
+    StagedDecisionOutput,
+    StagedMonitoringOutput,
+    StagedQualityOutput,
+    StagedRecommendationOutput
+)
 
 logger = logging.getLogger(__name__)
 
@@ -337,34 +347,64 @@ class StagingManager(BaseManager):
             # Validate storage limits
             await self._validate_storage_limits(data)
 
-            # Generate storage reference and stage key
-            storage_ref = f"{datetime.now().timestamp()}_{source_type}"
-            stage_key = f"stage_{datetime.now().timestamp()}"  # Add this line
+            # Determine appropriate output type
+            type_mapping = {
+                'file': 'ANALYTICS',
+                'csv': 'ANALYTICS',
+                'excel': 'ANALYTICS',
+                'database': 'DECISION',
+                'api': 'INSIGHT',
+            }
+            output_type = type_mapping.get(source_type, 'ANALYTICS')
 
-            # Store data
-            storage_path = self.storage_path / storage_ref
-            await self._store_data_by_type(storage_path, data, source_type)
+            # Force a stage_key if not present
+            if 'stage_key' not in metadata or metadata['stage_key'] is None:
+                metadata['stage_key'] = f"{source_type}_{datetime.now().timestamp()}_{uuid.uuid4().hex}"
 
-            # Create repository record with stage_key
-            stored_resource = await self.repository.store_staged_resource(
-                pipeline_id=metadata.get('pipeline_id'),
-                data={
-                    'stage_key': stage_key,  # Add this line
-                    'storage_location': str(storage_path),
-                    'resource_type': source_type,
-                    'size_bytes': storage_path.stat().st_size,
-                    **metadata
+            # Log for debugging
+            logger.info(f"In store_data - stage_key: {metadata.get('stage_key')}")
+
+            # Ensure component_type is set correctly
+            if 'component_type' in metadata:
+                # Map to database enum values
+                component_mapping = {
+                    'analytics.service': 'ANALYTICS',
+                    'analytics': 'ANALYTICS',
+                    'ANALYTICS_SERVICE': 'ANALYTICS',
+                    # ... other mappings
                 }
+
+                if isinstance(metadata['component_type'], str):
+                    metadata['component_type'] = component_mapping.get(metadata['component_type'], 'ANALYTICS')
+            else:
+                metadata['component_type'] = output_type
+
+            # Create a new metadata dictionary that guarantees the stage_key is present
+            fixed_metadata = {
+                'stage_key': metadata['stage_key'],  # Ensure this is copied
+                **metadata
+            }
+
+            logger.info(f"Before repository call - stage_key: {fixed_metadata.get('stage_key')}")
+
+            # Create staged output with the fixed metadata
+            stored_resource = await self.repository.create_staged_output(
+                fixed_metadata,  # Use the fixed metadata
+                output_type=output_type,
+                pipeline_id=metadata.get('pipeline_id'),
+                user_id=metadata.get('user_id')
             )
 
             return {
                 'status': 'success',
                 'staged_id': str(stored_resource.id),
-                'reference': storage_ref
+                'reference': metadata.get('stage_key')
             }
 
         except Exception as e:
-            logger.error(f"Data storage failed: {str(e)}")
+            logger.error(f"Data storage failed: {str(e)}", exc_info=True)
+            # Log the state of metadata for debugging
+            logger.error(f"Failed metadata: {metadata}")
             raise
 
     async def _store_data_by_type(self, path: Path, data: Any, source_type: str) -> None:

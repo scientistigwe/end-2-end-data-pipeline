@@ -1,5 +1,6 @@
 # backend/data/source/file/file_handler.py
 
+import uuid
 import logging
 from typing import Dict, Any, Optional, BinaryIO, List
 from datetime import datetime
@@ -8,9 +9,11 @@ import aiofiles
 import hashlib
 
 from core.managers.staging_manager import StagingManager
+from core.messaging.event_types import ComponentType
 from .file_validator import FileValidator
 
 logger = logging.getLogger(__name__)
+
 
 class FileHandler:
     """Handler for file processing operations"""
@@ -51,6 +54,13 @@ class FileHandler:
                     'format': content_type,
                     'original_filename': filename,
                     'content_type': content_type,
+
+                    # Add defaults for required fields
+                    'component_type': 'ANALYTICS',
+                    'model_type': 'DEFAULT',  # Default value for required model_type field
+                    'status': 'PENDING',
+
+                    # Including any provided metadata
                     **(metadata or {})
                 }
 
@@ -95,36 +105,51 @@ class FileHandler:
             async with aiofiles.open(file_path, 'rb') as f:
                 content = await f.read()
 
-            # Ensure required fields are present
-            if 'stage_key' not in metadata:
-                raise ValueError("stage_key is required")
-            if 'pipeline_id' not in metadata:
-                raise ValueError("pipeline_id is required")
+            # Generate or use existing stage key
+            stage_key = metadata.get('stage_key') or f"file_{datetime.now().timestamp()}_{uuid.uuid4().hex}"
+            pipeline_id = metadata.get('pipeline_id') or str(uuid.uuid4())
 
-            # Create staging metadata
+            # Ensure metadata contains stage_key
+            metadata['stage_key'] = stage_key
+
+            # Create staging metadata with all required fields
             staging_metadata = {
-                'stage_key': metadata['stage_key'],
-                'pipeline_id': metadata['pipeline_id'],
-                'resource_type': 'file',
-                'storage_location': str(file_path),
-                'size_bytes': len(content),
-                'file_info': file_info,
-                'metadata': {
-                    'filename': filename,
+                'stage_key': stage_key,
+                'pipeline_id': pipeline_id,
+                'component_type': 'ANALYTICS',  # Use correct enum value
+                'model_type': 'DEFAULT',  # Required field for staged_analytics_outputs
+                'status': 'PENDING',
+                'storage_path': str(file_path),
+                'data_size': len(content),
+                'meta_data': {
                     'original_filename': filename,
-                    **metadata
-                }
+                    'file_info': file_info,
+                    **{k: v for k, v in metadata.items() if
+                       k not in ['stage_key', 'pipeline_id', 'component_type', 'model_type', 'status']}
+                },
+                'is_temporary': True,
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow(),
             }
 
+            # Ensure any other required fields are set
+            if 'source_id' not in staging_metadata:
+                staging_metadata['source_id'] = None  # Set to None if not provided
+
+            # Log the metadata we're passing to the staging manager
+            logger.info(f"Staging file with metadata: {staging_metadata}")
+
             # Store in staging manager
-            return await self.staging_manager.store_data(
+            result = await self.staging_manager.store_data(
                 data=content,
                 metadata=staging_metadata,
                 source_type='file'
             )
 
+            return result['staged_id']
+
         except Exception as e:
-            logger.error(f"File staging error: {str(e)}")
+            logger.error(f"File staging error: {str(e)}", exc_info=True)
             raise
 
     def list_files(self, user_id: str) -> List[Dict[str, Any]]:

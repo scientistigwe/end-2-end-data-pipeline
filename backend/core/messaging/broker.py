@@ -390,6 +390,49 @@ class MessageBroker:
             self.stats['messages_failed'] += 1
             raise
 
+    async def publish_and_wait(
+            self,
+            message: ProcessingMessage,
+            timeout: int = 30,
+            retry_count: int = 1
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Publish a message and wait for a response.
+
+        A simplified version of request_response that combines publishing
+        with waiting for a response in a single method.
+
+        Args:
+            message: The message to publish
+            timeout: Timeout in seconds (default: 30)
+            retry_count: Number of retry attempts (default: 1)
+
+        Returns:
+            Response message content or None on timeout
+        """
+        try:
+            # Generate a correlation ID if not present
+            if not message.metadata.correlation_id:
+                message.metadata.correlation_id = str(uuid.uuid4())
+
+            # Set requires_response flag
+            message.metadata.requires_response = True
+
+            # Use existing request_response functionality
+            return await self.request_response(
+                message=message,
+                timeout=timeout,
+                retry_count=retry_count
+            )
+
+        except TimeoutError:
+            logger.error(f"Timeout waiting for response to {message.message_type}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in publish_and_wait: {str(e)}")
+            return None
+
     async def _handle_broadcast(self, message: ProcessingMessage) -> None:
         """Handle broadcast messages to all relevant components"""
         try:

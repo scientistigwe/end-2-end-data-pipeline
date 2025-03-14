@@ -1,4 +1,5 @@
 // src/report/api/reportsApi.ts
+import axios from 'axios';
 import { RouteHelper } from '@/common/api/routes';
 import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { 
@@ -32,6 +33,9 @@ interface ReportErrorMetadata {
 
 class ReportsApi {
   private client = baseAxiosClient;
+  // Create a separate instance for reports-specific interceptors
+  private reportAxios: AxiosInstance;
+  
   private static readonly ERROR_METADATA: Record<number, ReportErrorMetadata> = {
     [HTTP_STATUS.NOT_FOUND]: {
       retryable: false,
@@ -46,25 +50,40 @@ class ReportsApi {
   };
 
   constructor() {
-  this.client.setServiceConfig({
-    service: ServiceType.REPORTS,
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    }
-  });
-  this.setupReportInterceptors();  // Keep your existing interceptors
-}
+    // Configure shared client for standard requests
+    this.client.setServiceConfig({
+      service: ServiceType.REPORTS,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    // Create a private axios instance just for reports API
+    // This prevents interceptors from affecting other API calls
+    const baseInstance = this.client.getAxiosInstance();
+    this.reportAxios = axios.create({
+      baseURL: baseInstance.defaults.baseURL,
+      timeout: baseInstance.defaults.timeout,
+      withCredentials: true,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    // Set up interceptors only on this private instance
+    this.setupReportInterceptors();
+  }
+  
   private setupReportInterceptors(): void {
-    const instance = this.client.getAxiosInstance();
-    if (!instance) return;
-
-    instance.interceptors.request.use(
+    // Apply interceptors only to the reports-specific axios instance
+    this.reportAxios.interceptors.request.use(
       this.handleRequestInterceptor,
       this.handleRequestError
     );
 
-    instance.interceptors.response.use(
+    this.reportAxios.interceptors.response.use(
       this.handleResponseInterceptor,
       this.handleResponseError
     );

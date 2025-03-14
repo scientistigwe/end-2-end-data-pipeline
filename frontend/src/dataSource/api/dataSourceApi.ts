@@ -1,6 +1,7 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { baseAxiosClient, ServiceType } from '@/common/api/client/baseClient';
 import { RouteHelper } from '@/common/api/routes';
+import { API_CONFIG } from '@/common/api/client/config';
 import type { ApiRequestConfig, ApiResponse } from '@/common/types/api';
 import type { 
     BaseDataSourceConfig,
@@ -17,8 +18,11 @@ import type {
 
 class DataSourceApi {
     private client = baseAxiosClient;
+    // Create a dedicated axios instance that won't be affected by other services' interceptors
+    private dsAxios: AxiosInstance;
 
     constructor() {
+        // Configure shared client for standard operations
         this.client.setServiceConfig({
             service: ServiceType.DATA_SOURCES,
             headers: {
@@ -26,10 +30,19 @@ class DataSourceApi {
             }
         });
         
-        // No automatic auth initialization - rely on the app's auth state
+        // Create a dedicated instance for data source operations
+        const baseInstance = this.client.getAxiosInstance();
+        this.dsAxios = axios.create({
+            baseURL: baseInstance.defaults.baseURL,
+            timeout: baseInstance.defaults.timeout,
+            withCredentials: true,
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
     }
 
-    // File Operations with proper typing
+    // File Operations with isolated axios instance
     async uploadFile(
         file: File,
         metadata: Record<string, any>,
@@ -43,40 +56,65 @@ class DataSourceApi {
                 size: file.size,
             });
             
+            // Simplify metadata to match backend expectations exactly
+            const simplifiedMetadata = {
+                file_type: metadata.file_type || metadata.type,
+                encoding: metadata.encoding || 'utf-8',
+                skip_rows: metadata.skip_rows || metadata.skipRows || 0,
+                tags: metadata.tags || ['data'],
+                parse_options: {
+                    date_format: metadata.parse_options?.date_format || 
+                               metadata.parseOptions?.dateFormat || 
+                               'YYYY-MM-DD',
+                    null_values: metadata.parse_options?.null_values || 
+                               metadata.parseOptions?.nullValues || 
+                               ['', 'null', 'NA', 'N/A']
+                }
+            };
+            
+            // Add file-type specific fields
+            if (simplifiedMetadata.file_type === 'csv') {
+                simplifiedMetadata['delimiter'] = metadata.delimiter || ',';
+                simplifiedMetadata['has_header'] = metadata.has_header ?? metadata.hasHeader ?? true;
+            }
+            
+            if (simplifiedMetadata.file_type === 'excel') {
+                simplifiedMetadata['sheet_name'] = metadata.sheet_name || metadata.sheet || 'Sheet1';
+                simplifiedMetadata['has_header'] = metadata.has_header ?? metadata.hasHeader ?? true;
+            }
+            
+            console.log('Simplified metadata:', simplifiedMetadata);
+            
             // Create form data properly
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('metadata', JSON.stringify(metadata));
+            formData.append('metadata', JSON.stringify(simplifiedMetadata));
     
-            // Get direct axios instance
-            const axiosInstance = this.client.getAxiosInstance();
-            
-            // Construct URL without trailing slash - your API route doesn't have one
-            const baseUrl = axiosInstance.defaults.baseURL || '';
+            // Construct URL without trailing slash
+            const baseUrl = this.dsAxios.defaults.baseURL || '';
             const uploadUrl = `${baseUrl.replace(/\/$/, '')}/data-sources/file/upload`;
             
             console.log('Uploading to URL:', uploadUrl);
     
-            // Use direct axios request for maximum control
-            const response = await axiosInstance({
-                method: 'POST',
-                url: uploadUrl,
-                data: formData,
-                withCredentials: true,
-                headers: {
-                    // Don't set Content-Type - let the browser set it with the boundary parameter
-                },
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity,
-                onUploadProgress: (progressEvent) => {
-                    if (onProgress && progressEvent.total) {
-                        const progress = Math.round(
-                            (progressEvent.loaded * 100) / progressEvent.total
-                        );
-                        onProgress(progress);
+            // Use our isolated axios instance for the request
+            const response = await this.dsAxios.post(
+                uploadUrl,
+                formData,
+                {
+                    withCredentials: true,
+                    // Don't set Content-Type - let the browser set it
+                    maxContentLength: Infinity,
+                    maxBodyLength: Infinity,
+                    onUploadProgress: (progressEvent) => {
+                        if (onProgress && progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) / progressEvent.total
+                            );
+                            onProgress(progress);
+                        }
                     }
                 }
-            });
+            );
             
             return {
                 success: true,
@@ -91,24 +129,57 @@ class DataSourceApi {
                     statusText: error.response?.statusText,
                     data: error.response?.data
                 });
+                
+                // Return a standardized error response
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message || 'File upload failed',
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
             }
             
+            // Re-throw non-axios errors
             throw error;
         }
     }
     
     async getFileMetadata(fileId: string): Promise<ApiResponse<FileMetadataResponse>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getNestedRoute(
-                    'DATA_SOURCES',
-                    'FILE',
-                    'METADATA',
-                    { file_id: fileId }
-                )
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES',
+                'FILE',
+                'METADATA',
+                { file_id: fileId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Get file metadata error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -118,17 +189,37 @@ class DataSourceApi {
         parseOptions: FileParseOptions
     ): Promise<ApiResponse<FileParseResponse>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute(
-                    'DATA_SOURCES',
-                    'FILE',
-                    'PARSE',
-                    { file_id: fileId }
-                ),
-                parseOptions
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES',
+                'FILE',
+                'PARSE',
+                { file_id: fileId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, parseOptions, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('File parsing error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -144,12 +235,33 @@ class DataSourceApi {
         }
     }>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getRoute('DATA_SOURCES', 'LIST'),
-                { params: filters }
-            );
+            const url = RouteHelper.getRoute('DATA_SOURCES', 'LIST');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                params: filters,
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('List data sources error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -159,23 +271,64 @@ class DataSourceApi {
         config: BaseDataSourceConfig
     ): Promise<ApiResponse<BaseMetadata>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getRoute('DATA_SOURCES', 'CREATE'),
-                config
-            );
+            const url = RouteHelper.getRoute('DATA_SOURCES', 'CREATE');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, config, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Create data source error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
 
     async deleteDataSource(sourceId: string): Promise<ApiResponse<void>> {
         try {
-            return await this.client.executeDelete(
-                RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: sourceId })
-            );
+            const url = RouteHelper.getRoute('DATA_SOURCES', 'DELETE', { source_id: sourceId });
+            
+            // Use isolated instance
+            const response = await this.dsAxios.delete(url, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Delete data source error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -183,11 +336,32 @@ class DataSourceApi {
     // Validation and Preview
     async validateDataSource(sourceId: string): Promise<ApiResponse<ValidationResult>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getRoute('DATA_SOURCES', 'VALIDATE', { source_id: sourceId })
-            );
+            const url = RouteHelper.getRoute('DATA_SOURCES', 'VALIDATE', { source_id: sourceId });
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, {}, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Validate data source error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -197,12 +371,33 @@ class DataSourceApi {
         options?: { limit?: number; offset?: number }
     ): Promise<ApiResponse<PreviewData>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getRoute('DATA_SOURCES', 'PREVIEW', { source_id: sourceId }),
-                { params: options }
-            );
+            const url = RouteHelper.getRoute('DATA_SOURCES', 'PREVIEW', { source_id: sourceId });
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                params: options,
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Preview data error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -212,12 +407,32 @@ class DataSourceApi {
         config: BaseDataSourceConfig['config']
     ): Promise<ApiResponse<SourceConnectionResponse>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'CONNECT'),
-                config
-            );
+            const url = RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'CONNECT');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, config, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Connect database error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -232,12 +447,37 @@ class DataSourceApi {
         fields: Array<{ name: string; type: string }>;
     }>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'QUERY', { connection_id: connectionId }),
-                { query, params }
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES', 
+                'DATABASE', 
+                'QUERY', 
+                { connection_id: connectionId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, { query, params }, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Execute database query error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -253,11 +493,37 @@ class DataSourceApi {
         }>;
     }>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'DATABASE', 'SCHEMA', { connection_id: connectionId })
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES', 
+                'DATABASE', 
+                'SCHEMA', 
+                { connection_id: connectionId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Get database schema error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -267,12 +533,32 @@ class DataSourceApi {
         config: BaseDataSourceConfig['config']
     ): Promise<ApiResponse<SourceConnectionResponse>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'CONNECT'),
-                config
-            );
+            const url = RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'CONNECT');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, config, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Connect API error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -283,12 +569,32 @@ class DataSourceApi {
         isValid: boolean;
     }>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'TEST'),
-                { url }
-            );
+            const apiUrl = RouteHelper.getNestedRoute('DATA_SOURCES', 'API', 'TEST');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(apiUrl, { url }, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Test API endpoint error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -298,12 +604,32 @@ class DataSourceApi {
         config: BaseDataSourceConfig['config']
     ): Promise<ApiResponse<SourceConnectionResponse>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'CONNECT'),
-                config
-            );
+            const url = RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'CONNECT');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, config, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Connect S3 error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -319,12 +645,38 @@ class DataSourceApi {
         }>;
     }>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'S3', 'LIST', { connection_id: connectionId }),
-                { params: { prefix } }
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES', 
+                'S3', 
+                'LIST', 
+                { connection_id: connectionId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                params: { prefix },
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('List S3 objects error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -334,12 +686,32 @@ class DataSourceApi {
         config: BaseDataSourceConfig['config']
     ): Promise<ApiResponse<SourceConnectionResponse>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'CONNECT'),
-                config
-            );
+            const url = RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'CONNECT');
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, config, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Connect stream error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -350,11 +722,37 @@ class DataSourceApi {
         totalMessages: number;
     }>> {
         try {
-            return await this.client.executeGet(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'STREAM', 'METRICS', { connection_id: connectionId })
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES', 
+                'STREAM', 
+                'METRICS', 
+                { connection_id: connectionId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.get(url, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Get stream metrics error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }
@@ -363,11 +761,37 @@ class DataSourceApi {
         connectionId: string
     ): Promise<ApiResponse<void>> {
         try {
-            return await this.client.executePost(
-                RouteHelper.getNestedRoute('DATA_SOURCES', 'CONNECTION', 'DISCONNECT', { connection_id: connectionId })
+            const url = RouteHelper.getNestedRoute(
+                'DATA_SOURCES', 
+                'CONNECTION', 
+                'DISCONNECT', 
+                { connection_id: connectionId }
             );
+            
+            // Use isolated instance
+            const response = await this.dsAxios.post(url, {}, {
+                withCredentials: true
+            });
+            
+            return {
+                success: true,
+                data: response.data?.data || response.data
+            };
         } catch (error) {
             console.error('Disconnect source error:', error);
+            
+            if (axios.isAxiosError(error)) {
+                return {
+                    success: false,
+                    data: null,
+                    error: {
+                        message: error.response?.data?.message || error.message,
+                        code: `HTTP_${error.response?.status || 'ERROR'}`,
+                        details: error.response?.data
+                    }
+                };
+            }
+            
             throw error;
         }
     }

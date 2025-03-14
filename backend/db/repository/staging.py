@@ -1,10 +1,12 @@
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from uuid import UUID
+import uuid
 from sqlalchemy import and_, or_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core.messaging.event_types import ComponentType
 from .base import BaseRepository
 from ..models.staging.base import BaseStagedOutput
 from ..models.staging.processing import (
@@ -36,58 +38,193 @@ class StagingRepository(BaseRepository[BaseStagedOutput]):
         super().__init__(db_session)
 
     async def create_staged_output(
-        self,
-        output_data: Dict[str, Any],
-        output_type: str,
-        pipeline_id: UUID,
-        user_id: Optional[UUID] = None
+            self,
+            output_data: Dict[str, Any],
+            output_type: str,
+            pipeline_id: Optional[UUID] = None,
+            user_id: Optional[UUID] = None
     ) -> BaseStagedOutput:
         """
         Create a new staged output with proper type handling and validation.
-
-        Args:
-            output_data: Output data
-            output_type: Type of output
-            pipeline_id: Associated pipeline ID
-            user_id: Optional user ID for tracking
-
-        Returns:
-            Created staged output instance
         """
         try:
-            # Select appropriate model class based on type
+            # Log incoming data for debugging
+            logger.info(f"Create staged output received stage_key: {output_data.get('stage_key')}")
+
+            # Map component types using the exact database enum values
             model_mapping = {
+                'ANALYTICS': StagedAnalyticsOutput,
+                'analytics.service': StagedAnalyticsOutput,
                 'analytics': StagedAnalyticsOutput,
+                'ANALYTICS_SERVICE': StagedAnalyticsOutput,
+                'INSIGHT': StagedInsightOutput,
+                'insight.service': StagedInsightOutput,
                 'insight': StagedInsightOutput,
+                'INSIGHT_SERVICE': StagedInsightOutput,
+                'DECISION': StagedDecisionOutput,
+                'decision.service': StagedDecisionOutput,
                 'decision': StagedDecisionOutput,
+                'DECISION_SERVICE': StagedDecisionOutput,
+                'MONITORING': StagedMonitoringOutput,
+                'monitoring.service': StagedMonitoringOutput,
                 'monitoring': StagedMonitoringOutput,
+                'MONITORING_SERVICE': StagedMonitoringOutput,
+                'QUALITY': StagedQualityOutput,
+                'quality.service': StagedQualityOutput,
                 'quality': StagedQualityOutput,
+                'QUALITY_SERVICE': StagedQualityOutput,
+                'RECOMMENDATION': StagedRecommendationOutput,
+                'recommendation.service': StagedRecommendationOutput,
                 'recommendation': StagedRecommendationOutput,
+                'RECOMMENDATION_SERVICE': StagedRecommendationOutput,
+                'REPORT': StagedReportOutput,
+                'report.service': StagedReportOutput,
                 'report': StagedReportOutput,
-                'metrics': StagedMetricsOutput,
-                'compliance': StagedComplianceReport
+                'REPORT_SERVICE': StagedReportOutput,
+                'CONTROL': None,  # Add appropriate model if available
+                'METRICS': StagedMetricsOutput,
+                'COMPLIANCE': StagedComplianceReport
             }
 
             model_class = model_mapping.get(output_type)
             if not model_class:
                 raise ValueError(f"Invalid output type: {output_type}")
 
-            # Prepare output data
-            output_data.update({
+            # Get the valid columns for the model
+            valid_columns = [c.name for c in model_class.__table__.columns]
+            logger.info(f"Valid columns: {valid_columns}")
+
+            # CRITICAL CHECK: Force a stage_key if not present or None
+            if 'stage_key' not in output_data or output_data['stage_key'] is None:
+                logger.warning("stage_key missing or None, generating new one")
+                output_data['stage_key'] = f"stage_{datetime.utcnow().timestamp()}_{uuid.uuid4().hex}"
+
+            logger.info(f"Using stage_key: {output_data['stage_key']}")
+
+            # Filter output_data to include only valid columns, but KEEP stage_key even if filtered
+            stage_key = output_data.get('stage_key')  # Store this separately
+
+            # Ensure component_type is one of the exact database enum values
+            if 'component_type' in output_data:
+                # Convert component_type to the correct enum value if needed
+                component_mapping = {
+                    'analytics.service': 'ANALYTICS',
+                    'analytics': 'ANALYTICS',
+                    'ANALYTICS_SERVICE': 'ANALYTICS',
+                    'insight.service': 'INSIGHT',
+                    'insight': 'INSIGHT',
+                    'INSIGHT_SERVICE': 'INSIGHT',
+                    'decision.service': 'DECISION',
+                    'decision': 'DECISION',
+                    'DECISION_SERVICE': 'DECISION',
+                    'monitoring.service': 'MONITORING',
+                    'monitoring': 'MONITORING',
+                    'MONITORING_SERVICE': 'MONITORING',
+                    'quality.service': 'QUALITY',
+                    'quality': 'QUALITY',
+                    'QUALITY_SERVICE': 'QUALITY',
+                    'recommendation.service': 'RECOMMENDATION',
+                    'recommendation': 'RECOMMENDATION',
+                    'RECOMMENDATION_SERVICE': 'RECOMMENDATION',
+                    'report.service': 'REPORT',
+                    'report': 'REPORT',
+                    'REPORT_SERVICE': 'REPORT',
+                }
+
+                if isinstance(output_data['component_type'], str):
+                    if output_data['component_type'] in component_mapping:
+                        output_data['component_type'] = component_mapping[output_data['component_type']]
+                    elif output_data['component_type'] not in ['ANALYTICS', 'INSIGHT', 'DECISION',
+                                                               'MONITORING', 'QUALITY', 'RECOMMENDATION',
+                                                               'REPORT', 'CONTROL', 'METRICS', 'COMPLIANCE']:
+                        # Default if not a valid enum value
+                        output_data['component_type'] = 'ANALYTICS'
+
+            filtered_data = {
+                k: v for k, v in output_data.items()
+                if k in valid_columns or k in ['pipeline_id', 'created_by', 'meta_data']
+            }
+
+            # Explicitly ensure stage_key is added back if it was removed by filtering
+            filtered_data['stage_key'] = stage_key
+
+            logger.info(f"After filtering - stage_key: {filtered_data.get('stage_key')}")
+
+            # Add standard fields with defaults
+            filtered_data.update({
                 'pipeline_id': pipeline_id,
                 'created_by': user_id,
-                'status': 'pending',
-                'created_at': datetime.utcnow(),
-                'updated_at': datetime.utcnow()
+                'status': filtered_data.get('status', 'PENDING'),
+                'created_at': filtered_data.get('created_at', datetime.utcnow()),
+                'updated_at': filtered_data.get('updated_at', datetime.utcnow()),
+                'component_type': output_data.get('component_type', 'ANALYTICS'),
+                'is_temporary': True
             })
 
+            # FINAL CHECK: Ensure stage_key is still present after all updates
+            if 'stage_key' not in filtered_data or filtered_data['stage_key'] is None:
+                logger.warning("stage_key disappeared, adding it back")
+                filtered_data[
+                    'stage_key'] = stage_key or f"final_fallback_{datetime.utcnow().timestamp()}_{uuid.uuid4().hex}"
+
+            logger.info(f"Final data stage_key before create: {filtered_data.get('stage_key')}")
+            logger.info(f"Final filtered_data: {filtered_data}")
+
             # Create the output instance
-            output = await self.create(output_data, model_class)
+            output = await self.create(filtered_data, model_class)
             logger.info(f"Created new staged output of type {output_type}")
             return output
 
         except Exception as e:
-            logger.error(f"Failed to create staged output: {str(e)}")
+            logger.error(f"Failed to create staged output: {str(e)}", exc_info=True)
+            logger.error(f"Failed output_data: {output_data}")
+            raise
+
+
+            model_class = model_mapping.get(output_type)
+            if not model_class:
+                raise ValueError(f"Invalid output type: {output_type}")
+
+            # Get the valid columns for the model
+            valid_columns = [c.name for c in model_class.__table__.columns]
+
+            # Critical check: Ensure stage_key is present and not None
+            if 'stage_key' not in output_data or output_data['stage_key'] is None:
+                logger.warning("stage_key missing or None, generating new one")
+                output_data['stage_key'] = f"stage_{datetime.utcnow().timestamp()}_{uuid.uuid4().hex}"
+
+            logger.info(f"Using stage_key: {output_data['stage_key']}")
+
+
+            # Filter output_data to include only valid columns
+            filtered_data = {
+                k: v for k, v in output_data.items()
+                if k in valid_columns or
+                   k in ['pipeline_id', 'created_by', 'meta_data']
+            }
+
+            # Explicitly ensure stage_key is in filtered_data
+            if 'stage_key' in valid_columns:
+                filtered_data['stage_key'] = output_data['stage_key']
+
+            # Add standard fields with defaults
+            filtered_data.update({
+                'pipeline_id': pipeline_id,
+                'created_by': user_id,
+                'status': filtered_data.get('status', 'PENDING'),
+                'created_at': filtered_data.get('created_at', datetime.utcnow()),
+                'updated_at': filtered_data.get('updated_at', datetime.utcnow()),
+                'component_type': output_data.get('component_type', 'ANALYTICS'),
+                'is_temporary': True
+            })
+
+            # Create the output instance
+            output = await self.create(filtered_data, model_class)
+            logger.info(f"Created new staged output of type {output_type}")
+            return output
+
+        except Exception as e:
+            logger.error(f"Failed to create staged output: {str(e)}", exc_info=True)
             raise
 
     async def get_pipeline_outputs(

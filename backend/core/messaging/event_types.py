@@ -630,7 +630,6 @@ class MessageType(Enum):
 
     # Pipeline Stage Management
     PIPELINE_STAGE_START_REQUEST = "pipeline.stage.start.request"
-    PIPELINE_STAGE_COMPLETE = "pipeline.stage.complete"
     PIPELINE_STAGE_COMPLETE_NOTIFY = "pipeline.stage.complete.notify"
     PIPELINE_STAGE_ERROR = 'pipeline.stage.error'
     PIPELINE_STAGE_STATUS_UPDATE = "pipeline.stage.status.update"
@@ -725,23 +724,22 @@ class MessageType(Enum):
 
     #........................................Staging Types..........................................................
     # Staging Service Management
-    STAGING_SERVICE_START = "staging.service.start" # In use
-    STAGING_SERVICE_STATUS = "staging.service.start" # In use
-    STAGING_SERVICE_COMPLETE = "staging.service.complete" # In use
-    STAGING_SERVICE_ERROR = "staging.service.error" # In use
-    STAGING_SERVICE_DECISION = "staging.service.decision" # In use
-    STAGING_SERVICE_UPDATE = "staging.service.update" # In use
+    STAGING_SERVICE_START = "staging.service.start"
+    STAGING_SERVICE_STATUS = "staging.service.status"
+    STAGING_SERVICE_COMPLETE = "staging.service.complete"
+    STAGING_SERVICE_ERROR = "staging.service.error"
+    STAGING_SERVICE_DECISION = "staging.service.decision"
 
     # Staging Handler Management
-    STAGING_HANDLER_START = "staging.handler.start" # In use
-    STAGING_HANDLER_STORE = "staging.handler.store" # In use
-    STAGING_HANDLER_DELETE = "staging.handler.delete" # In use
-    STAGING_HANDLER_RETRIEVE = "staging.handler.retrieve" # In use
-    STAGING_HANDLER_DECISION = "staging.handler.decision" # In use
-    STAGING_HANDLER_UPDATE = "staging.handler.update" # In use
-    STAGING_HANDLER_COMPLETE = "staging.handler.complete" # In use
-    STAGING_HANDLER_STATUS = "staging.handler.status" # In use
-    STAGING_HANDLER_ERROR = "staging.handler.error" # In use
+    STAGING_HANDLER_START = "staging.handler.start"
+    STAGING_HANDLER_STORE = "staging.handler.store"
+    STAGING_HANDLER_DELETE = "staging.handler.delete"
+    STAGING_HANDLER_RETRIEVE = "staging.handler.retrieve"
+    STAGING_HANDLER_DECISION = "staging.handler.decision"
+    STAGING_HANDLER_UPDATE = "staging.handler.update"
+    STAGING_HANDLER_COMPLETE = "staging.handler.complete"
+    STAGING_HANDLER_STATUS = "staging.handler.status"
+    STAGING_HANDLER_ERROR = "staging.handler.error"
 
     # Staging Data Operations
     STAGING_STORE_REQUEST = "staging.store.request"
@@ -755,10 +753,6 @@ class MessageType(Enum):
     STAGING_ACCESS_REQUEST = "staging.access.request"
     STAGING_ACCESS_GRANTED = "staging.access.granted"
     STAGING_ACCESS_DENIED = "staging.access.denied"
-
-    # Staging Versioning
-    STAGING_VERSION_CREATE_REQUEST = "staging.version.create.request"
-    STAGING_VERSION_CREATE_COMPLETE = "staging.version.create.complete"
 
     # Staging Status and Metrics
     STAGING_STATUS_REQUEST = "staging.status.request"
@@ -913,6 +907,79 @@ class MessageType(Enum):
     MONITORING_CONFIG_UPDATE = "monitoring.config.update"
     MONITORING_CLEANUP_REQUEST = "monitoring.cleanup.request"
     MONITORING_BACKUP_REQUEST = "monitoring.backup.request"
+
+    # Processor Communication
+    PROCESSOR_REGISTER_REQUEST = "processor.register.request"
+    PROCESSOR_REGISTER_RESPONSE = "processor.register.response"
+    PROCESSOR_HEARTBEAT = "processor.heartbeat"
+    PROCESSOR_STATUS_UPDATE = "processor.status.update"
+    PROCESSOR_CAPABILITY_UPDATE = "processor.capability.update"
+    PROCESSOR_MESSAGE_REQUEST = "processor.message.request"
+    PROCESSOR_MESSAGE_RESPONSE = "processor.message.response"
+    PROCESSOR_ERROR_NOTIFY = "processor.error.notify"
+    PROCESSOR_SHUTDOWN_REQUEST = "processor.shutdown.request"
+    PROCESSOR_SHUTDOWN_COMPLETE = "processor.shutdown.complete"
+
+    # Frontend to CPM Direct Communication
+    FRONTEND_CPM_INITIALIZE = "frontend.cpm.initialize"
+    FRONTEND_CPM_STATUS_REQUEST = "frontend.cpm.status.request"
+    FRONTEND_CPM_STATUS_RESPONSE = "frontend.cpm.status.response"
+    FRONTEND_CPM_COMMAND_REQUEST = "frontend.cpm.command.request"
+    FRONTEND_CPM_COMMAND_RESPONSE = "frontend.cpm.command.response"
+    FRONTEND_CPM_ERROR_NOTIFY = "frontend.cpm.error.notify"
+    FRONTEND_CPM_HEARTBEAT = "frontend.cpm.heartbeat"
+    FRONTEND_CPM_CONFIG_UPDATE = "frontend.cpm.config.update"
+    FRONTEND_CPM_CONFIG_RESPONSE = "frontend.cpm.config.response"
+
+    # Pipeline Service Management
+    PIPELINE_SERVICE_START = "pipeline_service_start"
+    PIPELINE_SERVICE_STATUS = "pipeline_service_status"
+    PIPELINE_SERVICE_COMPLETE = "pipeline_service_complete"
+    PIPELINE_SERVICE_ERROR = "pipeline_service_error"
+    PIPELINE_SERVICE_DECISION = "pipeline_service_decision"
+
+    # Pipeline Handler Management
+    PIPELINE_HANDLER_START = "pipeline_handler_start"
+    PIPELINE_HANDLER_STAGE_START = "pipeline_handler_stage_start"
+    PIPELINE_HANDLER_STAGE_COMPLETE = "pipeline_handler_stage_complete"
+    PIPELINE_HANDLER_STAGE_ERROR = "pipeline_handler_stage_error"
+    PIPELINE_HANDLER_DECISION = "pipeline_handler_decision"
+    PIPELINE_HANDLER_UPDATE = "pipeline_handler_update"
+    PIPELINE_HANDLER_COMPLETE = "pipeline_handler_complete"
+    PIPELINE_HANDLER_STATUS = "pipeline_handler_status"
+    PIPELINE_HANDLER_ERROR = "pipeline_handler_error"
+
+    # Pipeline Stage Management
+    PIPELINE_STAGE_START = "pipeline_stage_start"
+    PIPELINE_STAGE_COMPLETE = "pipeline_stage_complete"
+    PIPELINE_STAGE_ERROR = "pipeline_stage_error"
+    PIPELINE_STAGE_STATUS = "pipeline_stage_status"
+    PIPELINE_STAGE_METRICS = "pipeline_stage_metrics"
+
+    # Pipeline Data Flow
+    PIPELINE_DATA_READY = "pipeline_data_ready"
+    PIPELINE_DATA_PROCESSED = "pipeline_data_processed"
+    PIPELINE_DATA_ERROR = "pipeline_data_error"
+    PIPELINE_DATA_VALIDATION = "pipeline_data_validation"
+
+    # Pipeline Control
+    PIPELINE_PAUSE = "pipeline_pause"
+    PIPELINE_RESUME = "pipeline_resume"
+    PIPELINE_CANCEL = "pipeline_cancel"
+    PIPELINE_RETRY = "pipeline_retry"
+
+    # Pipeline Status and Metrics
+    PIPELINE_STATUS_REQUEST = "pipeline_status_request"
+    PIPELINE_STATUS_RESPONSE = "pipeline_status_response"
+    PIPELINE_METRICS_UPDATE = "pipeline_metrics_update"
+    PIPELINE_HEALTH_CHECK = "pipeline_health_check"
+
+    # Pipeline Recovery
+    PIPELINE_RECOVERY_START = "pipeline_recovery_start"
+    PIPELINE_RECOVERY_COMPLETE = "pipeline_recovery_complete"
+    PIPELINE_RECOVERY_ERROR = "pipeline_recovery_error"
+    PIPELINE_CHECKPOINT = "pipeline_checkpoint"
+    PIPELINE_RESTORE = "pipeline_restore"
 
     @property
     def domain(self) -> str:
@@ -2552,4 +2619,28 @@ for enum_value in MessageType:
             [msg for msg in MessageType if msg.domain == domain],
             EventPatternValidator.create_domain_validator(domain)
         )
+
+
+@dataclass
+class ProcessorContext:
+    """Context for processor operations"""
+    processor_id: str
+    capabilities: List[str]
+    status: str
+    last_heartbeat: datetime
+    message_queue_size: int
+    active_tasks: int
+    error_count: int
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class FrontendCPMContext:
+    """Context for frontend-CPM direct communication"""
+    session_id: str
+    user_id: str
+    last_heartbeat: datetime
+    connection_status: str
+    pending_commands: List[str]
+    error_count: int
+    metadata: Dict[str, Any] = field(default_factory=dict)
 

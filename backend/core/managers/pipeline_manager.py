@@ -3,6 +3,10 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import uuid
+from enum import Enum
+from pathlib import Path
+import json
+from dataclasses import dataclass, field
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -16,8 +20,46 @@ from ..messaging.event_types import (
     ManagerState
 )
 from .base.base_manager import BaseManager
+from ..config.settings import Settings
+from ..utils.metrics import MetricsCollector
 
 logger = logging.getLogger(__name__)
+
+
+class PipelineState(str, Enum):
+    """Pipeline state enumeration"""
+    INITIALIZED = "initialized"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RECOVERING = "recovering"
+
+@dataclass
+class PipelineStage:
+    """Pipeline stage information"""
+    name: str
+    status: ProcessingStatus
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    error: Optional[str] = None
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    retry_count: int = 0
+    max_retries: int = 3
+
+@dataclass
+class PipelineContext:
+    """Pipeline execution context"""
+    pipeline_id: str
+    state: PipelineState
+    stages: Dict[str, PipelineStage] = field(default_factory=dict)
+    current_stage: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    checkpoint_data: Dict[str, Any] = field(default_factory=dict)
 
 
 class PipelineManager(BaseManager):
@@ -25,10 +67,12 @@ class PipelineManager(BaseManager):
     Responsible for orchestrating the pipeline process while maintaining workflow state."""
 
     def __init__(
-            self,
-            message_broker: MessageBroker,
-            component_name: str = "pipeline_manager",
-            domain_type: str = "pipeline"
+        self,
+        message_broker: MessageBroker,
+        settings: Settings,
+        metrics_collector: MetricsCollector,
+        component_name: str = "pipeline_manager",
+        domain_type: str = "pipeline"
     ):
         # Call base class initialization first
         super().__init__(
@@ -36,16 +80,20 @@ class PipelineManager(BaseManager):
             component_name=component_name,
             domain_type=domain_type
         )
-
-        # Active processes and contexts
-        self.active_processes: Dict[str, PipelineContext] = {}
-
-        # Pipeline thresholds and configuration
-        self.pipeline_thresholds = {
-            "quality_threshold": 0.8,
-            "performance_threshold": 0.7,
-            "max_processing_time": 3600  # 1 hour
-        }
+        
+        self.settings = settings
+        self.metrics_collector = metrics_collector
+        
+        # Resource limits
+        self.max_concurrent_pipelines = settings.get("pipeline.max_concurrent_pipelines", 10)
+        self.max_retries_per_stage = settings.get("pipeline.max_retries_per_stage", 3)
+        self.stage_timeout = settings.get("pipeline.stage_timeout", 3600)  # 1 hour
+        
+        # Initialize message handlers
+        self._setup_message_handlers()
+        
+        # Start monitoring tasks
+        self._start_monitoring_tasks()
 
     async def _initialize_manager(self) -> None:
         """Initialize pipeline manager components"""
@@ -989,3 +1037,766 @@ class PipelineManager(BaseManager):
         except Exception as e:
             self.logger.error(f"Pipeline cleanup failed: {str(e)}")
             raise
+
+    def _start_monitoring_tasks(self) -> None:
+        """Start background monitoring tasks"""
+        asyncio.create_task(self._monitor_pipeline_health())
+        asyncio.create_task(self._monitor_stage_timeouts())
+        asyncio.create_task(self._update_pipeline_metrics())
+
+    async def _monitor_pipeline_health(self) -> None:
+        """Monitor health of active pipelines"""
+        while True:
+            try:
+                for pipeline_id, context in self.active_pipelines.items():
+                    if context.state == PipelineState.RUNNING:
+                        await self._check_pipeline_health(pipeline_id)
+                await asyncio.sleep(60)  # Check every minute
+            except Exception as e:
+                self.logger.error(f"Pipeline health monitoring error: {str(e)}")
+
+    async def _monitor_stage_timeouts(self) -> None:
+        """Monitor stage timeouts"""
+        while True:
+            try:
+                for pipeline_id, context in self.active_pipelines.items():
+                    if context.state == PipelineState.RUNNING and context.current_stage:
+                        stage = context.stages[context.current_stage]
+                        if stage.start_time and (datetime.now() - stage.start_time).total_seconds() > self.stage_timeout:
+                            await self._handle_stage_timeout(pipeline_id, context.current_stage)
+                await asyncio.sleep(30)  # Check every 30 seconds
+            except Exception as e:
+                self.logger.error(f"Stage timeout monitoring error: {str(e)}")
+
+    async def _update_pipeline_metrics(self) -> None:
+        """Update pipeline metrics"""
+        while True:
+            try:
+                for pipeline_id, context in self.active_pipelines.items():
+                    await self._collect_pipeline_metrics(pipeline_id)
+                await asyncio.sleep(15)  # Update every 15 seconds
+            except Exception as e:
+                self.logger.error(f"Pipeline metrics update error: {str(e)}")
+
+    async def _check_pipeline_health(self, pipeline_id: str) -> None:
+        """Check health of a specific pipeline"""
+        try:
+            context = self.active_pipelines[pipeline_id]
+            health_status = {
+                'pipeline_id': pipeline_id,
+                'state': context.state,
+                'current_stage': context.current_stage,
+                'stages': {
+                    name: {
+                        'status': stage.status,
+                        'retry_count': stage.retry_count,
+                        'error': stage.error
+                    }
+                    for name, stage in context.stages.items()
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_HEALTH_CHECK,
+                    content=health_status,
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component="monitoring_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+        except Exception as e:
+            self.logger.error(f"Pipeline health check failed for {pipeline_id}: {str(e)}")
+
+    async def _handle_stage_timeout(self, pipeline_id: str, stage_name: str) -> None:
+        """Handle stage timeout"""
+        try:
+            context = self.active_pipelines[pipeline_id]
+            stage = context.stages[stage_name]
+            
+            if stage.retry_count < stage.max_retries:
+                # Retry the stage
+                stage.retry_count += 1
+                stage.start_time = datetime.now()
+                stage.status = ProcessingStatus.RUNNING
+                stage.error = None
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_RETRY,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'stage_name': stage_name,
+                            'retry_count': stage.retry_count
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+            else:
+                # Mark stage as failed
+                stage.status = ProcessingStatus.FAILED
+                stage.error = f"Stage timeout after {stage.retry_count} retries"
+                context.state = PipelineState.FAILED
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_STAGE_ERROR,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'stage_name': stage_name,
+                            'error': stage.error
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+        except Exception as e:
+            self.logger.error(f"Stage timeout handling failed for {pipeline_id}: {str(e)}")
+
+    async def _collect_pipeline_metrics(self, pipeline_id: str) -> None:
+        """Collect metrics for a specific pipeline"""
+        try:
+            context = self.active_pipelines[pipeline_id]
+            metrics = {
+                'pipeline_id': pipeline_id,
+                'state': context.state,
+                'current_stage': context.current_stage,
+                'stages': {
+                    name: {
+                        'status': stage.status,
+                        'start_time': stage.start_time.isoformat() if stage.start_time else None,
+                        'end_time': stage.end_time.isoformat() if stage.end_time else None,
+                        'retry_count': stage.retry_count,
+                        'metrics': stage.metrics
+                    }
+                    for name, stage in context.stages.items()
+                },
+                'start_time': context.start_time.isoformat() if context.start_time else None,
+                'end_time': context.end_time.isoformat() if context.end_time else None,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_METRICS_UPDATE,
+                    content=metrics,
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component="monitoring_manager",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+        except Exception as e:
+            self.logger.error(f"Pipeline metrics collection failed for {pipeline_id}: {str(e)}")
+
+    async def _handle_service_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline service start request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            stages = message.content.get('stages', [])
+            
+            # Check resource limits
+            if len(self.active_pipelines) >= self.max_concurrent_pipelines:
+                await self._send_error_response(
+                    message,
+                    "Maximum concurrent pipelines limit reached",
+                    MessageType.PIPELINE_SERVICE_ERROR
+                )
+                return
+            
+            # Create pipeline context
+            context = PipelineContext(
+                pipeline_id=pipeline_id,
+                state=PipelineState.INITIALIZED,
+                stages={
+                    stage['name']: PipelineStage(
+                        name=stage['name'],
+                        status=ProcessingStatus.PENDING,
+                        max_retries=stage.get('max_retries', self.max_retries_per_stage)
+                    )
+                    for stage in stages
+                },
+                metadata=message.content.get('metadata', {})
+            )
+            
+            self.active_pipelines[pipeline_id] = context
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'status': 'initialized',
+                    'stages': [stage['name'] for stage in stages]
+                },
+                MessageType.PIPELINE_SERVICE_START
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline service start failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_SERVICE_ERROR
+            )
+
+    async def _handle_handler_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline handler start request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} not found",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            # Start first stage
+            first_stage = next(iter(context.stages.values()))
+            first_stage.start_time = datetime.now()
+            first_stage.status = ProcessingStatus.RUNNING
+            context.current_stage = first_stage.name
+            context.state = PipelineState.RUNNING
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'current_stage': first_stage.name,
+                    'status': 'started'
+                },
+                MessageType.PIPELINE_HANDLER_START
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline handler start failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_HANDLER_ERROR
+            )
+
+    async def _handle_stage_complete(self, message: ProcessingMessage) -> None:
+        """Handle stage completion"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            stage_name = message.content.get('stage_name')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context or stage_name not in context.stages:
+                await self._send_error_response(
+                    message,
+                    f"Stage {stage_name} not found in pipeline {pipeline_id}",
+                    MessageType.PIPELINE_STAGE_ERROR
+                )
+                return
+            
+            # Update stage status
+            stage = context.stages[stage_name]
+            stage.status = ProcessingStatus.COMPLETED
+            stage.end_time = datetime.now()
+            stage.metrics.update(message.content.get('metrics', {}))
+            
+            # Check if pipeline is complete
+            if all(s.status == ProcessingStatus.COMPLETED for s in context.stages.values()):
+                context.state = PipelineState.COMPLETED
+                context.end_time = datetime.now()
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_HANDLER_COMPLETE,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'status': 'completed'
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+            else:
+                # Start next stage
+                next_stage = self._get_next_stage(context, stage_name)
+                if next_stage:
+                    next_stage.start_time = datetime.now()
+                    next_stage.status = ProcessingStatus.RUNNING
+                    context.current_stage = next_stage.name
+                    
+                    await self.message_broker.publish(
+                        ProcessingMessage(
+                            message_type=MessageType.PIPELINE_STAGE_START,
+                            content={
+                                'pipeline_id': pipeline_id,
+                                'stage_name': next_stage.name
+                            },
+                            metadata=MessageMetadata(
+                                source_component=self.component_name,
+                                target_component="pipeline_handler",
+                                domain_type="pipeline"
+                            )
+                        )
+                    )
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'stage_name': stage_name,
+                    'status': 'completed',
+                    'next_stage': next_stage.name if next_stage else None
+                },
+                MessageType.PIPELINE_STAGE_COMPLETE
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Stage completion handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_STAGE_ERROR
+            )
+
+    def _get_next_stage(self, context: PipelineContext, current_stage: str) -> Optional[PipelineStage]:
+        """Get the next stage in the pipeline"""
+        stages = list(context.stages.values())
+        current_index = next(i for i, s in enumerate(stages) if s.name == current_stage)
+        return stages[current_index + 1] if current_index < len(stages) - 1 else None
+
+    async def _send_success_response(
+        self,
+        message: ProcessingMessage,
+        content: Dict[str, Any],
+        response_type: MessageType
+    ) -> None:
+        """Send success response"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=response_type,
+                content=content,
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component=message.metadata.source_component,
+                    domain_type="pipeline"
+                )
+            )
+        )
+
+    async def _send_error_response(
+        self,
+        message: ProcessingMessage,
+        error: str,
+        response_type: MessageType
+    ) -> None:
+        """Send error response"""
+        await self.message_broker.publish(
+            ProcessingMessage(
+                message_type=response_type,
+                content={'error': error},
+                metadata=MessageMetadata(
+                    source_component=self.component_name,
+                    target_component=message.metadata.source_component,
+                    domain_type="pipeline"
+                )
+            )
+        )
+
+    async def _handle_stage_error(self, message: ProcessingMessage) -> None:
+        """Handle stage error with retry logic"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            stage_name = message.content.get('stage_name')
+            error = message.content.get('error')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context or stage_name not in context.stages:
+                await self._send_error_response(
+                    message,
+                    f"Stage {stage_name} not found in pipeline {pipeline_id}",
+                    MessageType.PIPELINE_STAGE_ERROR
+                )
+                return
+            
+            # Update stage status
+            stage = context.stages[stage_name]
+            stage.status = ProcessingStatus.FAILED
+            stage.error = error
+            
+            # Check retry logic
+            if stage.retry_count < stage.max_retries:
+                # Retry the stage
+                stage.retry_count += 1
+                stage.start_time = datetime.now()
+                stage.status = ProcessingStatus.RUNNING
+                stage.error = None
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_RETRY,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'stage_name': stage_name,
+                            'retry_count': stage.retry_count
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+            else:
+                # Mark pipeline as failed
+                context.state = PipelineState.FAILED
+                context.error = f"Stage {stage_name} failed after {stage.retry_count} retries: {error}"
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_HANDLER_ERROR,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'stage_name': stage_name,
+                            'error': context.error
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+            
+            # Send response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'stage_name': stage_name,
+                    'status': 'error',
+                    'retry_count': stage.retry_count,
+                    'error': error
+                },
+                MessageType.PIPELINE_STAGE_ERROR
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Stage error handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_STAGE_ERROR
+            )
+
+    async def _handle_pipeline_pause(self, message: ProcessingMessage) -> None:
+        """Handle pipeline pause request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} not found",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            if context.state != PipelineState.RUNNING:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} is not running",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            # Update pipeline state
+            context.state = PipelineState.PAUSED
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'status': 'paused',
+                    'current_stage': context.current_stage
+                },
+                MessageType.PIPELINE_PAUSE
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline pause failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_HANDLER_ERROR
+            )
+
+    async def _handle_pipeline_resume(self, message: ProcessingMessage) -> None:
+        """Handle pipeline resume request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} not found",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            if context.state != PipelineState.PAUSED:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} is not paused",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            # Update pipeline state
+            context.state = PipelineState.RUNNING
+            
+            # Resume current stage
+            if context.current_stage:
+                stage = context.stages[context.current_stage]
+                stage.start_time = datetime.now()
+                stage.status = ProcessingStatus.RUNNING
+                
+                await self.message_broker.publish(
+                    ProcessingMessage(
+                        message_type=MessageType.PIPELINE_STAGE_START,
+                        content={
+                            'pipeline_id': pipeline_id,
+                            'stage_name': context.current_stage
+                        },
+                        metadata=MessageMetadata(
+                            source_component=self.component_name,
+                            target_component="pipeline_handler",
+                            domain_type="pipeline"
+                        )
+                    )
+                )
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'status': 'resumed',
+                    'current_stage': context.current_stage
+                },
+                MessageType.PIPELINE_RESUME
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline resume failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_HANDLER_ERROR
+            )
+
+    async def _handle_pipeline_cancel(self, message: ProcessingMessage) -> None:
+        """Handle pipeline cancellation request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} not found",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            # Update pipeline state
+            context.state = PipelineState.CANCELLED
+            context.end_time = datetime.now()
+            
+            # Cancel current stage
+            if context.current_stage:
+                stage = context.stages[context.current_stage]
+                stage.status = ProcessingStatus.CANCELLED
+                stage.end_time = datetime.now()
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'status': 'cancelled',
+                    'current_stage': context.current_stage
+                },
+                MessageType.PIPELINE_CANCEL
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline cancellation failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_HANDLER_ERROR
+            )
+
+    async def _handle_recovery_start(self, message: ProcessingMessage) -> None:
+        """Handle pipeline recovery start request"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context:
+                await self._send_error_response(
+                    message,
+                    f"Pipeline {pipeline_id} not found",
+                    MessageType.PIPELINE_HANDLER_ERROR
+                )
+                return
+            
+            # Update pipeline state
+            context.state = PipelineState.RECOVERING
+            
+            # Get checkpoint data
+            checkpoint_data = message.content.get('checkpoint_data', {})
+            context.checkpoint_data = checkpoint_data
+            
+            # Start recovery process
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_RESTORE,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'checkpoint_data': checkpoint_data
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component="pipeline_handler",
+                        domain_type="pipeline"
+                    )
+                )
+            )
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'status': 'recovering',
+                    'checkpoint_data': checkpoint_data
+                },
+                MessageType.PIPELINE_RECOVERY_START
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline recovery start failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_RECOVERY_ERROR
+            )
+
+    async def _handle_data_ready(self, message: ProcessingMessage) -> None:
+        """Handle data ready notification"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            stage_name = message.content.get('stage_name')
+            data_reference = message.content.get('data_reference')
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context or stage_name not in context.stages:
+                await self._send_error_response(
+                    message,
+                    f"Stage {stage_name} not found in pipeline {pipeline_id}",
+                    MessageType.PIPELINE_DATA_ERROR
+                )
+                return
+            
+            # Update stage metrics
+            stage = context.stages[stage_name]
+            stage.metrics.update({
+                'data_reference': data_reference,
+                'data_ready_time': datetime.now().isoformat()
+            })
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'stage_name': stage_name,
+                    'data_reference': data_reference,
+                    'status': 'ready'
+                },
+                MessageType.PIPELINE_DATA_READY
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Data ready handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_DATA_ERROR
+            )
+
+    async def _handle_data_processed(self, message: ProcessingMessage) -> None:
+        """Handle data processed notification"""
+        try:
+            pipeline_id = message.content.get('pipeline_id')
+            stage_name = message.content.get('stage_name')
+            result_reference = message.content.get('result_reference')
+            metrics = message.content.get('metrics', {})
+            context = self.active_pipelines.get(pipeline_id)
+            
+            if not context or stage_name not in context.stages:
+                await self._send_error_response(
+                    message,
+                    f"Stage {stage_name} not found in pipeline {pipeline_id}",
+                    MessageType.PIPELINE_DATA_ERROR
+                )
+                return
+            
+            # Update stage metrics
+            stage = context.stages[stage_name]
+            stage.metrics.update({
+                'result_reference': result_reference,
+                'processing_complete_time': datetime.now().isoformat(),
+                **metrics
+            })
+            
+            # Send success response
+            await self._send_success_response(
+                message,
+                {
+                    'pipeline_id': pipeline_id,
+                    'stage_name': stage_name,
+                    'result_reference': result_reference,
+                    'metrics': metrics,
+                    'status': 'processed'
+                },
+                MessageType.PIPELINE_DATA_PROCESSED
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Data processed handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.PIPELINE_DATA_ERROR
+            )

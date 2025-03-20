@@ -1,0 +1,25 @@
+# Advanced Analytics Message Types
+ANALYTICS_PROCESS_START = "analytics_process_start"
+ANALYTICS_PROCESS_COMPLETE = "analytics_process_complete"
+ANALYTICS_PROCESS_FAILED = "analytics_process_failed"
+ANALYTICS_STATUS_REQUEST = "analytics_status_request"
+ANALYTICS_STATUS_RESPONSE = "analytics_status_response"
+ANALYTICS_ANALYSIS_REQUEST = "analytics_analysis_request"
+ANALYTICS_ANALYSIS_START = "analytics_analysis_start"
+ANALYTICS_ANALYSIS_PROGRESS = "analytics_analysis_progress"
+ANALYTICS_ANALYSIS_COMPLETE = "analytics_analysis_complete"
+ANALYTICS_ANALYSIS_FAILED = "analytics_analysis_failed"
+
+ANALYTICS_RESOLUTION_REQUEST = "analytics_resolution_request"
+ANALYTICS_RESOLUTION_START = "analytics_resolution_start"
+ANALYTICS_RESOLUTION_PROGRESS = "analytics_resolution_progress"
+ANALYTICS_RESOLUTION_COMPLETE = "analytics_resolution_complete"
+ANALYTICS_RESOLUTION_FAILED = "analytics_resolution_failed"
+
+ANALYTICS_VALIDATION_REQUEST = "analytics_validation_request"
+ANALYTICS_VALIDATION_START = "analytics_validation_start"
+ANALYTICS_VALIDATION_PROGRESS = "analytics_validation_progress"
+ANALYTICS_VALIDATION_COMPLETE = "analytics_validation_complete"
+ANALYTICS_VALIDATION_FAILED = "analytics_validation_failed"
+
+ANALYTICS_VALIDATION_FAILED = "analytics_validation_failed" 

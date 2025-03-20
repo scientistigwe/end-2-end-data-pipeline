@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Set, Tuple
 from datetime import datetime
 import uuid
 from dataclasses import dataclass, field
@@ -135,6 +135,14 @@ class ControlPointManager:
         self.control_point_history: Dict[str, List[ControlPoint]] = {}
         self.department_chains: Dict[str, Dict[str, ModuleIdentifier]] = {}
         self.active_pipelines: Dict[str, PipelineContext] = {}
+        
+        # Frontend communication tracking
+        self.frontend_sessions: Dict[str, FrontendCPMContext] = {}
+        self.pending_commands: Dict[str, List[Dict[str, Any]]] = {}
+        
+        # Processor tracking
+        self.registered_processors: Dict[str, ProcessorContext] = {}
+        self.processor_capabilities: Dict[str, Set[str]] = {}
 
         # Process flow configuration
         self.stage_transitions = self._setup_stage_transitions()
@@ -154,7 +162,7 @@ class ControlPointManager:
     async def initialize(self):
         """Initialize CPM asynchronously"""
         try:
-            # Register message handlers
+            # Register message handlers for all domains
             await self.message_broker.subscribe(
                 module_identifier=self.module_identifier,
                 message_patterns=[
@@ -164,7 +172,9 @@ class ControlPointManager:
                     "decision.required",
                     "quality.issues.detected",
                     "insight.generated",
-                    "recommendation.ready"
+                    "recommendation.ready",
+                    "frontend.cpm.*",  # Frontend direct communication
+                    "processor.*"      # Processor communication
                 ],
                 callback=self._handle_control_message
             )
@@ -176,7 +186,9 @@ class ControlPointManager:
             self.tasks.extend([
                 asyncio.create_task(self._monitor_process_timeouts()),
                 asyncio.create_task(self._monitor_resource_usage()),
-                asyncio.create_task(self._monitor_component_health())
+                asyncio.create_task(self._monitor_component_health()),
+                asyncio.create_task(self._monitor_frontend_sessions()),
+                asyncio.create_task(self._monitor_processor_health())
             ])
 
             logger.info("Control Point Manager initialized successfully")
@@ -2743,3 +2755,1546 @@ class ControlPointManager:
                 ProcessingMessage(content={'pipeline_id': control_point.pipeline_id}),
                 error=e
             )
+
+    async def _monitor_frontend_sessions(self):
+        """Monitor frontend session health"""
+        while True:
+            try:
+                current_time = datetime.now()
+                for session_id, session in list(self.frontend_sessions.items()):
+                    # Check for stale sessions
+                    if (current_time - session.last_heartbeat).total_seconds() > 300:  # 5 minutes
+                        await self._handle_stale_session(session_id)
+                    
+                    # Process pending commands
+                    if session_id in self.pending_commands:
+                        await self._process_pending_commands(session_id)
+
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Frontend session monitoring failed: {str(e)}")
+                await asyncio.sleep(30)
+
+    async def _monitor_processor_health(self):
+        """Monitor registered processors"""
+        while True:
+            try:
+                current_time = datetime.now()
+                for processor_id, context in list(self.registered_processors.items()):
+                    # Check for stale processors
+                    if (current_time - context.last_heartbeat).total_seconds() > 60:  # 1 minute
+                        await self._handle_stale_processor(processor_id)
+                    
+                    # Check processor queue size
+                    if context.message_queue_size > 1000:
+                        await self._handle_processor_backpressure(processor_id)
+
+                await asyncio.sleep(15)  # Check every 15 seconds
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Processor health monitoring failed: {str(e)}")
+                await asyncio.sleep(15)
+
+    async def _handle_stale_session(self, session_id: str) -> None:
+        """Handle stale frontend session"""
+        try:
+            session = self.frontend_sessions[session_id]
+            # Notify frontend about session timeout
+            await self._notify_frontend(
+                session.pipeline_id,
+                "session_timeout",
+                {"session_id": session_id}
+            )
+            # Cleanup session
+            del self.frontend_sessions[session_id]
+            if session_id in self.pending_commands:
+                del self.pending_commands[session_id]
+        except Exception as e:
+            logger.error(f"Failed to handle stale session {session_id}: {str(e)}")
+
+    async def _handle_stale_processor(self, processor_id: str) -> None:
+        """Handle stale processor"""
+        try:
+            context = self.registered_processors[processor_id]
+            # Notify about processor timeout
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_ERROR_NOTIFY,
+                    content={
+                        "processor_id": processor_id,
+                        "error": "Processor heartbeat timeout",
+                        "last_heartbeat": context.last_heartbeat.isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="system_monitor"
+                    )
+                )
+            )
+            # Unregister processor
+            await self.unregister_processor(processor_id)
+        except Exception as e:
+            logger.error(f"Failed to handle stale processor {processor_id}: {str(e)}")
+
+    async def _handle_processor_backpressure(self, processor_id: str) -> None:
+        """Handle processor backpressure"""
+        try:
+            context = self.registered_processors[processor_id]
+            # Notify about backpressure
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_ERROR_NOTIFY,
+                    content={
+                        "processor_id": processor_id,
+                        "error": "Processor queue size exceeded",
+                        "queue_size": context.message_queue_size
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="system_monitor"
+                    )
+                )
+            )
+            # Implement backpressure handling logic
+            await self._apply_backpressure_measures(processor_id)
+        except Exception as e:
+            logger.error(f"Failed to handle processor backpressure {processor_id}: {str(e)}")
+
+    async def register_processor(
+            self,
+            processor_id: str,
+            capabilities: List[str],
+            max_queue_size: int = 1000
+    ) -> None:
+        """Register a new processor"""
+        try:
+            # Create processor context
+            context = ProcessorContext(
+                processor_id=processor_id,
+                capabilities=capabilities,
+                status="active",
+                last_heartbeat=datetime.now(),
+                message_queue_size=0,
+                active_tasks=0,
+                error_count=0
+            )
+            
+            # Register with broker
+            await self.message_broker.register_processor(
+                processor_id=processor_id,
+                capabilities=capabilities,
+                max_queue_size=max_queue_size
+            )
+            
+            # Update local state
+            self.registered_processors[processor_id] = context
+            self.processor_capabilities[processor_id] = set(capabilities)
+            
+            logger.info(f"Processor {processor_id} registered successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to register processor {processor_id}: {str(e)}")
+            raise
+
+    async def unregister_processor(self, processor_id: str) -> None:
+        """Unregister a processor"""
+        try:
+            # Remove from broker
+            await self.message_broker.unregister_processor(processor_id)
+            
+            # Cleanup local state
+            if processor_id in self.registered_processors:
+                del self.registered_processors[processor_id]
+            if processor_id in self.processor_capabilities:
+                del self.processor_capabilities[processor_id]
+                
+            logger.info(f"Processor {processor_id} unregistered successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to unregister processor {processor_id}: {str(e)}")
+            raise
+
+    async def _process_pending_commands(self, session_id: str) -> None:
+        """Process pending commands for a frontend session"""
+        try:
+            commands = self.pending_commands[session_id]
+            for command in commands:
+                # Process command based on type
+                if command["type"] == "status_request":
+                    await self._handle_status_request(session_id, command)
+                elif command["type"] == "command_request":
+                    await self._handle_command_request(session_id, command)
+                elif command["type"] == "config_update":
+                    await self._handle_config_update(session_id, command)
+            
+            # Clear processed commands
+            self.pending_commands[session_id] = []
+            
+        except Exception as e:
+            logger.error(f"Failed to process pending commands for session {session_id}: {str(e)}")
+
+    async def _handle_status_request(self, session_id: str, command: Dict[str, Any]) -> None:
+        """Handle frontend status request"""
+        try:
+            session = self.frontend_sessions[session_id]
+            pipeline_id = command.get('pipeline_id', session.pipeline_id)
+            
+            # Get detailed pipeline status
+            status = await self.get_frontend_status(pipeline_id, session.user_id)
+            
+            # Add additional metrics
+            status.update({
+                'resource_usage': await self._get_pipeline_resource_usage(pipeline_id),
+                'processing_metrics': await self._get_processing_metrics(pipeline_id),
+                'component_health': await self._get_component_health(pipeline_id)
+            })
+            
+            # Send response
+            await self._send_frontend_response(
+                session_id,
+                'status_response',
+                status
+            )
+            
+        except Exception as e:
+            logger.error(f"Status request handling failed: {str(e)}")
+            await self._send_frontend_error(session_id, str(e))
+
+    async def _handle_command_request(self, session_id: str, command: Dict[str, Any]) -> None:
+        """Handle frontend command request"""
+        try:
+            session = self.frontend_sessions[session_id]
+            command_type = command.get('command_type')
+            pipeline_id = command.get('pipeline_id', session.pipeline_id)
+            
+            # Validate command
+            if not self._validate_frontend_command(command_type, pipeline_id):
+                raise ValueError(f"Invalid command type: {command_type}")
+            
+            # Process command based on type
+            command_handlers = {
+                'pause_pipeline': self._handle_pause_pipeline,
+                'resume_pipeline': self._handle_resume_pipeline,
+                'cancel_pipeline': self._handle_cancel_pipeline,
+                'retry_stage': self._handle_retry_stage,
+                'modify_config': self._handle_modify_config,
+                'request_help': self._handle_request_help,
+                'escalate_issue': self._handle_escalate_issue
+            }
+            
+            handler = command_handlers.get(command_type)
+            if handler:
+                result = await handler(pipeline_id, command.get('params', {}))
+                await self._send_frontend_response(session_id, f'{command_type}_response', result)
+            else:
+                raise ValueError(f"Unsupported command type: {command_type}")
+                
+        except Exception as e:
+            logger.error(f"Command request handling failed: {str(e)}")
+            await self._send_frontend_error(session_id, str(e))
+
+    async def _handle_config_update(self, session_id: str, command: Dict[str, Any]) -> None:
+        """Handle frontend configuration update"""
+        try:
+            session = self.frontend_sessions[session_id]
+            pipeline_id = command.get('pipeline_id', session.pipeline_id)
+            config_updates = command.get('config', {})
+            
+            # Validate config updates
+            if not self._validate_config_updates(config_updates):
+                raise ValueError("Invalid configuration updates")
+            
+            # Apply config updates
+            result = await self._apply_config_updates(pipeline_id, config_updates)
+            
+            # Notify relevant components
+            await self._notify_config_change(pipeline_id, config_updates)
+            
+            # Send response
+            await self._send_frontend_response(
+                session_id,
+                'config_update_response',
+                result
+            )
+            
+        except Exception as e:
+            logger.error(f"Config update handling failed: {str(e)}")
+            await self._send_frontend_error(session_id, str(e))
+
+    async def _handle_pause_pipeline(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle pipeline pause request"""
+        try:
+            pipeline = self.active_pipelines.get(pipeline_id)
+            if not pipeline:
+                raise ValueError(f"Pipeline not found: {pipeline_id}")
+            
+            # Update pipeline status
+            pipeline.status = ProcessingStatus.PAUSED
+            
+            # Pause active control points
+            for cp in self.active_control_points.values():
+                if cp.pipeline_id == pipeline_id:
+                    cp.status = ProcessingStatus.PAUSED
+            
+            # Notify components
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_PAUSE_REQUEST,
+                    content={'pipeline_id': pipeline_id},
+                    source_identifier=self.module_identifier
+                )
+            )
+            
+            return {'status': 'success', 'message': 'Pipeline paused successfully'}
+            
+        except Exception as e:
+            logger.error(f"Pipeline pause failed: {str(e)}")
+            raise
+
+    async def _handle_resume_pipeline(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle pipeline resume request"""
+        try:
+            pipeline = self.active_pipelines.get(pipeline_id)
+            if not pipeline:
+                raise ValueError(f"Pipeline not found: {pipeline_id}")
+            
+            # Update pipeline status
+            pipeline.status = ProcessingStatus.IN_PROGRESS
+            
+            # Resume active control points
+            for cp in self.active_control_points.values():
+                if cp.pipeline_id == pipeline_id:
+                    cp.status = ProcessingStatus.IN_PROGRESS
+            
+            # Notify components
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_RESUME_REQUEST,
+                    content={'pipeline_id': pipeline_id},
+                    source_identifier=self.module_identifier
+                )
+            )
+            
+            return {'status': 'success', 'message': 'Pipeline resumed successfully'}
+            
+        except Exception as e:
+            logger.error(f"Pipeline resume failed: {str(e)}")
+            raise
+
+    async def _handle_cancel_pipeline(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle pipeline cancellation request"""
+        try:
+            pipeline = self.active_pipelines.get(pipeline_id)
+            if not pipeline:
+                raise ValueError(f"Pipeline not found: {pipeline_id}")
+            
+            # Update pipeline status
+            pipeline.status = ProcessingStatus.CANCELLED
+            
+            # Cancel active control points
+            for cp in self.active_control_points.values():
+                if cp.pipeline_id == pipeline_id:
+                    cp.status = ProcessingStatus.CANCELLED
+            
+            # Notify components
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PIPELINE_CANCEL_REQUEST,
+                    content={'pipeline_id': pipeline_id},
+                    source_identifier=self.module_identifier
+                )
+            )
+            
+            # Cleanup pipeline
+            await self._cleanup_pipeline(pipeline_id)
+            
+            return {'status': 'success', 'message': 'Pipeline cancelled successfully'}
+            
+        except Exception as e:
+            logger.error(f"Pipeline cancellation failed: {str(e)}")
+            raise
+
+    async def _handle_retry_stage(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle stage retry request"""
+        try:
+            stage = ProcessingStage(params.get('stage'))
+            if not stage:
+                raise ValueError("Invalid stage specified")
+            
+            # Find active control point
+            control_point = next(
+                (cp for cp in self.active_control_points.values()
+                 if cp.pipeline_id == pipeline_id),
+                None
+            )
+            
+            if not control_point:
+                raise ValueError(f"No active control point found for pipeline: {pipeline_id}")
+            
+            # Retry stage
+            await self._retry_stage(
+                control_point,
+                stage,
+                {'reason': 'User requested retry'}
+            )
+            
+            return {'status': 'success', 'message': f'Stage {stage.value} retry initiated'}
+            
+        except Exception as e:
+            logger.error(f"Stage retry failed: {str(e)}")
+            raise
+
+    async def _handle_modify_config(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle configuration modification request"""
+        try:
+            config_updates = params.get('config', {})
+            
+            # Validate updates
+            if not self._validate_config_updates(config_updates):
+                raise ValueError("Invalid configuration updates")
+            
+            # Apply updates
+            result = await self._apply_config_updates(pipeline_id, config_updates)
+            
+            # Notify components
+            await self._notify_config_change(pipeline_id, config_updates)
+            
+            return {'status': 'success', 'message': 'Configuration updated successfully'}
+            
+        except Exception as e:
+            logger.error(f"Config modification failed: {str(e)}")
+            raise
+
+    async def _handle_request_help(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle help request"""
+        try:
+            help_type = params.get('help_type')
+            context = params.get('context', {})
+            
+            # Generate help response
+            help_response = await self._generate_help_response(help_type, context)
+            
+            return {
+                'status': 'success',
+                'help_content': help_response
+            }
+            
+        except Exception as e:
+            logger.error(f"Help request handling failed: {str(e)}")
+            raise
+
+    async def _handle_escalate_issue(self, pipeline_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle issue escalation request"""
+        try:
+            issue_type = params.get('issue_type')
+            description = params.get('description')
+            priority = params.get('priority', 'medium')
+            
+            # Create escalation
+            escalation_id = await self._create_escalation(
+                pipeline_id,
+                issue_type,
+                description,
+                priority
+            )
+            
+            return {
+                'status': 'success',
+                'escalation_id': escalation_id,
+                'message': 'Issue escalated successfully'
+            }
+            
+        except Exception as e:
+            logger.error(f"Issue escalation failed: {str(e)}")
+            raise
+
+    async def _send_frontend_response(
+            self,
+            session_id: str,
+            response_type: str,
+            data: Dict[str, Any]
+    ) -> None:
+        """Send response to frontend"""
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.FRONTEND_RESPONSE,
+                    content={
+                        'session_id': session_id,
+                        'response_type': response_type,
+                        'data': data
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.module_identifier.component_name,
+                        target_component="frontend"
+                    )
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to send frontend response: {str(e)}")
+
+    async def _send_frontend_error(self, session_id: str, error_message: str) -> None:
+        """Send error response to frontend"""
+        try:
+            await self._send_frontend_response(
+                session_id,
+                'error',
+                {'error': error_message}
+            )
+        except Exception as e:
+            logger.error(f"Failed to send frontend error: {str(e)}")
+
+    def _validate_frontend_command(self, command_type: str, pipeline_id: str) -> bool:
+        """Validate frontend command"""
+        valid_commands = {
+            'pause_pipeline',
+            'resume_pipeline',
+            'cancel_pipeline',
+            'retry_stage',
+            'modify_config',
+            'request_help',
+            'escalate_issue'
+        }
+        
+        return (
+            command_type in valid_commands and
+            pipeline_id in self.active_pipelines
+        )
+
+    def _validate_config_updates(self, config_updates: Dict[str, Any]) -> bool:
+        """Validate configuration updates"""
+        required_fields = {'stage', 'department', 'parameters'}
+        return all(field in config_updates for field in required_fields)
+
+    async def _apply_config_updates(self, pipeline_id: str, config_updates: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply configuration updates"""
+        try:
+            pipeline = self.active_pipelines.get(pipeline_id)
+            if not pipeline:
+                raise ValueError(f"Pipeline not found: {pipeline_id}")
+            
+            # Update pipeline configuration
+            pipeline.stage_configs.update(config_updates)
+            
+            # Update component states
+            pipeline.component_states[config_updates['department']] = ProcessingStatus.PENDING.value
+            
+            return {
+                'status': 'success',
+                'updated_config': pipeline.stage_configs
+            }
+            
+        except Exception as e:
+            logger.error(f"Config update application failed: {str(e)}")
+            raise
+
+    async def _notify_config_change(self, pipeline_id: str, config_updates: Dict[str, Any]) -> None:
+        """Notify components about configuration changes"""
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.CONFIG_UPDATE_NOTIFY,
+                    content={
+                        'pipeline_id': pipeline_id,
+                        'config_updates': config_updates
+                    },
+                    source_identifier=self.module_identifier
+                )
+            )
+        except Exception as e:
+            logger.error(f"Config change notification failed: {str(e)}")
+
+    async def _generate_help_response(self, help_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate help response based on type and context"""
+        help_responses = {
+            'stage_help': self._generate_stage_help,
+            'error_help': self._generate_error_help,
+            'decision_help': self._generate_decision_help,
+            'config_help': self._generate_config_help
+        }
+        
+        generator = help_responses.get(help_type)
+        if not generator:
+            raise ValueError(f"Unsupported help type: {help_type}")
+            
+        return await generator(context)
+
+    async def _create_escalation(
+            self,
+            pipeline_id: str,
+            issue_type: str,
+            description: str,
+            priority: str
+    ) -> str:
+        """Create new escalation"""
+        try:
+            escalation_id = str(uuid.uuid4())
+            
+            # Create escalation record
+            escalation = {
+                'id': escalation_id,
+                'pipeline_id': pipeline_id,
+                'issue_type': issue_type,
+                'description': description,
+                'priority': priority,
+                'status': 'open',
+                'created_at': datetime.utcnow().isoformat()
+            }
+            
+            # Store escalation
+            self.escalations[escalation_id] = escalation
+            
+            # Notify escalation service
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.ESCALATION_CREATE,
+                    content=escalation,
+                    source_identifier=self.module_identifier
+                )
+            )
+            
+            return escalation_id
+            
+        except Exception as e:
+            logger.error(f"Escalation creation failed: {str(e)}")
+            raise
+
+    async def _apply_backpressure_measures(self, processor_id: str) -> None:
+        """Apply backpressure measures to handle processor overload"""
+        try:
+            context = self.registered_processors[processor_id]
+            
+            # Calculate backpressure level
+            backpressure_level = self._calculate_backpressure_level(context)
+            
+            # Apply measures based on level
+            if backpressure_level == 'high':
+                await self._apply_high_backpressure(processor_id)
+            elif backpressure_level == 'medium':
+                await self._apply_medium_backpressure(processor_id)
+            else:
+                await self._apply_low_backpressure(processor_id)
+                
+            # Monitor effectiveness
+            await self._monitor_backpressure_effectiveness(processor_id)
+            
+        except Exception as e:
+            logger.error(f"Backpressure measures application failed: {str(e)}")
+
+    def _calculate_backpressure_level(self, context: ProcessorContext) -> str:
+        """Calculate backpressure level based on processor metrics"""
+        queue_size = context.message_queue_size
+        active_tasks = context.active_tasks
+        error_rate = context.error_count / max(1, context.total_tasks)
+        
+        # Define thresholds
+        thresholds = {
+            'high': {
+                'queue_size': 1000,
+                'active_tasks': 50,
+                'error_rate': 0.1
+            },
+            'medium': {
+                'queue_size': 500,
+                'active_tasks': 25,
+                'error_rate': 0.05
+            }
+        }
+        
+        # Check high threshold
+        if (queue_size >= thresholds['high']['queue_size'] or
+                active_tasks >= thresholds['high']['active_tasks'] or
+                error_rate >= thresholds['high']['error_rate']):
+            return 'high'
+            
+        # Check medium threshold
+        if (queue_size >= thresholds['medium']['queue_size'] or
+                active_tasks >= thresholds['medium']['active_tasks'] or
+                error_rate >= thresholds['medium']['error_rate']):
+            return 'medium'
+            
+        return 'low'
+
+    async def _apply_high_backpressure(self, processor_id: str) -> None:
+        """Apply high-level backpressure measures"""
+        try:
+            # Pause new task assignment
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_PAUSE_REQUEST,
+                    content={'processor_id': processor_id},
+                    metadata=MessageMetadata(priority=MessagePriority.HIGH)
+                )
+            )
+            
+            # Request task redistribution
+            await self._redistribute_tasks(processor_id)
+            
+            # Increase monitoring frequency
+            await self._adjust_monitoring_frequency(processor_id, 'high')
+            
+            # Notify system monitor
+            await self._notify_backpressure_status(processor_id, 'high')
+            
+        except Exception as e:
+            logger.error(f"High backpressure application failed: {str(e)}")
+
+    async def _apply_medium_backpressure(self, processor_id: str) -> None:
+        """Apply medium-level backpressure measures"""
+        try:
+            # Reduce task assignment rate
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_THROTTLE_REQUEST,
+                    content={'processor_id': processor_id},
+                    metadata=MessageMetadata(priority=MessagePriority.NORMAL)
+                )
+            )
+            
+            # Adjust task prioritization
+            await self._adjust_task_prioritization(processor_id)
+            
+            # Increase monitoring frequency
+            await self._adjust_monitoring_frequency(processor_id, 'medium')
+            
+            # Notify system monitor
+            await self._notify_backpressure_status(processor_id, 'medium')
+            
+        except Exception as e:
+            logger.error(f"Medium backpressure application failed: {str(e)}")
+
+    async def _apply_low_backpressure(self, processor_id: str) -> None:
+        """Apply low-level backpressure measures"""
+        try:
+            # Adjust task scheduling
+            await self._adjust_task_scheduling(processor_id)
+            
+            # Monitor queue growth
+            await self._monitor_queue_growth(processor_id)
+            
+            # Notify system monitor
+            await self._notify_backpressure_status(processor_id, 'low')
+            
+        except Exception as e:
+            logger.error(f"Low backpressure application failed: {str(e)}")
+
+    async def _monitor_backpressure_effectiveness(self, processor_id: str) -> None:
+        """Monitor effectiveness of backpressure measures"""
+        try:
+            context = self.registered_processors[processor_id]
+            
+            # Track metrics over time
+            metrics_history = context.metrics_history
+            
+            # Calculate effectiveness
+            effectiveness = self._calculate_backpressure_effectiveness(metrics_history)
+            
+            # Adjust measures if needed
+            if effectiveness < 0.5:  # Less than 50% effective
+                await self._escalate_backpressure_measures(processor_id)
+                
+            # Update monitoring configuration
+            await self._update_monitoring_config(processor_id, effectiveness)
+            
+        except Exception as e:
+            logger.error(f"Backpressure effectiveness monitoring failed: {str(e)}")
+
+    def _calculate_backpressure_effectiveness(self, metrics_history: List[Dict[str, Any]]) -> float:
+        """Calculate effectiveness of backpressure measures"""
+        if not metrics_history:
+            return 0.0
+            
+        # Calculate queue size reduction
+        queue_reduction = (
+            metrics_history[0]['queue_size'] - metrics_history[-1]['queue_size']
+        ) / max(1, metrics_history[0]['queue_size'])
+        
+        # Calculate error rate reduction
+        error_reduction = (
+            metrics_history[0]['error_rate'] - metrics_history[-1]['error_rate']
+        ) / max(1, metrics_history[0]['error_rate'])
+        
+        # Calculate processing rate improvement
+        processing_improvement = (
+            metrics_history[-1]['processing_rate'] - metrics_history[0]['processing_rate']
+        ) / max(1, metrics_history[0]['processing_rate'])
+        
+        # Weighted average of improvements
+        effectiveness = (
+            0.4 * queue_reduction +
+            0.3 * error_reduction +
+            0.3 * processing_improvement
+        )
+        
+        return max(0.0, min(1.0, effectiveness))
+
+    async def _escalate_backpressure_measures(self, processor_id: str) -> None:
+        """Escalate backpressure measures if current measures are ineffective"""
+        try:
+            context = self.registered_processors[processor_id]
+            current_level = self._calculate_backpressure_level(context)
+            
+            # Determine next level
+            escalation_map = {
+                'low': 'medium',
+                'medium': 'high'
+            }
+            
+            next_level = escalation_map.get(current_level)
+            if next_level:
+                # Apply next level measures
+                measure_handlers = {
+                    'medium': self._apply_medium_backpressure,
+                    'high': self._apply_high_backpressure
+                }
+                
+                handler = measure_handlers.get(next_level)
+                if handler:
+                    await handler(processor_id)
+                    
+                # Log escalation
+                logger.warning(
+                    f"Backpressure measures escalated to {next_level} for processor {processor_id}"
+                )
+                
+        except Exception as e:
+            logger.error(f"Backpressure escalation failed: {str(e)}")
+
+    async def _redistribute_tasks(self, processor_id: str) -> None:
+        """Redistribute tasks from overloaded processor"""
+        try:
+            context = self.registered_processors[processor_id]
+            
+            # Find available processors
+            available_processors = [
+                pid for pid, ctx in self.registered_processors.items()
+                if (pid != processor_id and
+                    ctx.status == 'active' and
+                    ctx.message_queue_size < 500)
+            ]
+            
+            if not available_processors:
+                logger.warning(f"No available processors for task redistribution from {processor_id}")
+                return
+                
+            # Calculate redistribution amount
+            redistribution_amount = min(
+                context.message_queue_size // 2,
+                context.active_tasks // 2
+            )
+            
+            # Redistribute tasks
+            for _ in range(redistribution_amount):
+                target_processor = available_processors[0]  # Simple round-robin
+                await self._move_task(processor_id, target_processor)
+                
+            logger.info(
+                f"Redistributed {redistribution_amount} tasks from processor {processor_id}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Task redistribution failed: {str(e)}")
+
+    async def _move_task(self, source_processor: str, target_processor: str) -> None:
+        """Move a task from one processor to another"""
+        try:
+            # Get task from source processor
+            task = await self.message_broker.get_next_task(source_processor)
+            if not task:
+                return
+                
+            # Forward task to target processor
+            await self.message_broker.forward_task(
+                task,
+                target_processor,
+                metadata=MessageMetadata(
+                    priority=MessagePriority.HIGH,
+                    source_processor=source_processor
+                )
+            )
+            
+            # Update processor contexts
+            self.registered_processors[source_processor].message_queue_size -= 1
+            self.registered_processors[target_processor].message_queue_size += 1
+            
+        except Exception as e:
+            logger.error(f"Task movement failed: {str(e)}")
+
+    async def _adjust_task_prioritization(self, processor_id: str) -> None:
+        """Adjust task prioritization for processor using advanced algorithms"""
+        try:
+            # Get current queue and processor context
+            queue = await self.message_broker.get_processor_queue(processor_id)
+            context = self.registered_processors[processor_id]
+            
+            # Calculate priority scores for each task
+            prioritized_tasks = await self._calculate_task_priorities(queue, context)
+            
+            # Apply priority-based sorting with additional factors
+            sorted_tasks = self._sort_tasks_by_priority(prioritized_tasks)
+            
+            # Apply fairness adjustments
+            adjusted_tasks = self._apply_fairness_adjustments(sorted_tasks, context)
+            
+            # Requeue tasks in priority order
+            await self.message_broker.reorder_processor_queue(
+                processor_id,
+                adjusted_tasks
+            )
+            
+            # Update processor metrics
+            await self._update_processor_metrics(processor_id, adjusted_tasks)
+            
+        except Exception as e:
+            logger.error(f"Task prioritization adjustment failed: {str(e)}")
+
+    async def _calculate_task_priorities(self, queue: List[ProcessingMessage], context: ProcessorContext) -> List[Tuple[ProcessingMessage, float]]:
+        """Calculate priority scores for tasks using multiple factors"""
+        prioritized_tasks = []
+        
+        for task in queue:
+            # Base priority from message metadata
+            base_priority = task.metadata.priority.value
+            
+            # Calculate urgency score
+            urgency_score = self._calculate_urgency_score(task)
+            
+            # Calculate resource impact score
+            resource_score = self._calculate_resource_impact(task, context)
+            
+            # Calculate dependency score
+            dependency_score = self._calculate_dependency_score(task)
+            
+            # Calculate fairness score
+            fairness_score = self._calculate_fairness_score(task, context)
+            
+            # Weighted combination of scores
+            total_score = (
+                0.3 * base_priority +
+                0.25 * urgency_score +
+                0.2 * resource_score +
+                0.15 * dependency_score +
+                0.1 * fairness_score
+            )
+            
+            prioritized_tasks.append((task, total_score))
+            
+        return prioritized_tasks
+
+    def _calculate_urgency_score(self, task: ProcessingMessage) -> float:
+        """Calculate urgency score based on deadlines and dependencies"""
+        deadline = task.metadata.deadline
+        if not deadline:
+            return 0.5
+            
+        # Calculate time until deadline
+        time_until_deadline = (deadline - datetime.utcnow()).total_seconds()
+        
+        # Normalize to 0-1 range
+        if time_until_deadline <= 0:
+            return 1.0
+        elif time_until_deadline > 3600:  # More than 1 hour
+            return 0.2
+        else:
+            return 1.0 - (time_until_deadline / 3600)
+
+    def _calculate_resource_impact(self, task: ProcessingMessage, context: ProcessorContext) -> float:
+        """Calculate resource impact score based on task requirements"""
+        # Get task resource requirements
+        requirements = task.metadata.resource_requirements or {}
+        
+        # Calculate resource utilization impact
+        cpu_impact = requirements.get('cpu', 0) / context.max_cpu
+        memory_impact = requirements.get('memory', 0) / context.max_memory
+        io_impact = requirements.get('io_operations', 0) / context.max_io_ops
+        
+        # Weighted average of resource impacts
+        return (0.4 * cpu_impact + 0.3 * memory_impact + 0.3 * io_impact)
+
+    def _calculate_dependency_score(self, task: ProcessingMessage) -> float:
+        """Calculate dependency score based on task dependencies"""
+        dependencies = task.metadata.dependencies or []
+        if not dependencies:
+            return 0.5
+            
+        # Count blocked dependencies
+        blocked_count = sum(1 for dep in dependencies if not dep.get('completed', False))
+        
+        # Normalize score
+        return min(1.0, blocked_count / len(dependencies))
+
+    def _calculate_fairness_score(self, task: ProcessingMessage, context: ProcessorContext) -> float:
+        """Calculate fairness score to prevent starvation"""
+        # Get task source and age
+        source = task.metadata.source_component
+        age = (datetime.utcnow() - task.metadata.created_at).total_seconds()
+        
+        # Calculate waiting time ratio
+        wait_ratio = min(1.0, age / context.max_wait_time)
+        
+        # Get source-specific waiting time
+        source_wait_time = context.source_wait_times.get(source, 0)
+        source_ratio = min(1.0, source_wait_time / context.max_source_wait_time)
+        
+        # Combine factors
+        return 0.6 * wait_ratio + 0.4 * source_ratio
+
+    def _sort_tasks_by_priority(self, prioritized_tasks: List[Tuple[ProcessingMessage, float]]) -> List[ProcessingMessage]:
+        """Sort tasks by priority score with tie-breaking"""
+        # Sort by priority score
+        sorted_tasks = sorted(prioritized_tasks, key=lambda x: x[1], reverse=True)
+        
+        # Apply tie-breaking rules
+        final_order = []
+        current_score = None
+        current_group = []
+        
+        for task, score in sorted_tasks:
+            if current_score is None:
+                current_score = score
+                current_group.append(task)
+            elif abs(score - current_score) < 0.01:  # Consider scores equal if difference is small
+                current_group.append(task)
+            else:
+                # Sort current group by tie-breaking rules
+                final_order.extend(self._apply_tie_breaking(current_group))
+                current_score = score
+                current_group = [task]
+                
+        # Handle last group
+        if current_group:
+            final_order.extend(self._apply_tie_breaking(current_group))
+            
+        return final_order
+
+    def _apply_tie_breaking(self, tasks: List[ProcessingMessage]) -> List[ProcessingMessage]:
+        """Apply tie-breaking rules to tasks with equal priority scores"""
+        # Sort by multiple criteria in order of importance
+        return sorted(
+            tasks,
+            key=lambda t: (
+                t.metadata.priority.value,  # Message priority
+                t.metadata.deadline or datetime.max,  # Deadline
+                t.metadata.created_at,  # Creation time
+                t.metadata.source_component  # Source component
+            )
+        )
+
+    def _apply_fairness_adjustments(self, tasks: List[ProcessingMessage], context: ProcessorContext) -> List[ProcessingMessage]:
+        """Apply fairness adjustments to prevent starvation"""
+        # Group tasks by source
+        source_groups = {}
+        for task in tasks:
+            source = task.metadata.source_component
+            if source not in source_groups:
+                source_groups[source] = []
+            source_groups[source].append(task)
+            
+        # Calculate fair distribution
+        fair_distribution = self._calculate_fair_distribution(tasks, source_groups)
+        
+        # Apply distribution while maintaining priority order within groups
+        adjusted_tasks = []
+        for source, count in fair_distribution.items():
+            source_tasks = source_groups.get(source, [])
+            adjusted_tasks.extend(source_tasks[:count])
+            
+        return adjusted_tasks
+
+    def _calculate_fair_distribution(self, tasks: List[ProcessingMessage], source_groups: Dict[str, List[ProcessingMessage]]) -> Dict[str, int]:
+        """Calculate fair distribution of tasks across sources"""
+        total_tasks = len(tasks)
+        num_sources = len(source_groups)
+        
+        # Calculate base fair share
+        base_share = total_tasks // num_sources
+        remainder = total_tasks % num_sources
+        
+        # Initialize distribution
+        distribution = {}
+        for source in source_groups:
+            distribution[source] = base_share
+            
+        # Distribute remainder based on source priority
+        if remainder > 0:
+            # Sort sources by priority (can be customized based on business rules)
+            priority_sources = sorted(
+                source_groups.keys(),
+                key=lambda s: self._get_source_priority(s)
+            )
+            
+            # Distribute remainder to highest priority sources
+            for source in priority_sources[:remainder]:
+                distribution[source] += 1
+                
+        return distribution
+
+    def _get_source_priority(self, source: str) -> int:
+        """Get priority for a source component"""
+        # Define source priorities (can be customized)
+        source_priorities = {
+            'data_import': 1,
+            'data_transform': 2,
+            'data_validate': 3,
+            'data_export': 4,
+            'quality_check': 5,
+            'analytics': 6
+        }
+        return source_priorities.get(source, 0)
+
+    async def _update_processor_metrics(self, processor_id: str, tasks: List[ProcessingMessage]) -> None:
+        """Update processor metrics with detailed performance analytics"""
+        try:
+            context = self.registered_processors[processor_id]
+            
+            # Calculate comprehensive metrics
+            metrics = {
+                'queue_metrics': self._calculate_queue_metrics(tasks),
+                'performance_metrics': self._calculate_performance_metrics(context),
+                'resource_metrics': self._calculate_resource_metrics(tasks, context),
+                'dependency_metrics': self._calculate_dependency_metrics(tasks),
+                'health_metrics': self._calculate_health_metrics(context),
+                'efficiency_metrics': self._calculate_efficiency_metrics(context),
+                'visualization_data': self._prepare_visualization_data(context)
+            }
+            
+            # Update context metrics
+            context.metrics_history.append(metrics)
+            if len(context.metrics_history) > 100:  # Keep last 100 measurements
+                context.metrics_history.pop(0)
+                
+            # Update current metrics
+            context.current_metrics = metrics
+            
+            # Notify monitoring system with enhanced data
+            await self._notify_processor_metrics_update(processor_id, metrics)
+            
+        except Exception as e:
+            logger.error(f"Processor metrics update failed: {str(e)}")
+
+    def _calculate_queue_metrics(self, tasks: List[ProcessingMessage]) -> Dict[str, Any]:
+        """Calculate detailed queue metrics"""
+        if not tasks:
+            return {
+                'size': 0,
+                'growth_rate': 0,
+                'priority_distribution': {},
+                'source_distribution': {},
+                'average_wait_time': 0,
+                'max_wait_time': 0,
+                'wait_time_distribution': {},
+                'bottleneck_analysis': {}
+            }
+            
+        # Calculate basic metrics
+        queue_size = len(tasks)
+        wait_times = [(datetime.utcnow() - task.metadata.created_at).total_seconds() for task in tasks]
+        max_wait = max(wait_times)
+        avg_wait = sum(wait_times) / queue_size
+        
+        # Calculate wait time distribution
+        wait_distribution = {
+            '0-5min': sum(1 for t in wait_times if t <= 300),
+            '5-15min': sum(1 for t in wait_times if 300 < t <= 900),
+            '15-30min': sum(1 for t in wait_times if 900 < t <= 1800),
+            '30min+': sum(1 for t in wait_times if t > 1800)
+        }
+        
+        # Analyze bottlenecks
+        bottlenecks = self._analyze_queue_bottlenecks(tasks)
+        
+        return {
+            'size': queue_size,
+            'growth_rate': self._calculate_queue_growth_rate(tasks),
+            'priority_distribution': self._calculate_priority_distribution(tasks),
+            'source_distribution': self._calculate_source_distribution(tasks),
+            'average_wait_time': avg_wait,
+            'max_wait_time': max_wait,
+            'wait_time_distribution': wait_distribution,
+            'bottleneck_analysis': bottlenecks
+        }
+
+    def _calculate_performance_metrics(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Calculate detailed performance metrics"""
+        if not context.metrics_history:
+            return {
+                'processing_rate': 0,
+                'error_rate': 0,
+                'average_processing_time': 0,
+                'throughput': 0,
+                'latency': 0,
+                'efficiency': 0,
+                'trends': {}
+            }
+            
+        # Calculate processing metrics
+        recent_metrics = context.metrics_history[-5:]  # Last 5 measurements
+        processing_times = [m.get('processing_time', 0) for m in recent_metrics]
+        error_counts = [m.get('error_count', 0) for m in recent_metrics]
+        total_tasks = [m.get('total_tasks', 0) for m in recent_metrics]
+        
+        # Calculate trends
+        trends = self._calculate_performance_trends(context.metrics_history)
+        
+        return {
+            'processing_rate': sum(total_tasks) / len(total_tasks),
+            'error_rate': sum(error_counts) / max(1, sum(total_tasks)),
+            'average_processing_time': sum(processing_times) / len(processing_times),
+            'throughput': self._calculate_throughput(context),
+            'latency': self._calculate_latency(context),
+            'efficiency': self._calculate_processing_efficiency(context),
+            'trends': trends
+        }
+
+    def _calculate_resource_metrics(self, tasks: List[ProcessingMessage], context: ProcessorContext) -> Dict[str, Any]:
+        """Calculate detailed resource utilization metrics"""
+        # Calculate current resource usage
+        current_usage = self._calculate_resource_utilization(tasks, context)
+        
+        # Calculate resource trends
+        resource_trends = self._calculate_resource_trends(context)
+        
+        # Calculate resource efficiency
+        efficiency = self._calculate_resource_efficiency(context)
+        
+        # Calculate resource bottlenecks
+        bottlenecks = self._identify_resource_bottlenecks(context)
+        
+        return {
+            'current_usage': current_usage,
+            'trends': resource_trends,
+            'efficiency': efficiency,
+            'bottlenecks': bottlenecks,
+            'recommendations': self._generate_resource_recommendations(context)
+        }
+
+    def _calculate_dependency_metrics(self, tasks: List[ProcessingMessage]) -> Dict[str, Any]:
+        """Calculate detailed dependency metrics"""
+        # Calculate basic dependency metrics
+        basic_metrics = self._calculate_dependency_complexity(tasks)
+        
+        # Calculate dependency chains
+        chains = self._analyze_dependency_chains(tasks)
+        
+        # Calculate critical paths
+        critical_paths = self._identify_critical_paths(tasks)
+        
+        # Calculate dependency health
+        health = self._calculate_dependency_health(tasks)
+        
+        return {
+            **basic_metrics,
+            'chains': chains,
+            'critical_paths': critical_paths,
+            'health': health,
+            'recommendations': self._generate_dependency_recommendations(tasks)
+        }
+
+    def _calculate_health_metrics(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Calculate detailed health metrics"""
+        return {
+            'status': context.status,
+            'uptime': self._calculate_uptime(context),
+            'error_rate': self._calculate_error_rate(context),
+            'recovery_rate': self._calculate_recovery_rate(context),
+            'stability_score': self._calculate_stability_score(context),
+            'health_trends': self._calculate_health_trends(context),
+            'alerts': self._get_active_alerts(context)
+        }
+
+    def _calculate_efficiency_metrics(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Calculate detailed efficiency metrics"""
+        return {
+            'resource_efficiency': self._calculate_resource_efficiency(context),
+            'processing_efficiency': self._calculate_processing_efficiency(context),
+            'queue_efficiency': self._calculate_queue_efficiency(context),
+            'overall_efficiency': self._calculate_overall_efficiency(context),
+            'optimization_opportunities': self._identify_optimization_opportunities(context)
+        }
+
+    def _prepare_visualization_data(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare data for visualization"""
+        return {
+            'time_series': self._prepare_time_series_data(context),
+            'resource_usage': self._prepare_resource_usage_data(context),
+            'performance_charts': self._prepare_performance_charts(context),
+            'health_status': self._prepare_health_status_data(context),
+            'dependency_graph': self._prepare_dependency_graph(context),
+            'bottleneck_analysis': self._prepare_bottleneck_analysis(context)
+        }
+
+    def _prepare_time_series_data(self, context: ProcessorContext) -> Dict[str, List[Dict[str, Any]]]:
+        """Prepare time series data for visualization"""
+        if not context.metrics_history:
+            return {}
+            
+        return {
+            'queue_size': [
+                {'timestamp': m.get('timestamp'), 'value': m.get('queue_size', 0)}
+                for m in context.metrics_history
+            ],
+            'processing_rate': [
+                {'timestamp': m.get('timestamp'), 'value': m.get('processing_rate', 0)}
+                for m in context.metrics_history
+            ],
+            'error_rate': [
+                {'timestamp': m.get('timestamp'), 'value': m.get('error_rate', 0)}
+                for m in context.metrics_history
+            ],
+            'resource_usage': [
+                {'timestamp': m.get('timestamp'), 'value': m.get('resource_usage', {})}
+                for m in context.metrics_history
+            ]
+        }
+
+    def _prepare_resource_usage_data(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare resource usage data for visualization"""
+        if not context.metrics_history:
+            return {}
+            
+        latest_metrics = context.metrics_history[-1]
+        resource_usage = latest_metrics.get('resource_metrics', {}).get('current_usage', {})
+        
+        return {
+            'current': {
+                'cpu': resource_usage.get('cpu', 0),
+                'memory': resource_usage.get('memory', 0),
+                'io': resource_usage.get('io', 0)
+            },
+            'limits': {
+                'cpu': context.max_cpu,
+                'memory': context.max_memory,
+                'io': context.max_io_ops
+            },
+            'trends': self._calculate_resource_trends(context)
+        }
+
+    def _prepare_performance_charts(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare performance chart data"""
+        if not context.metrics_history:
+            return {}
+            
+        return {
+            'throughput': self._calculate_throughput_chart_data(context),
+            'latency': self._calculate_latency_chart_data(context),
+            'error_rate': self._calculate_error_rate_chart_data(context),
+            'efficiency': self._calculate_efficiency_chart_data(context)
+        }
+
+    def _prepare_health_status_data(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare health status data for visualization"""
+        health_metrics = self._calculate_health_metrics(context)
+        
+        return {
+            'status': health_metrics['status'],
+            'score': health_metrics['stability_score'],
+            'trends': health_metrics['health_trends'],
+            'alerts': health_metrics['alerts'],
+            'recommendations': self._generate_health_recommendations(health_metrics)
+        }
+
+    def _prepare_dependency_graph(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare dependency graph data for visualization"""
+        if not context.current_tasks:
+            return {}
+            
+        return {
+            'nodes': self._get_dependency_nodes(context.current_tasks),
+            'edges': self._get_dependency_edges(context.current_tasks),
+            'critical_paths': self._identify_critical_paths(context.current_tasks),
+            'bottlenecks': self._identify_dependency_bottlenecks(context.current_tasks)
+        }
+
+    def _prepare_bottleneck_analysis(self, context: ProcessorContext) -> Dict[str, Any]:
+        """Prepare bottleneck analysis data for visualization"""
+        return {
+            'resource_bottlenecks': self._identify_resource_bottlenecks(context),
+            'processing_bottlenecks': self._identify_processing_bottlenecks(context),
+            'queue_bottlenecks': self._analyze_queue_bottlenecks(context.current_tasks),
+            'dependency_bottlenecks': self._identify_dependency_bottlenecks(context.current_tasks),
+            'recommendations': self._generate_bottleneck_recommendations(context)
+        }
+
+    def _analyze_queue_bottlenecks(self, tasks: List[ProcessingMessage]) -> Dict[str, Any]:
+        """Analyze queue bottlenecks"""
+        if not tasks:
+            return {}
+            
+        # Group tasks by source and priority
+        source_groups = {}
+        priority_groups = {}
+        
+        for task in tasks:
+            source = task.metadata.source_component
+            priority = task.metadata.priority.value
+            
+            if source not in source_groups:
+                source_groups[source] = []
+            if priority not in priority_groups:
+                priority_groups[priority] = []
+                
+            source_groups[source].append(task)
+            priority_groups[priority].append(task)
+            
+        # Calculate bottleneck metrics
+        bottlenecks = {
+            'source_bottlenecks': self._identify_source_bottlenecks(source_groups),
+            'priority_bottlenecks': self._identify_priority_bottlenecks(priority_groups),
+            'wait_time_bottlenecks': self._identify_wait_time_bottlenecks(tasks),
+            'resource_bottlenecks': self._identify_resource_bottlenecks_from_tasks(tasks)
+        }
+        
+        return bottlenecks
+
+    def _identify_source_bottlenecks(self, source_groups: Dict[str, List[ProcessingMessage]]) -> List[Dict[str, Any]]:
+        """Identify bottlenecks by source"""
+        bottlenecks = []
+        total_tasks = sum(len(tasks) for tasks in source_groups.values())
+        
+        for source, tasks in source_groups.items():
+            task_count = len(tasks)
+            percentage = (task_count / total_tasks) * 100
+            
+            if percentage > 30:  # Source with more than 30% of tasks
+                bottlenecks.append({
+                    'source': source,
+                    'task_count': task_count,
+                    'percentage': percentage,
+                    'recommendation': f"Consider distributing tasks from {source} more evenly"
+                })
+                
+        return bottlenecks
+
+    def _identify_priority_bottlenecks(self, priority_groups: Dict[int, List[ProcessingMessage]]) -> List[Dict[str, Any]]:
+        """Identify bottlenecks by priority"""
+        bottlenecks = []
+        total_tasks = sum(len(tasks) for tasks in priority_groups.values())
+        
+        for priority, tasks in priority_groups.items():
+            task_count = len(tasks)
+            percentage = (task_count / total_tasks) * 100
+            
+            if priority == MessagePriority.HIGH.value and percentage > 40:
+                bottlenecks.append({
+                    'priority': priority,
+                    'task_count': task_count,
+                    'percentage': percentage,
+                    'recommendation': "High priority tasks may be blocking lower priority tasks"
+                })
+                
+        return bottlenecks
+
+    def _identify_wait_time_bottlenecks(self, tasks: List[ProcessingMessage]) -> List[Dict[str, Any]]:
+        """Identify bottlenecks based on wait times"""
+        bottlenecks = []
+        
+        for task in tasks:
+            wait_time = (datetime.utcnow() - task.metadata.created_at).total_seconds()
+            
+            if wait_time > 3600:  # More than 1 hour
+            return 0.0
+            
+        recent_metrics = context.metrics_history[-5:]  # Last 5 measurements
+        if len(recent_metrics) < 2:
+            return 0.0
+            
+        # Calculate average growth rate
+        growth_rates = []
+        for i in range(1, len(recent_metrics)):
+            rate = (
+                recent_metrics[i]['queue_size'] - recent_metrics[i-1]['queue_size']
+            ) / max(1, recent_metrics[i-1]['queue_size'])
+            growth_rates.append(rate)
+            
+        return sum(growth_rates) / len(growth_rates)
+
+    async def _notify_queue_growth_alert(self, processor_id: str, growth_rate: float) -> None:
+        """Notify about accelerating queue growth"""
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_QUEUE_ALERT,
+                    content={
+                        'processor_id': processor_id,
+                        'growth_rate': growth_rate,
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        priority=MessagePriority.HIGH,
+                        source_component=self.module_identifier.component_name
+                    )
+                )
+            )
+        except Exception as e:
+            logger.error(f"Queue growth alert notification failed: {str(e)}")
+
+    async def _adjust_monitoring_frequency(self, processor_id: str, level: str) -> None:
+        """Adjust monitoring frequency based on backpressure level"""
+        try:
+            monitoring_intervals = {
+                'high': 5,    # 5 seconds
+                'medium': 15, # 15 seconds
+                'low': 30     # 30 seconds
+            }
+            
+            interval = monitoring_intervals.get(level, 30)
+            
+            # Update monitoring configuration
+            await self.message_broker.update_processor_config(
+                processor_id,
+                {'monitoring_interval': interval}
+            )
+            
+        except Exception as e:
+            logger.error(f"Monitoring frequency adjustment failed: {str(e)}")
+
+    async def _update_monitoring_config(self, processor_id: str, effectiveness: float) -> None:
+        """Update monitoring configuration based on effectiveness"""
+        try:
+            # Adjust thresholds based on effectiveness
+            thresholds = {
+                'queue_size': int(1000 * (1 - effectiveness)),
+                'active_tasks': int(50 * (1 - effectiveness)),
+                'error_rate': 0.1 * (1 - effectiveness)
+            }
+            
+            # Update processor configuration
+            await self.message_broker.update_processor_config(
+                processor_id,
+                {'monitoring_thresholds': thresholds}
+            )
+            
+        except Exception as e:
+            logger.error(f"Monitoring config update failed: {str(e)}")
+
+    async def _notify_backpressure_status(self, processor_id: str, level: str) -> None:
+        """Notify about backpressure status"""
+        try:
+            context = self.registered_processors[processor_id]
+            
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.PROCESSOR_BACKPRESSURE_STATUS,
+                    content={
+                        'processor_id': processor_id,
+                        'level': level,
+                        'metrics': {
+                            'queue_size': context.message_queue_size,
+                            'active_tasks': context.active_tasks,
+                            'error_rate': context.error_count / max(1, context.total_tasks)
+                        },
+                        'timestamp': datetime.utcnow().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        priority=MessagePriority.HIGH,
+                        source_component=self.module_identifier.component_name
+                    )
+                )
+            )
+        except Exception as e:
+            logger.error(f"Backpressure status notification failed: {str(e)}")

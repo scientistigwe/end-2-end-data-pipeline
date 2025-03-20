@@ -6,6 +6,14 @@ import uuid
 import psutil
 import numpy as np
 from sklearn.metrics import roc_auc_score, confusion_matrix
+from dataclasses import dataclass
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -22,7 +30,324 @@ from .base.base_manager import BaseManager
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class AnalyticsResult:
+    """Data class to hold analytics results"""
+    analysis_id: str
+    pipeline_id: str
+    analysis_type: str
+    results: Dict[str, Any]
+    metrics: Dict[str, float]
+    timestamp: str
+    status: str
+    error: Optional[str] = None
 
+class AdvancedAnalyticsManager(BaseManager):
+    """Manager for advanced analytics operations"""
+    
+    def __init__(self, message_broker: MessageBroker):
+        super().__init__(message_broker)
+        self.logger = logging.getLogger(__name__)
+        self.active_analyses: Dict[str, Dict[str, Any]] = {}
+        self.completed_analyses: Dict[str, AnalyticsResult] = {}
+        self.failed_analyses: Dict[str, AnalyticsResult] = {}
+        self.analytics_metrics: Dict[str, Any] = {}
+        self.monitoring_metrics: Dict[str, Any] = {}
+        
+        # Default configuration
+        self.config = {
+            "max_retries": 3,
+            "timeout_seconds": 300,
+            "batch_size": 1000,
+            "max_concurrent_analyses": 5,
+            "model_params": {
+                "random_forest": {
+                    "n_estimators": 100,
+                    "max_depth": 10
+                },
+                "kmeans": {
+                    "n_clusters": 5,
+                    "max_iter": 300
+                },
+                "pca": {
+                    "n_components": 2
+                }
+            }
+        }
+    
+    async def _initialize_manager(self):
+        """Initialize the manager"""
+        self.logger.info("Initializing Advanced Analytics Manager")
+        
+        # Set up message handlers
+        self._setup_message_handlers()
+        
+        # Initialize metrics
+        self.analytics_metrics = {
+            "total_analyses": 0,
+            "successful_analyses": 0,
+            "failed_analyses": 0,
+            "average_duration": 0.0,
+            "last_update": datetime.now().isoformat()
+        }
+        
+        self.monitoring_metrics = {
+            "active_analyses": 0,
+            "completed_analyses": 0,
+            "failed_analyses": 0,
+            "average_duration": 0.0,
+            "last_update": datetime.now().isoformat()
+        }
+        
+        # Start monitoring tasks
+        asyncio.create_task(self._monitor_active_analyses())
+        asyncio.create_task(self._monitor_analysis_timeouts())
+    
+    def _setup_message_handlers(self):
+        """Set up message handlers"""
+        self._message_handlers = {
+            MessageType.ANALYTICS_PROCESS_START: self._handle_process_start,
+            MessageType.ANALYTICS_PROCESS_COMPLETE: self._handle_process_complete,
+            MessageType.ANALYTICS_PROCESS_FAILED: self._handle_process_failed,
+            MessageType.ANALYTICS_STATUS_REQUEST: self._handle_status_request,
+            MessageType.ANALYTICS_STATUS_RESPONSE: self._handle_status_response,
+            MessageType.ANALYTICS_ANALYSIS_REQUEST: self._handle_analysis_request,
+            MessageType.ANALYTICS_ANALYSIS_START: self._handle_analysis_start,
+            MessageType.ANALYTICS_ANALYSIS_PROGRESS: self._handle_analysis_progress,
+            MessageType.ANALYTICS_ANALYSIS_COMPLETE: self._handle_analysis_complete,
+            MessageType.ANALYTICS_ANALYSIS_FAILED: self._handle_analysis_failed
+        }
+    
+    async def _handle_process_start(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics process start message"""
+        try:
+            # Validate message content
+            if not message.content or "pipeline_id" not in message.content:
+                raise ValueError("Missing required fields in message content")
+            
+            pipeline_id = message.content["pipeline_id"]
+            config = message.content.get("config", {})
+            
+            # Create process
+            process_id = f"analytics_process_{datetime.now().timestamp()}"
+            self.active_processes[process_id] = {
+                "pipeline_id": pipeline_id,
+                "start_time": datetime.now(),
+                "status": "running",
+                "config": config
+            }
+            
+            # Update metrics
+            await self._update_analytics_metrics({
+                "total_analyses": self.analytics_metrics["total_analyses"] + 1
+            })
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_START,
+                content={
+                    "process_id": process_id,
+                    "pipeline_id": pipeline_id,
+                    "status": "started",
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling process start: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_FAILED,
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    
+    async def _handle_process_complete(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics process complete message"""
+        try:
+            process_id = message.content.get("process_id")
+            if not process_id or process_id not in self.active_processes:
+                raise ValueError("Invalid process ID")
+            
+            # Move process to completed
+            process = self.active_processes.pop(process_id)
+            self.completed_processes[process_id] = {
+                **process,
+                "end_time": datetime.now(),
+                "status": "completed"
+            }
+            
+            # Update metrics
+            await self._update_analytics_metrics({
+                "successful_analyses": self.analytics_metrics["successful_analyses"] + 1
+            })
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_COMPLETE,
+                content={
+                    "process_id": process_id,
+                    "pipeline_id": process["pipeline_id"],
+                    "status": "completed",
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling process complete: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_FAILED,
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    
+    async def _handle_process_failed(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics process failed message"""
+        try:
+            process_id = message.content.get("process_id")
+            if not process_id or process_id not in self.active_processes:
+                raise ValueError("Invalid process ID")
+            
+            # Move process to failed
+            process = self.active_processes.pop(process_id)
+            self.failed_processes[process_id] = {
+                **process,
+                "end_time": datetime.now(),
+                "status": "failed",
+                "error": message.content.get("error", "Unknown error")
+            }
+            
+            # Update metrics
+            await self._update_analytics_metrics({
+                "failed_analyses": self.analytics_metrics["failed_analyses"] + 1
+            })
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_FAILED,
+                content={
+                    "process_id": process_id,
+                    "pipeline_id": process["pipeline_id"],
+                    "status": "failed",
+                    "error": message.content.get("error", "Unknown error"),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling process failed: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_PROCESS_FAILED,
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    
+    async def _handle_status_request(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics status request message"""
+        try:
+            process_id = message.content.get("process_id")
+            if not process_id or process_id not in self.active_processes:
+                raise ValueError("Invalid process ID")
+            
+            process = self.active_processes[process_id]
+            duration = (datetime.now() - process["start_time"]).total_seconds()
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_STATUS_RESPONSE,
+                content={
+                    "process_id": process_id,
+                    "pipeline_id": process["pipeline_id"],
+                    "status": process["status"],
+                    "start_time": process["start_time"].isoformat(),
+                    "duration": duration,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling status request: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_STATUS_RESPONSE,
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    
+    async def _handle_status_response(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics status response message"""
+        try:
+            process_id = message.content.get("process_id")
+            if not process_id or process_id not in self.active_processes:
+                raise ValueError("Invalid process ID")
+            
+            # Update process status
+            self.active_processes[process_id]["status"] = message.content.get("status", "unknown")
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_STATUS_RESPONSE,
+                content={
+                    "process_id": process_id,
+                    "status": "updated",
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling status response: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_STATUS_RESPONSE,
+                content={
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+    
+    async def _handle_analysis_request(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle analytics analysis request message"""
+        try:
+            # Validate message content
+            if not message.content or "pipeline_id" not in message.content:
+                raise ValueError("Missing required fields in message content")
+            
+            pipeline_id = message.content["pipeline_id"]
+            analysis_type = message.content.get("analysis_type", "comprehensive")
+            data = message.content.get("data")
+            
+            if data is None:
+                raise ValueError("Missing data in request")
+            
+            # Create analysis
+            analysis_id = f"analytics_analysis_{datetime.now().timestamp()}"
+            self.active_analyses[analysis_id] = {
+                "pipeline_id": pipeline_id,
+                "analysis_type": analysis_type,
+                "start_time": datetime.now(),
+                "status": "running",
+                "data": data
+            }
+            
+            # Start analysis task
+            asyncio.create_task(self._perform_analysis(analysis_id))
+            
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_ANALYSIS_START,
+                content={
+                    "analysis_id": analysis_id,
+                    "pipeline_id": pipeline_id,
+                    "analysis_type": analysis_type,
+                    "status": "started",
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error handling analysis request: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.ANALYTICS_ANALYSIS_FAILED,
+                content={
 class AnalyticsManager(BaseManager):
     """
     Analytics Manager for coordinating advanced analytics workflows.

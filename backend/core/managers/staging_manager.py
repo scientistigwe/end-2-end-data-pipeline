@@ -53,13 +53,21 @@ class StagingManager(BaseManager):
         self.storage_path = storage_path
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
-        # Resource limits
+        # Resource limits and configuration
         self.staging_limits = {
             "max_file_size_mb": 1024,
             "max_storage_usage_gb": 10,
             "max_retention_hours": 24,
-            "cleanup_interval_minutes": 30
+            "cleanup_interval_minutes": 30,
+            "max_concurrent_operations": 10,
+            "backpressure_threshold": 0.8  # 80% of max storage
         }
+
+        # Resource tracking
+        self.active_operations = 0
+        self.storage_metrics = StagingMetrics()
+        self.resource_locks = {}
+        self.access_control = {}
 
     async def _setup_domain_handlers(self) -> None:
         """Setup staging-specific message handlers"""
@@ -119,10 +127,257 @@ class StagingManager(BaseManager):
                 self._monitor_expired_resources(),
                 "expired_resources_monitor"
             )
+            self._start_background_task(
+                self._monitor_active_operations(),
+                "active_operations_monitor"
+            )
+
+            # Initialize metrics
+            await self._initialize_metrics()
 
         except Exception as e:
             self.logger.error(f"Staging manager start failed: {str(e)}")
             raise
+
+    async def _initialize_metrics(self) -> None:
+        """Initialize staging metrics"""
+        try:
+            # Get current storage usage
+            usage_gb = await self._get_current_storage_usage_gb()
+            self.storage_metrics.current_storage_usage = usage_gb
+            self.storage_metrics.max_storage_usage = max(
+                usage_gb,
+                self.storage_metrics.max_storage_usage
+            )
+
+            # Get active operations count
+            self.storage_metrics.active_stages = len(self.active_processes)
+
+            # Publish initial metrics
+            await self._publish_metrics_update()
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize metrics: {str(e)}")
+
+    async def _monitor_active_operations(self) -> None:
+        """Monitor active operations and enforce limits"""
+        while not self._shutting_down:
+            try:
+                if self.active_operations >= self.staging_limits['max_concurrent_operations']:
+                    await self._handle_backpressure()
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Active operations monitoring failed: {str(e)}")
+                if not self._shutting_down:
+                    await asyncio.sleep(5)
+
+    async def _handle_backpressure(self) -> None:
+        """Handle backpressure when system is overloaded"""
+        try:
+            # Publish backpressure notification
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_METRICS_UPDATE,
+                    content={
+                        'type': 'backpressure',
+                        'active_operations': self.active_operations,
+                        'max_operations': self.staging_limits['max_concurrent_operations'],
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='system_monitor',
+                        domain_type='staging'
+                    )
+                )
+            )
+
+            # Wait for operations to complete
+            await asyncio.sleep(1)
+
+        except Exception as e:
+            self.logger.error(f"Backpressure handling failed: {str(e)}")
+
+    async def _handle_store_request(self, message: ProcessingMessage) -> None:
+        """Handle store request with improved resource management"""
+        try:
+            # Check resource limits
+            if not await self._check_resource_limits():
+                await self._send_error_response(
+                    message,
+                    "Resource limits exceeded",
+                    MessageType.STAGING_HANDLER_ERROR
+                )
+                return
+
+            # Extract request details
+            pipeline_id = message.content.get('pipeline_id')
+            data = message.content.get('data')
+            metadata = message.content.get('metadata', {})
+
+            # Create staging context
+            context = StagingContext(
+                pipeline_id=pipeline_id,
+                state=StagingState.STORING,
+                metadata=metadata
+            )
+
+            # Store data
+            try:
+                self.active_operations += 1
+                await self._store_data(context, data)
+                context.state = StagingState.STORED
+                context.completion_time = datetime.now()
+
+                # Update metrics
+                self.storage_metrics.storage_operations += 1
+                self.storage_metrics.total_stored_bytes += len(data)
+
+                # Send success response
+                await self._send_success_response(
+                    message,
+                    {
+                        'pipeline_id': pipeline_id,
+                        'status': 'stored',
+                        'location': context.storage_path,
+                        'size_bytes': len(data)
+                    },
+                    MessageType.STAGING_STORE_COMPLETE
+                )
+
+            finally:
+                self.active_operations -= 1
+                await self._publish_metrics_update()
+
+        except Exception as e:
+            self.logger.error(f"Store request handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.STAGING_HANDLER_ERROR
+            )
+
+    async def _check_resource_limits(self) -> bool:
+        """Check if resource limits are exceeded"""
+        try:
+            # Check storage usage
+            usage_gb = await self._get_current_storage_usage_gb()
+            if usage_gb > self.staging_limits['max_storage_usage_gb']:
+                return False
+
+            # Check concurrent operations
+            if self.active_operations >= self.staging_limits['max_concurrent_operations']:
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Resource limit check failed: {str(e)}")
+            return False
+
+    async def _store_data(self, context: StagingContext, data: bytes) -> None:
+        """Store data with improved error handling"""
+        try:
+            # Generate storage path
+            storage_path = self.storage_path / f"{context.pipeline_id}_{uuid.uuid4()}"
+            context.storage_path = str(storage_path)
+
+            # Store data
+            async with aiofiles.open(storage_path, 'wb') as f:
+                await f.write(data)
+
+            # Update context
+            context.size_bytes = len(data)
+            context.state = StagingState.STORED
+
+            # Update repository
+            await self.repository.create_resource(
+                context.pipeline_id,
+                str(storage_path),
+                context.metadata
+            )
+
+        except Exception as e:
+            self.logger.error(f"Data storage failed: {str(e)}")
+            raise
+
+    async def _send_success_response(
+        self,
+        original_message: ProcessingMessage,
+        content: Dict[str, Any],
+        message_type: MessageType
+    ) -> None:
+        """Send success response with proper routing"""
+        response = original_message.create_response(
+            message_type=message_type,
+            content=content
+        )
+        await self.message_broker.publish(response)
+
+    async def _send_error_response(
+        self,
+        original_message: ProcessingMessage,
+        error_message: str,
+        message_type: MessageType
+    ) -> None:
+        """Send error response with proper routing"""
+        response = original_message.create_response(
+            message_type=message_type,
+            content={
+                'error': error_message,
+                'timestamp': datetime.now().isoformat()
+            }
+        )
+        await self.message_broker.publish(response)
+
+    async def _publish_metrics_update(self) -> None:
+        """Publish current metrics"""
+        try:
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.STAGING_METRICS_UPDATE,
+                    content={
+                        'metrics': {
+                            'active_stages': self.storage_metrics.active_stages,
+                            'total_stored_bytes': self.storage_metrics.total_stored_bytes,
+                            'current_storage_usage': self.storage_metrics.current_storage_usage,
+                            'storage_operations': self.storage_metrics.storage_operations,
+                            'retrieval_operations': self.storage_metrics.retrieval_operations,
+                            'error_count': self.storage_metrics.error_count,
+                            'active_operations': self.active_operations
+                        },
+                        'timestamp': datetime.now().isoformat()
+                    },
+                    metadata=MessageMetadata(
+                        source_component=self.component_name,
+                        target_component='system_monitor',
+                        domain_type='staging'
+                    )
+                )
+            )
+        except Exception as e:
+            self.logger.error(f"Metrics update failed: {str(e)}")
+
+    async def _manager_specific_cleanup(self) -> None:
+        """Staging-specific cleanup"""
+        try:
+            # Cleanup expired resources
+            await self._cleanup_expired_resources()
+
+            # Cleanup repository
+            if self.repository:
+                await self.repository.cleanup_pending()
+
+            # Release all resource locks
+            self.resource_locks.clear()
+
+            # Clear access control
+            self.access_control.clear()
+
+        except Exception as e:
+            self.logger.error(f"Staging specific cleanup failed: {str(e)}")
 
     async def _monitor_storage_usage(self) -> None:
         """Monitor storage usage and trigger cleanup if needed"""
@@ -152,16 +407,6 @@ class StagingManager(BaseManager):
                 self.logger.error(f"Expired resource monitoring failed: {str(e)}")
                 if not self._shutting_down:
                     await asyncio.sleep(60)
-
-    async def _manager_specific_cleanup(self) -> None:
-        """Staging-specific cleanup"""
-        try:
-            await self._cleanup_expired_resources()
-            if self.repository:
-                # Cleanup any pending transactions
-                await self.repository.cleanup_pending()
-        except Exception as e:
-            self.logger.error(f"Staging specific cleanup failed: {str(e)}")
 
     async def _handle_service_error(self, message: ProcessingMessage) -> None:
         """
@@ -710,26 +955,72 @@ class StagingManager(BaseManager):
             raise
 
     async def _handle_handler_retrieve(self, message: ProcessingMessage) -> None:
-        """Handle retrieve request from handler"""
+        """Handle retrieve request with access control and error handling"""
         try:
-            result = await self.retrieve_data(
-                reference=message.content.get('reference'),
-                requester_id=message.metadata.source_component
-            )
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_HANDLER_COMPLETE,
-                    content=result,
-                    metadata=MessageMetadata(
-                        source_component=self.component_name,
-                        target_component=message.metadata.source_component,
-                        domain_type="staging"
-                    )
+            # Extract request details
+            pipeline_id = message.content.get('pipeline_id')
+            reference = message.content.get('reference')
+            requester_id = message.content.get('requester_id')
+
+            # Validate access
+            if not await self._validate_access(reference, requester_id):
+                await self._send_error_response(
+                    message,
+                    "Access denied",
+                    MessageType.STAGING_ACCESS_DENIED
                 )
+                return
+
+            # Check resource limits
+            if not await self._check_resource_limits():
+                await self._send_error_response(
+                    message,
+                    "Resource limits exceeded",
+                    MessageType.STAGING_HANDLER_ERROR
+                )
+                return
+
+            # Create staging context
+            context = StagingContext(
+                pipeline_id=pipeline_id,
+                state=StagingState.RETRIEVING,
+                metadata=message.content.get('metadata', {})
             )
+
+            # Retrieve data
+            try:
+                self.active_operations += 1
+                data = await self._read_data(Path(reference), context.metadata.get('type', 'binary'))
+                context.state = StagingState.STORED
+
+                # Update metrics
+                self.storage_metrics.retrieval_operations += 1
+                self.storage_metrics.total_retrieved_bytes += len(data)
+
+                # Send success response
+                await self._send_success_response(
+                    message,
+                    {
+                        'pipeline_id': pipeline_id,
+                        'reference': reference,
+                        'data': data,
+                        'size_bytes': len(data),
+                        'type': context.metadata.get('type', 'binary')
+                    },
+                    MessageType.STAGING_RETRIEVE_COMPLETE
+                )
+
+            finally:
+                self.active_operations -= 1
+                await self._publish_metrics_update()
+
         except Exception as e:
-            logger.error(f"Handler retrieve failed: {str(e)}")
-            raise
+            self.logger.error(f"Retrieve request handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.STAGING_HANDLER_ERROR
+            )
 
     async def _handle_handler_decision(self, message: ProcessingMessage) -> None:
         """Handle decision from handler"""
@@ -761,27 +1052,82 @@ class StagingManager(BaseManager):
         await self._handle_service_error(message)
 
     async def _handle_status_request(self, message: ProcessingMessage) -> None:
-        """Handle status request"""
-        await self._handle_service_status(message)
+        """Handle status requests with comprehensive metrics"""
+        try:
+            # Get current metrics
+            current_usage = await self._get_current_storage_usage_gb()
+            active_ops = self.active_operations
+            metrics = {
+                'storage_usage': current_usage,
+                'active_operations': active_ops,
+                'total_stored_bytes': self.storage_metrics.total_stored_bytes,
+                'total_retrieved_bytes': self.storage_metrics.total_retrieved_bytes,
+                'storage_operations': self.storage_metrics.storage_operations,
+                'retrieval_operations': self.storage_metrics.retrieval_operations,
+                'error_count': self.storage_metrics.error_count,
+                'cleanup_count': self.storage_metrics.cleanup_count,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            # Send status response
+            await self._send_success_response(
+                message,
+                metrics,
+                MessageType.STAGING_STATUS_RESPONSE
+            )
+
+        except Exception as e:
+            self.logger.error(f"Status request handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.STAGING_HANDLER_ERROR
+            )
 
     async def _handle_cleanup_request(self, message: ProcessingMessage) -> None:
-        """Handle cleanup request"""
+        """Handle cleanup requests with proper resource management"""
         try:
-            await self._cleanup_expired_resources()
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=MessageType.STAGING_CLEANUP_COMPLETE,
-                    content={'status': 'completed'},
-                    metadata=MessageMetadata(
-                        source_component=self.component_name,
-                        target_component=message.metadata.source_component,
-                        domain_type="staging"
-                    )
+            # Extract request details
+            pipeline_id = message.content.get('pipeline_id')
+            force = message.content.get('force', False)
+
+            # Trigger cleanup
+            try:
+                await self._cleanup_expired_resources()
+                
+                if force:
+                    # Additional cleanup for force mode
+                    await self._cleanup_error_resources(pipeline_id)
+
+                # Update metrics
+                self.storage_metrics.cleanup_count += 1
+
+                # Send success response
+                await self._send_success_response(
+                    message,
+                    {
+                        'pipeline_id': pipeline_id,
+                        'status': 'cleaned',
+                        'force': force
+                    },
+                    MessageType.STAGING_CLEANUP_COMPLETE
                 )
-            )
+
+            except Exception as e:
+                self.logger.error(f"Cleanup operation failed: {str(e)}")
+                await self._send_error_response(
+                    message,
+                    str(e),
+                    MessageType.STAGING_HANDLER_ERROR
+                )
+
         except Exception as e:
-            logger.error(f"Cleanup request handling failed: {str(e)}")
-            raise
+            self.logger.error(f"Cleanup request handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.STAGING_HANDLER_ERROR
+            )
 
     async def _handle_cleanup_complete(self, message: ProcessingMessage) -> None:
         """Handle cleanup completion"""
@@ -800,26 +1146,29 @@ class StagingManager(BaseManager):
         await self._handle_handler_delete(message)
 
     async def _handle_access_request(self, message: ProcessingMessage) -> None:
-        """Handle access request"""
+        """Handle access control requests"""
         try:
+            # Extract request details
+            pipeline_id = message.content.get('pipeline_id')
             reference = message.content.get('reference')
-            requester = message.metadata.source_component
-            has_access = await self._validate_access(reference, requester)
-            response_type = MessageType.STAGING_ACCESS_GRANT if has_access else MessageType.STAGING_ACCESS_DENY
-            await self.message_broker.publish(
-                ProcessingMessage(
-                    message_type=response_type,
-                    content={'reference': reference},
-                    metadata=MessageMetadata(
-                        source_component=self.component_name,
-                        target_component=message.metadata.source_component,
-                        domain_type="staging"
-                    )
-                )
-            )
+            requester_id = message.content.get('requester_id')
+            access_type = message.content.get('access_type', 'read')
+
+            # Validate access
+            if await self._validate_access(reference, requester_id):
+                # Grant access
+                await self._handle_access_grant(message)
+            else:
+                # Deny access
+                await self._handle_access_deny(message)
+
         except Exception as e:
-            logger.error(f"Access request handling failed: {str(e)}")
-            raise
+            self.logger.error(f"Access request handling failed: {str(e)}")
+            await self._send_error_response(
+                message,
+                str(e),
+                MessageType.STAGING_HANDLER_ERROR
+            )
 
     async def _handle_status_response(self, message: ProcessingMessage) -> None:
         """Handle status response"""

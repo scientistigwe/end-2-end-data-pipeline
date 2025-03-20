@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from collections import deque, defaultdict
 import uuid
 import random
+from enum import Enum
 
 from .event_types import (
     ProcessingMessage,
@@ -46,6 +47,29 @@ class SubscriptionInfo:
     last_message_at: datetime = field(default_factory=datetime.now)
     messages_processed: int = 0
     is_active: bool = True
+
+
+@dataclass
+class MessagePriority(Enum):
+    """Message priority levels"""
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+    CRITICAL = 3
+
+
+@dataclass
+class ProcessingMessage:
+    """Enhanced processing message with priority and processor support"""
+    message_type: MessageType
+    content: Dict[str, Any]
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    priority: MessagePriority = MessagePriority.NORMAL
+    requires_processor: bool = False
+    processor_id: Optional[str] = None
+    persistence_required: bool = False
+    created_at: datetime = field(default_factory=datetime.now)
+    expires_at: Optional[datetime] = None
 
 
 class MessageBroker:
@@ -88,6 +112,19 @@ class MessageBroker:
         # State management
         self._cleanup_task = None
         self._start_background_tasks()
+
+        # Add priority queues
+        self._priority_queues: Dict[MessagePriority, asyncio.PriorityQueue] = {
+            priority: asyncio.PriorityQueue() for priority in MessagePriority
+        }
+        
+        # Add processor tracking
+        self._processor_connections: Dict[str, Dict[str, Any]] = {}
+        self._processor_message_queues: Dict[str, asyncio.Queue] = {}
+        
+        # Add persistence support
+        self._persistent_messages: Dict[str, ProcessingMessage] = {}
+        self._persistence_lock = asyncio.Lock()
 
     async def subscribe(
             self,
@@ -353,42 +390,28 @@ class MessageBroker:
             raise
 
     async def publish(self, message: ProcessingMessage) -> None:
-        """Enhanced publish with improved routing"""
+        """Enhanced publish with priority support"""
         try:
-            # Store active message
-            self.active_messages[message.id] = message
-
-            # Track in history
-            if message.metadata.correlation_id:
-                history = self.message_history.setdefault(
-                    message.metadata.correlation_id, []
-                )
-                history.append(message)
-
-            # Handle broadcast messages
-            if message.metadata.is_broadcast:
-                await self._handle_broadcast(message)
+            # Handle processor-specific messages
+            if message.requires_processor and message.processor_id:
+                await self.send_to_processor(message.processor_id, message)
                 return
-
-            # Find matching subscribers
-            matched_subscriptions = self._find_matching_subscriptions(message)
-
-            # Deliver to subscribers
-            delivery_tasks = []
-            for sub_info in matched_subscriptions:
-                delivery_tasks.append(
-                    self._deliver_message(sub_info, message)
-                )
-
-            if delivery_tasks:
-                await asyncio.gather(*delivery_tasks)
-
-            self.stats['messages_processed'] += 1
-
+                
+            # Add to appropriate priority queue
+            await self._priority_queues[message.priority].put(
+                (message.priority.value, datetime.now(), message)
+            )
+            
+            # Handle persistence if required
+            if message.persistence_required:
+                async with self._persistence_lock:
+                    self._persistent_messages[message.metadata.get('message_id')] = message
+                    
+            # Process message
+            await self._process_message(message)
+            
         except Exception as e:
-            logger.error(f"Message publishing failed: {str(e)}")
-            self.stats['messages_failed'] += 1
-            raise
+            logger.error(f"Error publishing message: {str(e)}")
 
     async def publish_and_wait(
             self,
@@ -1098,3 +1121,113 @@ async def _send_ping(self, ping_message: ProcessingMessage) -> None:
             await self.unsubscribe(handler_identifier, "global.status.response")
         except Exception as e:
             logger.error(f"Failed to cleanup ping handler: {e}")
+
+    async def register_processor(
+            self,
+            processor_id: str,
+            capabilities: List[str],
+            max_queue_size: int = 1000
+    ) -> None:
+        """Register a processor for direct communication"""
+        self._processor_connections[processor_id] = {
+            'capabilities': capabilities,
+            'status': 'active',
+            'last_heartbeat': datetime.now()
+        }
+        self._processor_message_queues[processor_id] = asyncio.Queue(maxsize=max_queue_size)
+        
+        # Subscribe to processor-specific messages
+        await self.subscribe(
+            processor_id,
+            [f"processor.{processor_id}.*"],
+            self._handle_processor_message
+        )
+
+    async def unregister_processor(self, processor_id: str) -> None:
+        """Unregister a processor"""
+        if processor_id in self._processor_connections:
+            del self._processor_connections[processor_id]
+            del self._processor_message_queues[processor_id]
+            await self.unsubscribe(processor_id, f"processor.{processor_id}.*")
+
+    async def send_to_processor(
+            self,
+            processor_id: str,
+            message: ProcessingMessage
+    ) -> bool:
+        """Send message directly to a processor"""
+        if processor_id not in self._processor_connections:
+            logger.error(f"Processor {processor_id} not registered")
+            return False
+            
+        try:
+            await self._processor_message_queues[processor_id].put(message)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send message to processor {processor_id}: {str(e)}")
+            return False
+
+    async def _handle_processor_message(
+            self,
+            message: ProcessingMessage
+    ) -> None:
+        """Handle messages from processors"""
+        processor_id = message.metadata.get('processor_id')
+        if not processor_id or processor_id not in self._processor_connections:
+            logger.error(f"Invalid processor message: {message}")
+            return
+            
+        try:
+            # Update processor heartbeat
+            self._processor_connections[processor_id]['last_heartbeat'] = datetime.now()
+            
+            # Process the message
+            if message.requires_processor:
+                await self._process_processor_message(message)
+            else:
+                await self._route_processor_message(message)
+                
+        except Exception as e:
+            logger.error(f"Error handling processor message: {str(e)}")
+
+    async def _process_processor_message(self, message: ProcessingMessage) -> None:
+        """Process a message that requires processor handling"""
+        processor_id = message.metadata.get('processor_id')
+        if not processor_id:
+            return
+            
+        try:
+            # Add to processor queue
+            await self._processor_message_queues[processor_id].put(message)
+            
+            # Update processor status
+            self._processor_connections[processor_id]['status'] = 'processing'
+            
+        except Exception as e:
+            logger.error(f"Error processing message for processor {processor_id}: {str(e)}")
+
+    async def _route_processor_message(self, message: ProcessingMessage) -> None:
+        """Route a message from a processor to appropriate subscribers"""
+        try:
+            # Find matching subscriptions
+            subscriptions = self._find_matching_subscriptions(message)
+            
+            # Deliver to subscribers
+            for sub_info in subscriptions:
+                await self._deliver_message(sub_info, message)
+                
+        except Exception as e:
+            logger.error(f"Error routing processor message: {str(e)}")
+
+    async def _process_message(self, message: ProcessingMessage) -> None:
+        """Process a message with priority handling"""
+        try:
+            # Find matching subscriptions
+            subscriptions = self._find_matching_subscriptions(message)
+            
+            # Deliver to subscribers
+            for sub_info in subscriptions:
+                await self._deliver_message(sub_info, message)
+                
+        except Exception as e:
+            logger.error(f"Error processing message: {str(e)}")

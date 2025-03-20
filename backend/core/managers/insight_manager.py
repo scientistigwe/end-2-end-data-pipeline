@@ -3,6 +3,15 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import uuid
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import DBSCAN
+from sklearn.ensemble import IsolationForest
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
+from scipy import stats
 
 from ..messaging.broker import MessageBroker
 from ..messaging.event_types import (
@@ -52,6 +61,36 @@ class InsightManager(BaseManager):
 
         # Initialize state
         self.state = ManagerState.INITIALIZING
+
+        # New attributes for the new implementation
+        self.active_insights: Dict[str, Dict[str, Any]] = {}
+        self.insight_metrics: Dict[str, Dict[str, float]] = {}
+        self.config = {
+            "max_retries": 3,
+            "timeout_seconds": 300,
+            "batch_size": 1000,
+            "max_concurrent_insights": 5,
+            "pattern_detection": {
+                "min_pattern_length": 3,
+                "max_pattern_length": 10,
+                "similarity_threshold": 0.8
+            },
+            "trend_analysis": {
+                "window_size": 30,
+                "min_trend_length": 5,
+                "significance_level": 0.05
+            },
+            "anomaly_detection": {
+                "contamination": 0.1,
+                "random_state": 42
+            },
+            "correlation_analysis": {
+                "min_correlation": 0.3
+            },
+            "seasonality_analysis": {
+                "default_period": 12
+            }
+        }
 
     async def _setup_domain_handlers(self) -> None:
         """Setup insight-specific message handlers"""
@@ -1312,3 +1351,764 @@ class InsightManager(BaseManager):
         except Exception as e:
             logger.error(f"Anomaly severity calculation failed: {str(e)}")
             return 0.0
+
+    async def _initialize_manager(self):
+        """Initialize the insight manager"""
+        self._setup_message_handlers()
+        self.logger.info("Insight Manager initialized")
+
+    def _setup_message_handlers(self):
+        """Set up message handlers for the manager"""
+        self.message_handlers = {
+            MessageType.INSIGHT_REQUEST: self._handle_insight_request,
+            MessageType.INSIGHT_START: self._handle_insight_start,
+            MessageType.INSIGHT_PROGRESS: self._handle_insight_progress,
+            MessageType.INSIGHT_COMPLETE: self._handle_insight_complete,
+            MessageType.INSIGHT_FAILED: self._handle_insight_failed
+        }
+
+    async def _handle_insight_request(self, message: ProcessingMessage) -> ProcessingMessage:
+        """Handle insight request message"""
+        try:
+            content = message.content
+            insight_id = content.get("insight_id")
+            data = pd.DataFrame(content.get("data", {}))
+            insight_types = content.get("insight_types", ["pattern", "trend", "anomaly"])
+            
+            if not self._validate_insight_request(content):
+                return ProcessingMessage(
+                    message_type=MessageType.INSIGHT_FAILED,
+                    content={
+                        "insight_id": insight_id,
+                        "error": "Invalid insight request",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+
+            # Create insight context
+            insight_context = {
+                "insight_id": insight_id,
+                "data": data,
+                "insight_types": insight_types,
+                "start_time": datetime.now(),
+                "status": "pending"
+            }
+
+            # Store insight context
+            self.active_insights[insight_id] = insight_context
+
+            # Start insight generation
+            await self._start_insight_generation(insight_id)
+
+            return ProcessingMessage(
+                message_type=MessageType.INSIGHT_START,
+                content={
+                    "insight_id": insight_id,
+                    "status": "started",
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error handling insight request: {str(e)}")
+            return ProcessingMessage(
+                message_type=MessageType.INSIGHT_FAILED,
+                content={
+                    "insight_id": content.get("insight_id"),
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+
+    async def _start_insight_generation(self, insight_id: str):
+        """Start the insight generation process"""
+        try:
+            insight_context = self.active_insights[insight_id]
+            data = insight_context["data"]
+            insight_types = insight_context["insight_types"]
+            insights = {}
+
+            # Generate requested insights
+            if "pattern" in insight_types:
+                insights["patterns"] = await self._detect_patterns(data)
+            if "trend" in insight_types:
+                insights["trends"] = await self._analyze_trends(data)
+            if "anomaly" in insight_types:
+                insights["anomalies"] = await self._detect_anomalies(data)
+            if "correlation" in insight_types:
+                insights["correlations"] = await self._analyze_correlations(data)
+            if "seasonality" in insight_types:
+                insights["seasonality"] = await self._analyze_seasonality(data)
+
+            # Update insight context
+            insight_context["insights"] = insights
+            insight_context["status"] = "completed"
+            insight_context["end_time"] = datetime.now()
+
+            # Update metrics
+            await self._update_insight_metrics(insight_id)
+
+            # Publish completion message
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_COMPLETE,
+                    content={
+                        "insight_id": insight_id,
+                        "insights": insights,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error in insight generation: {str(e)}")
+            insight_context["status"] = "failed"
+            insight_context["error"] = str(e)
+            insight_context["end_time"] = datetime.now()
+
+            await self.message_broker.publish(
+                ProcessingMessage(
+                    message_type=MessageType.INSIGHT_FAILED,
+                    content={
+                        "insight_id": insight_id,
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                )
+            )
+
+    async def _detect_patterns(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Detect patterns in the data"""
+        try:
+            patterns = {}
+            
+            # Prepare data
+            numeric_data = data.select_dtypes(include=[np.number])
+            scaler = StandardScaler()
+            scaled_data = scaler.fit_transform(numeric_data)
+
+            # Apply PCA for dimensionality reduction
+            pca = PCA(n_components=2)
+            pca_data = pca.fit_transform(scaled_data)
+
+            # Detect patterns using DBSCAN
+            dbscan = DBSCAN(
+                eps=0.5,
+                min_samples=self.config["pattern_detection"]["min_pattern_length"]
+            )
+            cluster_labels = dbscan.fit_predict(pca_data)
+
+            # Analyze patterns
+            unique_clusters = np.unique(cluster_labels[cluster_labels != -1])
+            for cluster in unique_clusters:
+                cluster_points = pca_data[cluster_labels == cluster]
+                pattern = {
+                    "size": len(cluster_points),
+                    "center": cluster_points.mean(axis=0).tolist(),
+                    "spread": cluster_points.std(axis=0).tolist(),
+                    "points": cluster_points.tolist(),
+                    "density": self._calculate_pattern_density(cluster_points),
+                    "stability": self._calculate_pattern_stability(cluster_points),
+                    "coherence": self._calculate_pattern_coherence(cluster_points)
+                }
+                patterns[f"pattern_{cluster}"] = pattern
+
+            return {
+                "patterns": patterns,
+                "pattern_count": len(patterns),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error detecting patterns: {str(e)}")
+            raise
+
+    def _calculate_pattern_density(self, points: np.ndarray) -> float:
+        """Calculate pattern density"""
+        try:
+            # Calculate pairwise distances
+            distances = np.linalg.norm(points[:, np.newaxis] - points, axis=2)
+            # Calculate average distance
+            avg_distance = np.mean(distances)
+            # Normalize density (closer points = higher density)
+            return 1 / (1 + avg_distance)
+        except Exception as e:
+            self.logger.error(f"Error calculating pattern density: {str(e)}")
+            return 0.0
+
+    def _calculate_pattern_stability(self, points: np.ndarray) -> float:
+        """Calculate pattern stability"""
+        try:
+            # Calculate variance in each dimension
+            variances = np.var(points, axis=0)
+            # Normalize stability (lower variance = higher stability)
+            return 1 / (1 + np.mean(variances))
+        except Exception as e:
+            self.logger.error(f"Error calculating pattern stability: {str(e)}")
+            return 0.0
+
+    def _calculate_pattern_coherence(self, points: np.ndarray) -> float:
+        """Calculate pattern coherence"""
+        try:
+            # Calculate correlation between dimensions
+            correlations = np.corrcoef(points.T)
+            # Calculate average correlation
+            avg_correlation = np.mean(np.abs(correlations))
+            return avg_correlation
+        except Exception as e:
+            self.logger.error(f"Error calculating pattern coherence: {str(e)}")
+            return 0.0
+
+    async def _analyze_trends(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Analyze trends in the data"""
+        try:
+            trends = {}
+            
+            # Analyze each numeric column
+            for column in data.select_dtypes(include=[np.number]).columns:
+                # Perform seasonal decomposition
+                decomposition = seasonal_decompose(
+                    data[column],
+                    period=self.config["trend_analysis"]["window_size"]
+                )
+
+                # Perform stationarity test
+                _, p_value = adfuller(data[column])
+
+                # Calculate trend strength
+                trend_strength = self._calculate_trend_strength(decomposition.trend)
+                
+                # Calculate seasonality strength
+                seasonality_strength = self._calculate_seasonality_strength(decomposition.seasonal)
+                
+                # Calculate trend acceleration
+                acceleration = self._calculate_trend_acceleration(decomposition.trend)
+
+                trend = {
+                    "direction": "increasing" if decomposition.trend.iloc[-1] > decomposition.trend.iloc[0] else "decreasing",
+                    "magnitude": abs(decomposition.trend.iloc[-1] - decomposition.trend.iloc[0]),
+                    "stationarity": "stationary" if p_value < self.config["trend_analysis"]["significance_level"] else "non-stationary",
+                    "seasonality": bool(decomposition.seasonal.any()),
+                    "residuals": decomposition.resid.tolist(),
+                    "trend_strength": trend_strength,
+                    "seasonality_strength": seasonality_strength,
+                    "acceleration": acceleration,
+                    "volatility": self._calculate_volatility(decomposition.resid)
+                }
+                trends[column] = trend
+
+            return {
+                "trends": trends,
+                "trend_count": len(trends),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error analyzing trends: {str(e)}")
+            raise
+
+    def _calculate_trend_strength(self, trend: pd.Series) -> float:
+        """Calculate trend strength"""
+        try:
+            # Calculate R-squared of linear fit
+            x = np.arange(len(trend))
+            slope, intercept = np.polyfit(x, trend, 1)
+            y_pred = slope * x + intercept
+            r_squared = 1 - np.sum((trend - y_pred) ** 2) / np.sum((trend - np.mean(trend)) ** 2)
+            return max(0, min(1, r_squared))
+        except Exception as e:
+            self.logger.error(f"Error calculating trend strength: {str(e)}")
+            return 0.0
+
+    def _calculate_seasonality_strength(self, seasonal: pd.Series) -> float:
+        """Calculate seasonality strength"""
+        try:
+            # Calculate ratio of seasonal to total variation
+            seasonal_var = np.var(seasonal)
+            total_var = np.var(seasonal + seasonal.mean())
+            return seasonal_var / total_var if total_var > 0 else 0
+        except Exception as e:
+            self.logger.error(f"Error calculating seasonality strength: {str(e)}")
+            return 0.0
+
+    def _calculate_trend_acceleration(self, trend: pd.Series) -> float:
+        """Calculate trend acceleration"""
+        try:
+            # Calculate second derivative
+            x = np.arange(len(trend))
+            coeffs = np.polyfit(x, trend, 2)
+            return coeffs[0]  # Second derivative coefficient
+        except Exception as e:
+            self.logger.error(f"Error calculating trend acceleration: {str(e)}")
+            return 0.0
+
+    def _calculate_volatility(self, residuals: pd.Series) -> float:
+        """Calculate volatility"""
+        try:
+            # Calculate rolling standard deviation
+            rolling_std = residuals.rolling(window=20).std()
+            return np.mean(rolling_std) / np.std(residuals) if np.std(residuals) > 0 else 0
+        except Exception as e:
+            self.logger.error(f"Error calculating volatility: {str(e)}")
+            return 0.0
+
+    async def _detect_anomalies(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Detect anomalies in the data"""
+        try:
+            anomalies = {}
+            
+            # Prepare data
+            numeric_data = data.select_dtypes(include=[np.number])
+            scaler = StandardScaler()
+            scaled_data = scaler.fit_transform(numeric_data)
+
+            # Detect anomalies using Isolation Forest
+            iso_forest = IsolationForest(
+                contamination=self.config["anomaly_detection"]["contamination"],
+                random_state=self.config["anomaly_detection"]["random_state"]
+            )
+            anomaly_labels = iso_forest.fit_predict(scaled_data)
+
+            # Analyze anomalies
+            anomaly_indices = np.where(anomaly_labels == -1)[0]
+            for idx in anomaly_indices:
+                # Calculate anomaly impact
+                impact = self._calculate_anomaly_impact(numeric_data, idx)
+                
+                # Calculate anomaly persistence
+                persistence = self._calculate_anomaly_persistence(numeric_data, idx)
+                
+                # Calculate anomaly context
+                context = self._calculate_anomaly_context(numeric_data, idx)
+
+                anomaly = {
+                    "index": int(idx),
+                    "values": numeric_data.iloc[idx].to_dict(),
+                    "score": float(iso_forest.score_samples([scaled_data[idx]])[0]),
+                    "impact": impact,
+                    "persistence": persistence,
+                    "context": context,
+                    "severity": self._calculate_anomaly_severity(impact, persistence, context)
+                }
+                anomalies[f"anomaly_{idx}"] = anomaly
+
+            return {
+                "anomalies": anomalies,
+                "anomaly_count": len(anomalies),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error detecting anomalies: {str(e)}")
+            raise
+
+    def _calculate_anomaly_impact(self, data: pd.DataFrame, index: int) -> float:
+        """Calculate anomaly impact"""
+        try:
+            # Calculate deviation from mean
+            mean_values = data.mean()
+            std_values = data.std()
+            deviations = np.abs(data.iloc[index] - mean_values) / std_values
+            return np.mean(deviations)
+        except Exception as e:
+            self.logger.error(f"Error calculating anomaly impact: {str(e)}")
+            return 0.0
+
+    def _calculate_anomaly_persistence(self, data: pd.DataFrame, index: int) -> float:
+        """Calculate anomaly persistence"""
+        try:
+            # Look at surrounding values
+            window = 5
+            start_idx = max(0, index - window)
+            end_idx = min(len(data), index + window + 1)
+            surrounding_values = data.iloc[start_idx:end_idx]
+            
+            # Calculate how long the anomaly persists
+            persistence = 0
+            for i in range(window):
+                if index + i < len(data):
+                    if self._is_anomaly(data.iloc[index + i]):
+                        persistence += 1
+                if index - i >= 0:
+                    if self._is_anomaly(data.iloc[index - i]):
+                        persistence += 1
+            
+            return persistence / (2 * window)
+        except Exception as e:
+            self.logger.error(f"Error calculating anomaly persistence: {str(e)}")
+            return 0.0
+
+    def _calculate_anomaly_context(self, data: pd.DataFrame, index: int) -> Dict[str, float]:
+        """Calculate anomaly context"""
+        try:
+            # Calculate various context metrics
+            context = {
+                "local_density": self._calculate_local_density(data, index),
+                "global_density": self._calculate_global_density(data),
+                "isolation": self._calculate_isolation(data, index),
+                "neighborhood_consistency": self._calculate_neighborhood_consistency(data, index)
+            }
+            return context
+        except Exception as e:
+            self.logger.error(f"Error calculating anomaly context: {str(e)}")
+            return {}
+
+    def _calculate_anomaly_severity(self, impact: float, persistence: float, context: Dict[str, float]) -> float:
+        """Calculate anomaly severity"""
+        try:
+            # Combine various factors into severity score
+            severity = (
+                0.4 * impact +
+                0.3 * persistence +
+                0.3 * (context.get("isolation", 0) * 0.5 + context.get("neighborhood_consistency", 0) * 0.5)
+            )
+            return min(1.0, max(0.0, severity))
+        except Exception as e:
+            self.logger.error(f"Error calculating anomaly severity: {str(e)}")
+            return 0.0
+
+    def _is_anomaly(self, values: pd.Series) -> bool:
+        """Check if values are anomalous"""
+        try:
+            # Simple threshold-based anomaly detection
+            mean = values.mean()
+            std = values.std()
+            return any(np.abs(values - mean) > 3 * std)
+        except Exception as e:
+            self.logger.error(f"Error checking for anomaly: {str(e)}")
+            return False
+
+    def _calculate_local_density(self, data: pd.DataFrame, index: int) -> float:
+        """Calculate local density around anomaly"""
+        try:
+            window = 10
+            start_idx = max(0, index - window)
+            end_idx = min(len(data), index + window + 1)
+            local_data = data.iloc[start_idx:end_idx]
+            return len(local_data) / (2 * window)
+        except Exception as e:
+            self.logger.error(f"Error calculating local density: {str(e)}")
+            return 0.0
+
+    def _calculate_global_density(self, data: pd.DataFrame) -> float:
+        """Calculate global data density"""
+        try:
+            return len(data) / (data.max() - data.min()).sum()
+        except Exception as e:
+            self.logger.error(f"Error calculating global density: {str(e)}")
+            return 0.0
+
+    def _calculate_isolation(self, data: pd.DataFrame, index: int) -> float:
+        """Calculate isolation score"""
+        try:
+            # Calculate distance to nearest neighbors
+            distances = np.linalg.norm(data - data.iloc[index], axis=1)
+            distances = distances[distances > 0]  # Remove self-distance
+            return np.mean(distances[:5]) / np.mean(distances) if len(distances) > 0 else 0
+        except Exception as e:
+            self.logger.error(f"Error calculating isolation: {str(e)}")
+            return 0.0
+
+    def _calculate_neighborhood_consistency(self, data: pd.DataFrame, index: int) -> float:
+        """Calculate neighborhood consistency"""
+        try:
+            window = 5
+            start_idx = max(0, index - window)
+            end_idx = min(len(data), index + window + 1)
+            neighborhood = data.iloc[start_idx:end_idx]
+            
+            # Calculate variance in neighborhood
+            variances = np.var(neighborhood, axis=0)
+            return 1 / (1 + np.mean(variances))
+        except Exception as e:
+            self.logger.error(f"Error calculating neighborhood consistency: {str(e)}")
+            return 0.0
+
+    def _validate_insight_request(self, content: Dict[str, Any]) -> bool:
+        """Validate insight request content"""
+        required_fields = ["insight_id", "data", "insight_types"]
+        return all(field in content for field in required_fields)
+
+    async def _update_insight_metrics(self, insight_id: str):
+        """Update insight metrics"""
+        try:
+            insight_context = self.active_insights[insight_id]
+            start_time = insight_context["start_time"]
+            end_time = insight_context["end_time"]
+            duration = (end_time - start_time).total_seconds()
+
+            self.insight_metrics[insight_id] = {
+                "duration": duration,
+                "status": insight_context["status"],
+                "insight_types": insight_context["insight_types"],
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error updating insight metrics: {str(e)}")
+
+    async def _cleanup_resources(self):
+        """Clean up manager resources"""
+        self.active_insights.clear()
+        self.insight_metrics.clear()
+        self.logger.info("Insight Manager resources cleaned up")
+
+    async def _analyze_correlations(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Analyze correlations between variables"""
+        try:
+            correlations = {}
+            
+            # Prepare numeric data
+            numeric_data = data.select_dtypes(include=[np.number])
+            
+            # Calculate correlation matrix
+            corr_matrix = numeric_data.corr()
+            
+            # Find significant correlations
+            significant_correlations = []
+            for i in range(len(corr_matrix.columns)):
+                for j in range(i + 1, len(corr_matrix.columns)):
+                    correlation = corr_matrix.iloc[i, j]
+                    if abs(correlation) >= self.config.get("correlation_analysis", {}).get("min_correlation", 0.3):
+                        # Calculate correlation strength and significance
+                        strength = self._calculate_correlation_strength(correlation)
+                        significance = self._calculate_correlation_significance(
+                            numeric_data[corr_matrix.columns[i]],
+                            numeric_data[corr_matrix.columns[j]]
+                        )
+                        
+                        # Calculate correlation stability
+                        stability = self._calculate_correlation_stability(
+                            numeric_data[corr_matrix.columns[i]],
+                            numeric_data[corr_matrix.columns[j]]
+                        )
+                        
+                        # Calculate correlation direction
+                        direction = self._determine_correlation_direction(correlation)
+                        
+                        significant_correlations.append({
+                            "variable1": corr_matrix.columns[i],
+                            "variable2": corr_matrix.columns[j],
+                            "correlation": float(correlation),
+                            "strength": strength,
+                            "significance": significance,
+                            "stability": stability,
+                            "direction": direction,
+                            "type": self._determine_correlation_type(correlation, strength)
+                        })
+            
+            # Sort correlations by strength
+            significant_correlations.sort(key=lambda x: abs(x["correlation"]), reverse=True)
+            
+            return {
+                "correlations": significant_correlations,
+                "correlation_count": len(significant_correlations),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing correlations: {str(e)}")
+            raise
+
+    def _calculate_correlation_strength(self, correlation: float) -> float:
+        """Calculate correlation strength"""
+        try:
+            # Convert correlation to strength score (0-1)
+            return min(abs(correlation), 1.0)
+        except Exception as e:
+            self.logger.error(f"Error calculating correlation strength: {str(e)}")
+            return 0.0
+
+    def _calculate_correlation_significance(self, var1: pd.Series, var2: pd.Series) -> float:
+        """Calculate correlation significance"""
+        try:
+            # Use Fisher transformation for significance
+            n = len(var1)
+            r = var1.corr(var2)
+            z = 0.5 * np.log((1 + r) / (1 - r))
+            se = 1 / np.sqrt(n - 3)
+            z_score = abs(z / se)
+            return 1 - (2 * (1 - stats.norm.cdf(z_score)))
+        except Exception as e:
+            self.logger.error(f"Error calculating correlation significance: {str(e)}")
+            return 0.0
+
+    def _calculate_correlation_stability(self, var1: pd.Series, var2: pd.Series) -> float:
+        """Calculate correlation stability"""
+        try:
+            # Calculate correlation over different time windows
+            window_sizes = [10, 20, 50]
+            correlations = []
+            for window in window_sizes:
+                rolling_corr = var1.rolling(window=window).corr(var2)
+                correlations.append(rolling_corr.std())
+            
+            # Lower standard deviation indicates higher stability
+            return 1 / (1 + np.mean(correlations))
+        except Exception as e:
+            self.logger.error(f"Error calculating correlation stability: {str(e)}")
+            return 0.0
+
+    def _determine_correlation_direction(self, correlation: float) -> str:
+        """Determine correlation direction"""
+        if correlation > 0:
+            return "positive"
+        elif correlation < 0:
+            return "negative"
+        else:
+            return "none"
+
+    def _determine_correlation_type(self, correlation: float, strength: float) -> str:
+        """Determine correlation type"""
+        if abs(correlation) < 0.3:
+            return "weak"
+        elif abs(correlation) < 0.7:
+            return "moderate"
+        else:
+            return "strong"
+
+    async def _analyze_seasonality(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Analyze seasonality in the data"""
+        try:
+            seasonality_results = {}
+            
+            # Analyze each numeric column
+            for column in data.select_dtypes(include=[np.number]).columns:
+                # Perform seasonal decomposition
+                decomposition = seasonal_decompose(
+                    data[column],
+                    period=self.config.get("seasonality_analysis", {}).get("default_period", 12)
+                )
+                
+                # Calculate seasonality metrics
+                seasonality_metrics = {
+                    "strength": self._calculate_seasonality_strength(decomposition.seasonal),
+                    "period": self._detect_seasonality_period(decomposition.seasonal),
+                    "consistency": self._calculate_seasonality_consistency(decomposition.seasonal),
+                    "amplitude": self._calculate_seasonality_amplitude(decomposition.seasonal),
+                    "phase": self._calculate_seasonality_phase(decomposition.seasonal),
+                    "significance": self._calculate_seasonality_significance(decomposition.seasonal)
+                }
+                
+                # Determine seasonality type
+                seasonality_metrics["type"] = self._determine_seasonality_type(seasonality_metrics)
+                
+                # Store results
+                seasonality_results[column] = seasonality_metrics
+            
+            return {
+                "seasonality": seasonality_results,
+                "seasonality_count": len(seasonality_results),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing seasonality: {str(e)}")
+            raise
+
+    def _detect_seasonality_period(self, seasonal: pd.Series) -> int:
+        """Detect seasonality period"""
+        try:
+            # Use autocorrelation to detect period
+            autocorr = pd.Series(seasonal).autocorr()
+            if autocorr > 0.7:  # Strong autocorrelation indicates seasonality
+                # Find the period with highest autocorrelation
+                periods = range(2, len(seasonal) // 2)
+                max_corr = 0
+                best_period = 0
+                for period in periods:
+                    corr = seasonal.autocorr(lag=period)
+                    if corr > max_corr:
+                        max_corr = corr
+                        best_period = period
+                return best_period
+            return 0
+        except Exception as e:
+            self.logger.error(f"Error detecting seasonality period: {str(e)}")
+            return 0
+
+    def _calculate_seasonality_consistency(self, seasonal: pd.Series) -> float:
+        """Calculate seasonality consistency"""
+        try:
+            # Calculate how consistent the seasonal pattern is
+            period = self._detect_seasonality_period(seasonal)
+            if period == 0:
+                return 0.0
+            
+            # Compare seasonal patterns across periods
+            patterns = []
+            for i in range(0, len(seasonal) - period, period):
+                pattern = seasonal[i:i + period]
+                patterns.append(pattern)
+            
+            if not patterns:
+                return 0.0
+            
+            # Calculate pattern similarity
+            similarities = []
+            for i in range(len(patterns)):
+                for j in range(i + 1, len(patterns)):
+                    similarity = np.corrcoef(patterns[i], patterns[j])[0, 1]
+                    similarities.append(similarity)
+            
+            return np.mean(similarities) if similarities else 0.0
+        except Exception as e:
+            self.logger.error(f"Error calculating seasonality consistency: {str(e)}")
+            return 0.0
+
+    def _calculate_seasonality_amplitude(self, seasonal: pd.Series) -> float:
+        """Calculate seasonality amplitude"""
+        try:
+            # Calculate the magnitude of seasonal variation
+            return np.std(seasonal) / np.mean(seasonal) if np.mean(seasonal) != 0 else 0
+        except Exception as e:
+            self.logger.error(f"Error calculating seasonality amplitude: {str(e)}")
+            return 0.0
+
+    def _calculate_seasonality_phase(self, seasonal: pd.Series) -> float:
+        """Calculate seasonality phase"""
+        try:
+            # Calculate the phase shift of the seasonal pattern
+            period = self._detect_seasonality_period(seasonal)
+            if period == 0:
+                return 0.0
+            
+            # Find the peak position in the first period
+            first_period = seasonal[:period]
+            peak_position = np.argmax(first_period)
+            
+            # Normalize phase to [0, 1]
+            return peak_position / period
+        except Exception as e:
+            self.logger.error(f"Error calculating seasonality phase: {str(e)}")
+            return 0.0
+
+    def _calculate_seasonality_significance(self, seasonal: pd.Series) -> float:
+        """Calculate seasonality significance"""
+        try:
+            # Calculate how significant the seasonal component is
+            total_var = np.var(seasonal + seasonal.mean())
+            seasonal_var = np.var(seasonal)
+            return seasonal_var / total_var if total_var > 0 else 0
+        except Exception as e:
+            self.logger.error(f"Error calculating seasonality significance: {str(e)}")
+            return 0.0
+
+    def _determine_seasonality_type(self, metrics: Dict[str, float]) -> str:
+        """Determine seasonality type based on metrics"""
+        try:
+            strength = metrics.get("strength", 0)
+            consistency = metrics.get("consistency", 0)
+            amplitude = metrics.get("amplitude", 0)
+            
+            if strength < 0.3 or consistency < 0.3:
+                return "none"
+            elif strength > 0.7 and consistency > 0.7:
+                return "strong"
+            elif amplitude > 0.5:
+                return "moderate"
+            else:
+                return "weak"
+        except Exception as e:
+            self.logger.error(f"Error determining seasonality type: {str(e)}")
+            return "unknown"
